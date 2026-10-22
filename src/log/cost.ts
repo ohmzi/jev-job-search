@@ -1,6 +1,6 @@
 /**
  * What the tool spends. Two usage logs feed it: data/runs/jev-usage.jsonl
- * (every JEV call, written by JevClient) and data/runs/writer-usage.jsonl
+ * (every DeepSeek call, written by JevClient) and data/runs/writer-usage.jsonl
  * (every headless Claude Code call, written by the writer). The summary is
  * pure, so the same numbers can be printed after a run or over all time.
  */
@@ -12,7 +12,7 @@ export type WriterLine = { at: string; purpose: string; jobId: string; inputToke
 
 export type Bucket = { calls: number; inputTokens: number; outputTokens: number; costUsd: number };
 export type CostSummary = {
-  /** JEV calls by purpose: rate (discovery), map-form (filling), page-state (reading a page). */
+  /** DeepSeek calls by purpose: rate (discovery), map-form (filling), page-state (reading a page). */
   jev: Record<string, Bucket>;
   /** Claude calls by purpose: resolve (open fields), log (the two sheet cells after a submission). */
   claude: Record<string, Bucket>;
@@ -86,7 +86,7 @@ const usd = (n: number) => `$${n.toFixed(n < 0.01 ? 5 : n < 1 ? 4 : 2)}`;
 export function formatCost(c: CostSummary): string {
   const row = (name: string, b: Bucket) => `  ${name.padEnd(12)} ${String(b.calls).padStart(5)} calls  ${String(b.inputTokens).padStart(9)} in  ${String(b.outputTokens).padStart(8)} out  ${usd(b.costUsd)}`;
   const api = writerBackend() === "api";
-  const lines = ["JEV (billed to your OpenRouter key)"];
+  const lines = ["DeepSeek (billed to your DeepSeek key)"];
   for (const [k, b] of Object.entries(c.jev)) lines.push(row(k, b));
   const claudeCalls = Object.values(c.claude).reduce((n, b) => n + b.calls, 0);
   if (api) {
@@ -98,10 +98,10 @@ export function formatCost(c: CostSummary): string {
   }
   lines.push(`Forms: ${c.forms}`);
   if (c.forms) {
-    lines.push(api ? `Per form: JEV ${usd(c.perForm.jevUsd)} + Claude ${usd(c.perForm.claudeUsd)} = ${usd(c.perForm.totalUsd)}` : `Per form: JEV ${usd(c.perForm.jevUsd)}`);
-    lines.push(api ? `Per 10 forms: JEV ${usd(c.perForm.jevUsd * 10)} + Claude ${usd(c.perForm.claudeUsd * 10)} = ${usd(c.perForm.totalUsd * 10)}` : `Per 10 forms: JEV ${usd(c.perForm.jevUsd * 10)}`);
+    lines.push(api ? `Per form: DeepSeek ${usd(c.perForm.jevUsd)} + Claude ${usd(c.perForm.claudeUsd)} = ${usd(c.perForm.totalUsd)}` : `Per form: DeepSeek ${usd(c.perForm.jevUsd)}`);
+    lines.push(api ? `Per 10 forms: DeepSeek ${usd(c.perForm.jevUsd * 10)} + Claude ${usd(c.perForm.claudeUsd * 10)} = ${usd(c.perForm.totalUsd * 10)}` : `Per 10 forms: DeepSeek ${usd(c.perForm.jevUsd * 10)}`);
   }
   const jevTotal = c.discoveryUsd + Object.entries(c.jev).reduce((t, [k, b]) => (k === "rate" ? t : t + b.costUsd), 0);
-  lines.push(api ? `Discovery (rating): ${usd(c.discoveryUsd)}   Total: ${usd(c.totalUsd)}` : `Discovery (rating): ${usd(c.discoveryUsd)}   Total billed (JEV): ${usd(jevTotal)}`);
+  lines.push(api ? `Discovery (rating): ${usd(c.discoveryUsd)}   Total: ${usd(c.totalUsd)}` : `Discovery (rating): ${usd(c.discoveryUsd)}   Total billed (DeepSeek): ${usd(jevTotal)}`);
   return lines.join("\n");
 }

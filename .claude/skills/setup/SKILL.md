@@ -1,6 +1,6 @@
 ---
 name: setup
-description: First-run setup, start to finish. Use when the user says /setup, "set this up", "get me started", "help me use this", hands you this repository for the first time, or when data/profile.json does not exist. Installs what is missing, builds the profile from the resume and a short interview, has the user add their own OpenRouter key, finds jobs, rehearses, and stops for a "go" before anything is sent.
+description: First-run setup, start to finish. Use when the user says /setup, "set this up", "get me started", "help me use this", hands you this repository for the first time, or when data/profile.json does not exist. Installs what is missing, builds the profile from the resume and a short interview, has the user add their own DeepSeek key, finds jobs, rehearses, and stops for a "go" before anything is sent.
 model: claude-sonnet-5-5
 effort: high
 ---
@@ -11,14 +11,14 @@ The user should need to do four things: give you their resume, answer your
 questions, paste one key into a file, and say "go". You do everything else.
 
 Run every command from the repo root. After each step run
-`npx jev doctor --json`. It lists what is in place and names the
+`node bin/jev.js doctor --json`. It lists what is in place and names the
 next thing to do, so you never have to guess where you are. If the user
 stops halfway and comes back, start from what `doctor` says.
 
 ## 1. Install
 
 1. If `node_modules` is missing, run `npm install`.
-2. Run `npx jev doctor`. Fix what it names, in order:
+2. Run `node bin/jev.js doctor`. Fix what it names, in order:
    - Node.js older than 22, Google Chrome missing, or Claude Code missing:
      tell the user what to install and wait. You cannot install these.
      (You are running inside Claude Code, so it is present; a user who
@@ -84,30 +84,30 @@ Rules for this step:
 
 ## 5. The key
 
-JEV is the only part of this tool the user is billed for. Tell them the
-numbers before they pay: about 6 cents each time the tool finds jobs, and
-about 1 cent for every 10 applications. Five dollars of credit lasts for
-months.
+DeepSeek is the only part of this tool the user is billed for. Tell them the
+numbers before they pay: the list prices are in `DEEPSEEK` in
+`src/config.ts` (about $0.28 per million input tokens and $0.42 per million
+output tokens). A search rates many postings, so expect roughly 25 to 50
+cents; applications cost a few cents each. Five dollars lasts months.
 
-1. Ask them to create a key at https://openrouter.ai/keys and add a few
-   dollars of credit.
-2. Run `cp .env.example .env`, then `open -e .env` so the file opens in a
-   text editor.
-3. Ask them to paste the key after `OPENROUTER_API_KEY=`, save, and tell you
+1. Ask them to create a key at https://platform.deepseek.com/api_keys and add
+   a few dollars of credit.
+2. Run `cp .env.example .env`, then open `.env` in a text editor.
+3. Ask them to paste the key after `DEEPSEEK_API_KEY=`, save, and tell you
    when it is done.
-4. Run `npx jev doctor --online`. It makes one tiny JEV call and
+4. Run `node bin/jev.js doctor --online`. It makes one tiny DeepSeek call and
    one tiny Claude call to prove both work.
 
 Never ask the user to paste the key into the chat, and never print it. If
 they paste it into the chat anyway, tell them to delete that key at
-openrouter.ai/keys and create a new one, because a key in a chat is exposed.
+platform.deepseek.com/api_keys and create a new one, because a key in a chat is exposed.
 
 ## 6. Find jobs
 
-Run `npx jev discover`. It takes about a minute. Show the top 15
+Run `node bin/jev.js discover`. It takes about a minute. Show the top 15
 as a short table: score, company, role, location, date posted. Say how many
 jobs are queued and name the main reasons jobs were skipped
-(`npx jev status`).
+(`node bin/jev.js status`).
 
 If the user wants other locations or kinds of roles than the ranking
 prefers, the settings are in `src/config.ts` (`LOCATION_MULTIPLIER`,
@@ -115,7 +115,7 @@ prefers, the settings are in `src/config.ts` (`LOCATION_MULTIPLIER`,
 
 ## 7. Rehearse
 
-1. Run `npx jev apply --dry --count 3`. A Chrome window opens,
+1. Run `node bin/jev.js apply --dry --count 3`. A Chrome window opens,
    three forms are filled, nothing is sent, and the tabs close.
 2. Show the user every answer, grouped by form. Point out anything the tool
    held and why.
@@ -130,13 +130,13 @@ board. It is not an application and the employer is not told.
 ## 8. One application, ready for them to read
 
 Setup ends with a real application filled and waiting, not with a list of
-commands. Run `npx jev apply --count 1` on the best job in the queue that
+commands. Run `node bin/jev.js apply --count 1` on the best job in the queue that
 is on Greenhouse, Lever or Ashby. Without `--submit` the form is filled,
 checked and left open in the tool's Chrome window.
 
 Tell them to look at that window. Read the answers back to them, name
 anything the tool held, and ask: "Send this one?" Only when they say yes,
-run `npx jev submit <id>`. Then show the row in `npx jev log`.
+run `node bin/jev.js submit <id>`. Then show the row in `node bin/jev.js log`.
 
 That is the whole loop. Say so in one sentence, then stop asking
 questions.
@@ -153,7 +153,7 @@ Do not list commands. Say only:
 Mention these once, and only when they apply. Do not set any of them up
 during setup:
 
-- If many of the jobs they would want are on Workday (`npx jev status`
+- If many of the jobs they would want are on Workday (`node bin/jev.js status`
   lists "workday" among the skip reasons), say that Workday employers each
   want an account and `/accounts` handles that when they are ready.
 - If they asked for it to run by itself, `/daily`.

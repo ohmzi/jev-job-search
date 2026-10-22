@@ -6,6 +6,7 @@ import { z } from "zod";
 import { REPORT } from "../config.js";
 import { QueueStatus } from "../jobs/queue.js";
 import { statusKeyOf, takehomeRecords, toRecord, type Row } from "../log/csv.js";
+import type { RecentRow } from "./recent.js";
 
 /** One job as the page shows it. status_key is the status itself; status is the words in the record. */
 export type ReportRow = ReturnType<typeof toRecord> & { takehome_link: string; status_key: string };
@@ -16,10 +17,12 @@ export type Report = {
   byStatus: Record<string, number>;
   byBoard: Record<string, number>;
   byDay: { day: string; applied: number }[];
+  /** The jobs the tool first saw in the last twelve hours, from the queue. */
+  recent: RecentRow[];
   generatedAt: string;
 };
 
-export function buildReport(rows: Row[], today = new Date()): Report {
+export function buildReport(rows: Row[], today = new Date(), recent: RecentRow[] = []): Report {
   const takehome = new Map(takehomeRecords(rows).map((t) => [t.job_id, t.takehome_link]));
   const all = rows.map((r) => ({ ...toRecord(r), takehome_link: takehome.get(r["Job ID"]) ?? "", status_key: statusKeyOf(r["App. Status"]) ?? "" }));
   const day = (iso: string) => iso.slice(0, 10);
@@ -48,6 +51,7 @@ export function buildReport(rows: Row[], today = new Date()): Report {
     byStatus: tally((r) => r.status.replace(/:.*$/, "")),
     byBoard: tally((r) => r.ats || "other", (r) => r.status_key === "applied"),
     byDay: Object.entries(days).sort(([a], [b]) => a.localeCompare(b)).map(([d, n]) => ({ day: d, applied: n })),
+    recent,
     generatedAt: new Date().toISOString(),
   };
 }

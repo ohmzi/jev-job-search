@@ -12,12 +12,12 @@ An open-source job application tool built on [Claude Code](https://claude.com/cl
 |---|---|
 | **Who it is for** | Students and new graduates applying to software roles in Canada, the United States or remotely, who are comfortable opening a terminal once. It writes in English. |
 | **What you need** | A Mac with Google Chrome, [Node.js](https://nodejs.org) 22, and [Claude Code](https://claude.com/claude-code) with a Claude Pro or Max subscription. |
-| **What it costs** | Your Claude subscription, plus a few dollars of [OpenRouter](https://openrouter.ai/keys) credit for JEV: about 1 to 1.5 cents per 10 applications. Nothing else. |
+| **What it costs** | Your Claude subscription, plus a few dollars of [DeepSeek](https://platform.deepseek.com/api_keys) credit for the rating model: roughly 30 to 60 cents per search, and a few cents per application. Nothing else. |
 | **How to start** | Clone it, run `npm install`, open `claude` in the folder and type `/setup`. About 20 minutes, most of it your answers. It ends with one application filled and waiting for your yes. |
 | **What it checks** | Your right to work, education and dates are taken from your profile and never changed to fit a form. Every answer is read back from the page before a form is sent. A human check is left to you. It can only be as truthful as the profile you give it. |
 | **What it is not** | A download-and-open app: there is no installer yet. And it is a beta: forms on boards it has not met will hold, and it says so. |
 
-> This is an independent open-source project. It is not affiliated with, endorsed by or maintained by Anthropic, OpenRouter, or any job board. There is no token, coin or paid tier; the only ways to support it are using it and contributing on GitHub.
+> This is an independent open-source project. It is not affiliated with, endorsed by or maintained by Anthropic, DeepSeek, or any job board. There is no token, coin or paid tier; the only ways to support it are using it and contributing on GitHub.
 
 ## Does it actually work?
 
@@ -25,7 +25,7 @@ It is how I run my own search. I sent 100 applications in less than 10 minutes a
 
 ## What this is
 
-A command-line tool, a set of Claude Code skills that run it with you in the loop, and a dashboard on your own machine. Two models share the thinking: [JEV](https://openrouter.ai/typesafe/jev-1.13) makes every decision that has a fixed set of answers (which of your details goes in this box, which option, how good a fit this job is) for a fraction of a cent, and Claude, on your own subscription, writes the sentences. The code does the rest: finds the jobs, drives Chrome, checks every answer on the page, and keeps your records.
+A command-line tool, a set of Claude Code skills that run it with you in the loop, and a dashboard on your own machine. Two models share the thinking: [DeepSeek](https://www.deepseek.com) makes every decision that has a fixed set of answers (which of your details goes in this box, which option, how good a fit this job is), and Claude, on your own subscription, writes the sentences. The code does the rest: finds the jobs, drives Chrome, checks every answer on the page, and keeps your records.
 
 ```
 /setup              /discover              /apply
@@ -51,7 +51,7 @@ Four checks are built into the code. Your right to work, your education and your
 - A Mac with Google Chrome. The tool opens its own Chrome window with its own profile; your everyday browser is not touched.
 - [Node.js](https://nodejs.org) 22 or newer.
 - [Claude Code](https://claude.com/claude-code), signed in. Claude Code has no free tier: you need a Claude Pro or Max subscription, or a Claude API key in `.env` (then the commands work and the skills do not; see [Claude Code or the Claude API](#claude-code-or-the-claude-api)).
-- An [OpenRouter](https://openrouter.ai/keys) account with a few dollars of credit. That pays for JEV, the only separate bill: about 1 to 1.5 cents for every 10 applications, and 7 to 9 cents per search. Five dollars covers about 60 searches and 3,000 applications. See [What it costs](#what-it-costs).
+- A [DeepSeek](https://platform.deepseek.com/api_keys) account and key with a few dollars of credit. That pays for every typed decision, the only separate bill: a search that rates 350 to 460 postings costs roughly $0.40 to $0.60, and applications cost a few cents each. See [What it costs](#what-it-costs).
 
 ## Quick start
 
@@ -74,7 +74,7 @@ claude
 /setup
 ```
 
-`/setup` checks what is installed, reads your resume PDF and anything else you drop into `documents/` (old resumes, a LinkedIn export, past applications), asks only what those do not say (where you may work, what you are looking for, how you want recurring questions answered), opens `.env` for you to paste your OpenRouter key, builds your profile, finds jobs, rehearses three forms without sending so you can correct what it got wrong, and ends with one real application filled and waiting for your yes. About 20 minutes, most of it your answers. `/setup` is safe to run again.
+`/setup` checks what is installed, reads your resume PDF and anything else you drop into `documents/` (old resumes, a LinkedIn export, past applications), asks only what those do not say (where you may work, what you are looking for, how you want recurring questions answered), opens `.env` for you to paste your DeepSeek key, builds your profile, finds jobs, rehearses three forms without sending so you can correct what it got wrong, and ends with one real application filled and waiting for your yes. About 20 minutes, most of it your answers. `/setup` is safe to run again.
 
 ### 3. Find jobs
 
@@ -105,7 +105,8 @@ A Greenhouse, Lever or Ashby link is read from the board, rated, and filled like
 `/setup`, `/discover` and `/apply` are the workflow. Eleven more skills extend it once your profile is in place. Each is typed in Claude Code as written; none needs a terminal:
 
 - **`/tailor <job id> [--cover]`** writes a one-page resume for the job from your profile and the posting, and with `--cover` a one-page cover letter, and shows you the PDFs. Every number and every name of a tool, a place or a company in the draft is checked against your profile in code; the keywords the posting wants and your profile cannot support are listed, never stuffed in. `/apply --tailor --cover` writes and attaches them as it applies. See [A resume and a cover letter written for the job](#a-resume-and-a-cover-letter-written-for-the-job).
-- **`/report`** opens the dashboard on your own machine, the main screen once you are set up. **Today** is the day in one line. **Needs you** lists everything only you can do: a question a form asked that your profile could not answer, with a box and "Save for next run"; a form waiting for a code or a sign-in, with "Show the form"; a submission that was never confirmed. **Applications** is every job with its status, your notes and the reply that came back. **Automation** is the daily run as a switch, a time and your rules. Nothing leaves your machine.
+- **`/report`** opens the dashboard on your own machine, the main screen once you are set up. **Today** is the day in one line. **Last 12 hours** is every job the tool first saw inside that window, newest first; `/apply` takes them before older queued jobs while they are fresh, and a board-only listing moves to **Needs you** when its twelve hours are over. **Needs you** lists everything only you can do: a question a form asked that your profile could not answer, with a box and "Save for next run"; a form waiting for a code or a sign-in, with "Show the form"; a submission that was never confirmed. **Applications** is every job with its status, your notes and the reply that came back. **Automation** is the daily run as a switch, a time and your rules. Nothing leaves your machine.
+- **`/hourly`** asks the job boards for jobs posted in the last hour and puts them on the **Last 12 hours** page. A form the tool can fill is queued and jumps the apply order while it is fresh. An Indeed or LinkedIn listing it cannot fill waits on the page, then moves to **Needs you**. On the page, tick any posting, or the header box for all, and choose Mark selected applied; it leaves the list for good. Read-only: no form, no sign-in, no mail, no sending. `/hourly install` runs it every hour, on a systemd timer on Linux or a LaunchAgent on macOS. See [docs/HOURLY.md](docs/HOURLY.md).
 - **`/inbox`** (in progress) reads your connected Gmail, read-only, for replies to applications you sent: received, rejected, an assessment, an interview, an offer. It looks at the sender, the subject and Gmail's own short preview, never the body. What it is not sure of waits for you under "Needs you".
 - **`/expand`** reads the public places your profile already links to (your GitHub repositories, your portfolio site) and proposes projects, skills and facts that are missing from the profile, each with its source. Nothing is added without your yes.
 - **`/add-source`** adds a job board or a public list as a source: it inspects the site, writes the source in the shape of the shipped ones, tests it on a captured sample and runs one live query before registering it.
@@ -115,23 +116,53 @@ A Greenhouse, Lever or Ashby link is read from the board, rated, and filled like
 - **`/status`** says where you stand in a few lines: sent today and in total, what waits for you, what is left for you and why, how fresh the queue is, what it has cost, and the next step.
 - **`/profile`** changes your profile, your standing answers (how recurring questions are answered), your drafts and your voice guide with you. When a form answer looked wrong, this is where you fix it, once.
 
+### Where the five dashboards live
+
+Each portal runs its own dashboard on its own local port, with its own queue,
+CSV and resume. The main repository is the code reference and has no queue of
+its own.
+
+| Dashboard | Repository | Local port | Public address |
+|---|---|---|---|
+| Main | `jev-job-search` | 7411 | https://job.ohmzhomelab.ca |
+| Android, New Jersey | `jev-android-nj` | 7421 | https://jobnja.ohmzhomelab.ca |
+| Android, Texas | `jev-android-tx` | 7422 | https://jobtxa.ohmzhomelab.ca |
+| Full stack, New Jersey | `jev-fullstack-nj` | 7423 | https://jobnjf.ohmzhomelab.ca |
+| Full stack, Texas | `jev-fullstack-tx` | 7424 | https://jobtxf.ohmzhomelab.ca |
+
+Start one with `node bin/jev.js report --port <port>` from its folder. The
+Last 12 hours screen is at `/#recent`.
+
+To keep one running across a reboot, install it as a systemd user service
+(Linux):
+
+```bash
+node bin/jev.js report --port <port> --install-service
+node bin/jev.js report --service-status
+node bin/jev.js report --remove-service
+```
+
+The service is named after the folder, restarts if it exits badly, and writes
+to `data/runs/report.log`.
+
 #### In a terminal
 
-Every skill runs a command you can also type yourself, as `npx jev <command>` from the project folder. You never have to; scripts and schedulers do.
+Every skill runs a command you can also type yourself, as `node bin/jev.js <command>` from the project folder. You never have to; scripts and schedulers do.
 
 | Skill | The same in a terminal |
 |---|---|
-| `/discover` | `npx jev discover` |
-| `/apply`, `/apply <link>` | `npx jev apply --count 10 --submit`, `npx jev apply <link> --submit` |
-| `/tailor <job id>` | `npx jev tailor <job id> --cover` |
-| `/report` | `npx jev report --open` |
-| `/accounts`, `/accounts signin acme`, `/accounts password acme` | `npx jev accounts`, `npx jev accounts signin acme`, `npx jev accounts password acme` |
-| `/daily dry`, `/daily run`, `/daily schedule 09:00`, `/daily pause`, `/daily stop` | `npx jev daily --dry`, `npx jev daily`, `npx jev schedule install --at 09:00`, `npx jev schedule remove`, `npx jev daily --stop` |
-| `/resume` | `npx jev resume`, `npx jev reconcile`, `npx jev code <job id> --submit` |
-| `/status` | `npx jev status`, `npx jev doctor`, `npx jev cost`, `npx jev log` |
-| `/inbox` | `npx jev inbox --days 7` |
+| `/discover` | `node bin/jev.js discover` |
+| `/hourly`, `/hourly install`, `/hourly pause`, `/hourly status` | `node bin/jev.js hourly`, `node bin/jev.js schedule install --hourly`, `node bin/jev.js schedule remove --hourly`, `node bin/jev.js schedule status --hourly` |
+| `/apply`, `/apply <link>` | `node bin/jev.js apply --count 10 --submit`, `node bin/jev.js apply <link> --submit` |
+| `/tailor <job id>` | `node bin/jev.js tailor <job id> --cover` |
+| `/report` | `node bin/jev.js report --open` |
+| `/accounts`, `/accounts signin acme`, `/accounts password acme` | `node bin/jev.js accounts`, `node bin/jev.js accounts signin acme`, `node bin/jev.js accounts password acme` |
+| `/daily dry`, `/daily run`, `/daily schedule 09:00`, `/daily pause`, `/daily stop` | `node bin/jev.js daily --dry`, `node bin/jev.js daily`, `node bin/jev.js schedule install --at 09:00`, `node bin/jev.js schedule remove`, `node bin/jev.js daily --stop` |
+| `/resume` | `node bin/jev.js resume`, `node bin/jev.js reconcile`, `node bin/jev.js code <job id> --submit` |
+| `/status` | `node bin/jev.js status`, `node bin/jev.js doctor`, `node bin/jev.js cost`, `node bin/jev.js log` |
+| `/inbox` | `node bin/jev.js inbox --days 7` |
 
-`npx jev log --open` opens your applications in your spreadsheet program, `npx jev knowledge --share` copies what your runs learned about job sites into the repo for a pull request (site names and kinds of controls, nothing about you), and `npx jev --help` lists everything, including the apply loop one step at a time (`fill`, `resolve`, `submit`, `check`, `inspect`, `set`).
+`node bin/jev.js log --open` opens your applications in your spreadsheet program, `node bin/jev.js knowledge --share` copies what your runs learned about job sites into the repo for a pull request (site names and kinds of controls, nothing about you), and `node bin/jev.js --help` lists everything, including the apply loop one step at a time (`fill`, `resolve`, `submit`, `check`, `inspect`, `set`).
 
 ## File structure
 
@@ -141,6 +172,7 @@ jev-job-search/
 ├── .claude/skills/
 │   ├── setup/                 # /setup: from a clone to the first rehearsal
 │   ├── discover/              # /discover: build the ranked queue
+│   ├── hourly/                # /hourly: the Last 12 hours page and its timer
 │   ├── apply/                 # /apply: fill, check, send
 │   ├── tailor/                # /tailor: a resume and a cover letter per job
 │   ├── report/                # /report: the dashboard
@@ -180,7 +212,7 @@ jev-job-search/
 │   ├── jobs/, sources/        # finding and rating
 │   ├── knowledge/, log/, jev/ # site notes; the CSV records; the JEV client
 ├── tests/                     # offline, on captured fixtures with no personal data
-├── docs/                      # SETUP, USAGE, ARCHITECTURE, JEV, SOURCES, SAFETY
+├── docs/                      # SETUP, USAGE, ARCHITECTURE, JEV, SOURCES, SAFETY, HOURLY
 └── .github/workflows/         # CI: typecheck, tests, audit, CodeQL, a guard against personal data
 ```
 
@@ -214,8 +246,8 @@ Turn it on and the tool writes a one-page resume for each job from your
 profile and the posting, and attaches that one instead.
 
 ```bash
-npx jev tailor <job id> --cover --open
-npx jev apply --count 10 --submit --tailor --cover
+node bin/jev.js tailor <job id> --cover --open
+node bin/jev.js apply --count 10 --submit --tailor --cover
 ```
 
 - `tailor` writes the documents for a job and shows you the PDFs. `apply
@@ -293,11 +325,11 @@ The stock resume and cover letter are plain HTML with system fonts, printed to P
 Then register it. The tool checks every placeholder, prints a test pair from the example profile, and refuses a template that does not render or runs long:
 
 ```bash
-npx jev templates --add ~/my-template --name mine
-npx jev templates --use mine
+node bin/jev.js templates --add ~/my-template --name mine
+node bin/jev.js templates --use mine
 ```
 
-`npx jev templates` lists what is registered and which one `/tailor` uses. The stock pair is in `src/documents/templates/default/`, the easiest starting point to copy.
+`node bin/jev.js templates` lists what is registered and which one `/tailor` uses. The stock pair is in `src/documents/templates/default/`, the easiest starting point to copy.
 
 ### What the tool will not do
 
@@ -341,15 +373,15 @@ lives in the code.
 
 ### Starting over
 
-Delete `data/profile.json`, `data/bank.json` and `data/voice.local.md` and run `/setup` again. `npx jev memory --clear` forgets the remembered answers; `applications/` and `documents/` are yours to keep or remove.
+Delete `data/profile.json`, `data/bank.json` and `data/voice.local.md` and run `/setup` again. `node bin/jev.js memory --clear` forgets the remembered answers; `applications/` and `documents/` are yours to keep or remove.
 
 ## What it costs
 
 Two services do the thinking.
 
-- **JEV** answers the questions that have a fixed set of answers, such as
+- **DeepSeek** answers the questions that have a fixed set of answers, such as
   "which of my details goes in this box?" and "how good a fit is this
-  job?" You pay for it through your OpenRouter key. **This is the only
+  job?" You pay for it through your DeepSeek key. **This is the only
   separate bill.**
 - **Claude** writes the answers that need sentences, such as "Why do you
   want to work here?" It runs on the Sonnet 5.5 model at low effort,
@@ -372,11 +404,11 @@ So **1 to 1.5 cents for every 10 forms**. Most of that is one call per
 form that decides what goes in each field; reading the page after Submit
 and matching remembered answers add a tenth of a cent.
 
-A search is separate: rating 350 to 460 new postings costs $0.06 to
-$0.09, and a second search on the same day costs close to nothing, because
-a posting that has not changed keeps its rating.
+A search is separate: rating 350 to 460 new postings costs roughly $0.40 to
+$0.60 at DeepSeek's list prices, and a second search on the same day costs
+close to nothing, because a posting that has not changed keeps its rating.
 
-Five dollars of OpenRouter credit pays for about 60 searches and 3,000
+Five dollars of DeepSeek credit pays for several searches and hundreds of
 applications.
 
 For the record, everything we spent while building and testing the tool
@@ -395,7 +427,7 @@ What changes these numbers:
 - **Claude calls count toward your subscription's usage allowance.** On
   an API key, `cost` shows what they cost instead.
 
-To see what you have spent, run `npx jev cost`. Every run that
+To see what you have spent, run `node bin/jev.js cost`. Every run that
 fills forms also prints its own cost at the end.
 
 ### How the tool keeps the cost down
@@ -422,7 +454,7 @@ fills forms also prints its own cost at the end.
 - **JEV does everything it can.** On a typical form JEV settles all but one
   or two fields, for about a tenth of a cent.
 
-To see or clear what the tool remembers, run `npx jev memory`.
+To see or clear what the tool remembers, run `node bin/jev.js memory`.
 
 ## Claude Code or the Claude API
 
@@ -437,7 +469,7 @@ the same prompts, and everything else works the same.
 
 With a key in `.env`, the tool uses the API. To keep using Claude Code
 while a key is present, add `WRITER_BACKEND=claude-code` to `.env`. Run
-`npx jev doctor --online` to prove either one works.
+`node bin/jev.js doctor --online` to prove either one works.
 
 ## Tips for better results
 
@@ -455,7 +487,7 @@ Every recurring question you answer by hand once (pay, relocation, start date, a
 
 ### Stay near your computer the first few runs
 
-Boards sometimes email a code or show a "not a robot" check after Submit. A code goes into the form with `npx jev code <id> --submit`, which reads it on standard input, writes it, reads it back, and sends only when the page confirms; `/apply` and `/resume` find it over the Gmail MCP for you. The tool never passes a robot check. It leaves that form open and filled, sends you a notification, and moves on to the next job, so a run never waits on you. Pass the check in the tool's Chrome window, then run `npx jev resume` and it records the application.
+Boards sometimes email a code or show a "not a robot" check after Submit. A code goes into the form with `node bin/jev.js code <id> --submit`, which reads it on standard input, writes it, reads it back, and sends only when the page confirms; `/apply` and `/resume` find it over the Gmail MCP for you. The tool never passes a robot check. It leaves that form open and filled, sends you a notification, and moves on to the next job, so a run never waits on you. Pass the check in the tool's Chrome window, then run `node bin/jev.js resume` and it records the application.
 
 ## Contributing
 
@@ -465,7 +497,7 @@ Bug reports, fixes for a form that filled wrongly, new job sources and site note
 
 - [MadsLorentzen/ai-job-search](https://github.com/MadsLorentzen/ai-job-search) (MIT) for the drafter and reviewer method behind the tailored resume and cover letter, and for showing what a clear job-search repo looks like.
 - [SimplifyJobs](https://github.com/SimplifyJobs) for the public internship and new-grad lists the tool reads.
-- [typesafe/jev-1.13](https://openrouter.ai/typesafe/jev-1.13) for a model that answers a typed question with a probability.
+- [DeepSeek](https://www.deepseek.com) for the model that answers every typed question.
 
 ## License
 

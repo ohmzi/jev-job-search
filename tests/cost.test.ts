@@ -14,7 +14,7 @@ const writer: WriterLine[] = [
 ];
 
 describe("summarizeCost", () => {
-  it("splits JEV and Claude by purpose and keeps discovery apart from the forms", () => {
+  it("splits DeepSeek and Claude by purpose and keeps discovery apart from the forms", () => {
     const c = summarizeCost(jev, writer);
     expect(c.jev.rate).toMatchObject({ calls: 1, costUsd: 0.0002 });
     expect(c.jev["map-form"]).toMatchObject({ calls: 3, inputTokens: 42000 });
@@ -33,13 +33,13 @@ describe("summarizeCost", () => {
   });
   it("prints a per-form and a per-ten figure, with Claude priced only when the Claude API is used", () => {
     process.env.WRITER_BACKEND = "api";
-    expect(formatCost(summarizeCost(jev, writer))).toMatch(/Per 10 forms: JEV \$0\.0\d+ \+ Claude \$0\.3000 = \$0\.3\d+/);
+    expect(formatCost(summarizeCost(jev, writer))).toMatch(/Per 10 forms: DeepSeek \$0\.0\d+ \+ Claude \$0\.3000 = \$0\.3\d+/);
     expect(formatCost(summarizeCost([], []))).toContain("no calls recorded");
     process.env.WRITER_BACKEND = "claude-code";
     const text = formatCost(summarizeCost(jev, writer));
     expect(text).toContain("on your subscription, no separate bill");
     expect(text).not.toContain("+ Claude");
-    expect(text).toContain("Total billed (JEV)");
+    expect(text).toContain("Total billed (DeepSeek)");
     delete process.env.WRITER_BACKEND;
   });
 });

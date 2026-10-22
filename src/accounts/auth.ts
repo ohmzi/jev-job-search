@@ -222,7 +222,7 @@ export async function ensureSignedIn(page: AuthPage, ctx: AuthContext): Promise<
 
       if (view === "sign_in") {
         if (!known()) {
-          if (!mayRegister()) return stop("login_required", "login", `no account is set up for ${ctx.tenant.tenant}. To allow one: npx jev accounts add`);
+          if (!mayRegister()) return stop("login_required", "login", `no account is set up for ${ctx.tenant.tenant}. To allow one: node bin/jev.js accounts add`);
           await click(adapter.controls.toRegister, "Create Account");
           continue;
         }

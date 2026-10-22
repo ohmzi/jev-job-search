@@ -34,7 +34,7 @@ export async function addJob(jev: JevClient, profile: Profile, url: string): Pro
   if (!job) throw new Error(`could not read a posting at ${url}. The tool reads Greenhouse, Lever, Ashby and Workday links; for another board, run discover and apply from the queue.`);
   // A board that wants an account is taken only where the person has one or allowed one.
   const account = capabilityFor(job.url);
-  if (account?.verdict === "no") throw new Error(`${job.company} is on Workday, where every employer wants an account, and you have not allowed one. To allow it: npx jev accounts add workday --email you@example.com --create --terms --verify-email`);
+  if (account?.verdict === "no") throw new Error(`${job.company} is on Workday, where every employer wants an account, and you have not allowed one. To allow it: node bin/jev.js accounts add workday --email you@example.com --create --terms --verify-email`);
   const before = loadQueue().entries.find((e) => e.job.id === job.id);
   if (before && MAYBE_SENT.includes(before.status)) return before;
   const fit = await rateJob(jev, job, profile);

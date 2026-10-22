@@ -7,7 +7,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { z } from "zod";
-import { DAILY, PATHS, REPORT } from "../config.js";
+import { DAILY, PATHS, REPORT, reportPublicOrigins } from "../config.js";
 import { loadQueue, mutateQueue, Response as ReplyKind, RUN_OWNED, updateEntry } from "../jobs/queue.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import { loadDaily, localDay, requestStop, stopRequested } from "../run/daily.js";
@@ -16,6 +16,7 @@ import { loadPolicy, Policy } from "../run/policy.js";
 import { installSchedule, nextRun, removeSchedule, scheduleStatus } from "../run/schedule.js";
 import { currentRun, withStore, writeAtomic } from "../util/store.js";
 import { buildReport, StatusChange } from "./data.js";
+import { buildRecent } from "./recent.js";
 import { buildNeeds, saveAnswers, showForm, Stale } from "./needs.js";
 import { reportPage } from "./page.js";
 
@@ -28,7 +29,8 @@ export function applyStatusChange(c: StatusChange, files: { queue?: string; rows
       // The page may be old: a status is changed only from the one the person was looking at.
       if (c.status && was && c.was !== undefined && c.was !== was.status) throw new Busy(`${was.job.company} changed since this page was loaded. Nothing was changed. Reload the page.`);
       return updateEntry(q, c.id, {
-        ...(c.status ? { status: c.status, statusReason: c.reason ?? null, waitingFor: null } : {}),
+        // A status the person chose is final: the hourly sweep must not age this job out again.
+        ...(c.status ? { status: c.status, statusReason: c.reason ?? null, waitingFor: null, holdUntil: null } : {}),
         ...(c.notes !== undefined ? { notes: c.notes } : {}),
         ...(c.status === "applied" ? { appliedAt: new Date().toISOString() } : {}),
       });
@@ -82,14 +84,26 @@ const send = (res: ServerResponse, status: number, type: string, body: string) =
 };
 
 /**
- * True for a request from the dashboard's own page: the Host is this server on this machine, and
- * a request that names where it came from (every POST from a browser does) names this server too.
+ * True for a request from the dashboard's own page: the Host is this server on this machine or a
+ * public origin the person configured, and a request that names where it came from (every POST
+ * from a browser does) names one of those too.
  */
-export function fromThisPage(req: Pick<IncomingMessage, "headers">, port: number): boolean {
+export function fromThisPage(req: Pick<IncomingMessage, "headers">, port: number, publicOrigins: readonly string[] = reportPublicOrigins()): boolean {
   const here = [`127.0.0.1:${port}`, `localhost:${port}`];
-  if (!here.includes(String(req.headers.host ?? ""))) return false;
+  const publicUrls = publicOrigins.flatMap((o) => {
+    try {
+      const u = new URL(o);
+      return [{ host: u.host, origin: u.origin }];
+    } catch {
+      return [];
+    }
+  });
+  const hosts = new Set([...here, ...publicUrls.map((u) => u.host)].map((h) => h.toLowerCase()));
+  if (!hosts.has(String(req.headers.host ?? "").toLowerCase())) return false;
   const origin = req.headers.origin;
-  return origin === undefined || here.some((h) => origin === `http://${h}`);
+  if (origin === undefined) return true;
+  const origins = new Set([...here.map((h) => `http://${h}`), ...publicUrls.map((u) => u.origin)].map((o) => o.toLowerCase()));
+  return origins.has(String(origin).toLowerCase());
 }
 
 /** True when a request carries the token this server gave its page. */
@@ -115,7 +129,7 @@ export function startReportServer(port: number = REPORT.port): Promise<string> {
       if (!fromThisPage(req, port)) return send(res, 403, "text/plain", "forbidden");
       if (req.method === "GET") {
         if (url.pathname === "/") return send(res, 200, "text/html; charset=utf-8", reportPage(null, token));
-        if (url.pathname === "/api/data") return json(res, { ...buildReport(loadRows()), run: currentRun() });
+        if (url.pathname === "/api/data") return json(res, { ...buildReport(loadRows(), new Date(), buildRecent(loadQueue().entries)), run: currentRun() });
         if (url.pathname === "/api/needs") return json(res, buildNeeds(loadQueue().entries));
         if (url.pathname === "/api/automation") return json(res, automation());
         return send(res, 404, "text/plain", "not found");

@@ -46,7 +46,7 @@ export function capabilityFor(url: string, files: Files = {}, now = new Date()):
   const base = { adapter, tenant, account };
   if (!file.enabled) return { ...base, verdict: "no", creates: false, reason: "sign-ins are switched off (/accounts on)" };
   if (account?.mode === "off") return { ...base, verdict: "no", creates: false, reason: `you told the tool to leave ${tenant.tenant} alone` };
-  if (st.pausedUntil) return { ...base, verdict: "wait", creates: false, reason: `${st.pausedWhy ?? "the account is paused"}. Sign in yourself in the tool's window, or run: npx jev accounts status --clear` };
+  if (st.pausedUntil) return { ...base, verdict: "wait", creates: false, reason: `${st.pausedWhy ?? "the account is paused"}. Sign in yourself in the tool's window, or run: node bin/jev.js accounts status --clear` };
   if (account && (account.mode === "existing_only" || account.createdAt || st.knownSince)) return { ...base, verdict: "can", creates: false, reason: null };
   const mayCreate = account ? account.mode === "create_if_missing" : rule?.mode === "create_if_missing";
   if (!mayCreate) return { ...base, verdict: "no", creates: false, reason: `${adapter.provider} (needs an account per company)` };

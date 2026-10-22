@@ -54,6 +54,7 @@ export function reportPage(snapshot: Report | null, token = ""): string {
       <div class="card chart"><h3>Every job considered, by status</h3><div id="byStatus"></div></div>
     </div>
   </section>
+  <section class="screen" id="s-recent"><div id="recent"></div></section>
   <section class="screen" id="s-needs"><div id="needs"></div></section>
   <section class="screen" id="s-apps">
     <div class="tabs" id="tabs"></div>
@@ -80,12 +81,16 @@ ${embedded}
     { key: "all", label: "Everything", keep: () => true },
   ];
   const TOKEN = ${JSON.stringify(token)};
-  const SCREENS = live ? [["today", "Today"], ["needs", "Needs you"], ["apps", "Applications"], ["auto", "Automation"]] : [["today", "Today"], ["apps", "Applications"]];
-  let data = null, needs = null, auto = null, screen = "today", tab = "applied", sortKey = "applied_on", sortDir = -1, q = "";
+  const SCREENS = live ? [["today", "Today"], ["recent", "Last 12 hours"], ["needs", "Needs you"], ["apps", "Applications"], ["auto", "Automation"]] : [["today", "Today"], ["recent", "Last 12 hours"], ["apps", "Applications"]];
+  // A link can open one screen directly: /#recent opens Last 12 hours.
+  const startScreen = location.hash.replace(/^#/, "");
+  let data = null, needs = null, auto = null, screen = SCREENS.some(([k]) => k === startScreen) ? startScreen : "today", tab = "applied", sortKey = "applied_on", sortDir = -1, q = "";
   const post = (path, body) => fetch(path, { method: "POST", headers: { "content-type": "application/json", "x-jev-token": TOKEN }, body: JSON.stringify(body) });
   const needCount = () => needs ? needs.waiting.length + needs.questions.length + needs.unconfirmed.length + needs.mail.length : 0;
+  const recentCount = () => data && data.recent ? data.recent.length : 0;
   function renderNav() {
-    $("#nav").innerHTML = SCREENS.map(([k, l]) => '<button class="' + (k === screen ? "on" : "") + '" data-screen="' + k + '">' + l + (k === "needs" && needCount() ? " (" + needCount() + ")" : "") + "</button>").join("");
+    const count = (k) => (k === "needs" && needCount() ? " (" + needCount() + ")" : "") + (k === "recent" && recentCount() ? " (" + recentCount() + ")" : "");
+    $("#nav").innerHTML = SCREENS.map(([k, l]) => '<button class="' + (k === screen ? "on" : "") + '" data-screen="' + k + '">' + l + count(k) + "</button>").join("");
     for (const [k] of SCREENS) $("#s-" + k).classList.toggle("on", k === screen);
   }
   const KINDS = { confirmation: "received your application", rejection: "said no", assessment: "sent an assessment", interview: "asked for an interview", offer: "made an offer" };
@@ -116,6 +121,31 @@ ${embedded}
       '<button class="btn" data-mail-ok="' + esc(m.id) + '">Save</button><button class="btn quiet" data-mail-no="' + esc(m.id) + '">Not about an application</button></div>');
     $("#needs").innerHTML = out.join("");
   }
+  function renderRecent() {
+    if (!data) return;
+    const rows = data.recent || [];
+    if (!rows.length) { $("#recent").innerHTML = '<p class="note">Nothing new in the last 12 hours.</p>'; return; }
+    const posted = (r) => r.posted_at ? new Date(r.posted_at).toLocaleString() : (r.posted_on || "unknown");
+    const found = (r) => r.age_hours ? r.age_hours + "h ago" : "under an hour ago";
+    const fit = (r) => r.fit_score === null || r.fit_score === undefined ? "" : Number(r.fit_score).toFixed(2);
+    $("#recent").innerHTML =
+      '<p class="note">Jobs the tool first saw in the last 12 hours. <b>/apply</b> takes them before older queued jobs while they are fresh. A board-only listing waits here for its 12 hours, then moves to Needs you.</p>' +
+      (live ? '<p><button class="btn" id="recentApply">Mark selected applied</button><span class="saved" id="saved-recent"></span></p>' : '') +
+      '<table><thead><tr>' + (live ? '<th><input type="checkbox" id="recentAll" aria-label="Select all"></th>' : '') + '<th>Company</th><th>Role</th><th>Location</th><th>Board</th><th>Posted</th><th>Found</th><th>Fit</th><th>Status</th><th>Why here</th></tr></thead><tbody>' +
+      rows.map((r) => '<tr>' +
+        (live ? '<td><input type="checkbox" data-pick="' + esc(r.id) + '"></td>' : '') +
+        '<td>' + esc(r.company) + '</td>' +
+        '<td><a href="' + esc(r.link) + '" target="_blank" rel="noopener">' + esc(r.title) + '</a></td>' +
+        '<td>' + esc(r.location) + '</td>' +
+        '<td>' + esc(r.board) + '</td>' +
+        '<td class="n">' + esc(posted(r)) + '</td>' +
+        '<td class="n">' + esc(found(r)) + '</td>' +
+        '<td class="n">' + esc(fit(r)) + '</td>' +
+        '<td><span class="status ' + (r.status_key === "applied" ? "applied" : r.status_key === "needs_review" ? "needs" : "") + '">' + esc(String(r.status).replace(/_/g, " ")) + '</span></td>' +
+        '<td>' + esc(r.why) + '</td>' +
+        '</tr>').join("") +
+      '</tbody></table>';
+  }
   const list = (v) => (v || []).join(", ");
   function renderAuto() {
     if (!auto) return;
@@ -132,7 +162,7 @@ ${embedded}
       '<div class="item"><h4>Your daily rules</h4>' + (auto.policyError ? '<p class="warn">' + esc(auto.policyError) + "</p>" : "") +
       '<div class="grid2">' +
       '<div><label>Applications a day (at most ' + L.maxTarget + ')</label><input type="number" id="pTarget" min="1" max="' + L.maxTarget + '" value="' + esc(p.target) + '"></div>' +
-      '<div><label>Most JEV may cost in a day, in dollars (JEV only: Claude is on your subscription or your own key, and is not counted)</label><input type="number" id="pBudget" min="0" step="0.05" value="' + esc(p.jevBudgetUsd) + '"></div>' +
+      '<div><label>Most DeepSeek may cost in a day, in dollars (JEV only: Claude is on your subscription or your own key, and is not counted)</label><input type="number" id="pBudget" min="0" step="0.05" value="' + esc(p.jevBudgetUsd) + '"></div>' +
       '<div><label>Lowest fit score, 0 to 1</label><input type="number" id="pScore" min="0" max="1" step="0.05" value="' + esc(p.minScore) + '"></div>' +
       '<div><label>Where: vancouver, canada, remote, us, international (empty: anywhere)</label><input type="text" id="pWhere" value="' + esc(list(p.where)) + '"></div>' +
       '<div><label>Kinds: internship, new_grad (empty: both)</label><input type="text" id="pLevels" value="' + esc(list(p.levels)) + '"></div>' +
@@ -142,7 +172,7 @@ ${embedded}
       '</div><button class="btn" id="pSave">Save rules</button><span class="saved" id="saved-policy"></span>' +
       '<p class="note">A run reads these rules when it starts. A change you save while one is working applies from the next run.</p>' +
       '<p class="note">Fixed limits, the same for everyone: at most ' + L.perBoard + " a day to one job board, " + L.perEmployerPerDay + " a day to one employer, " + L.gapMinutes[0] + " to " + L.gapMinutes[1] + " minutes between two applications to one board, and a run of at most " + L.maxMinutes + " minutes. A board that asks whether a person is there is left alone until tomorrow.</p></div>" +
-      '<div class="item"><h4>Today</h4>' + (last ? '<p class="line">' + esc(last.sent.length + " submitted. " + (last.waiting.length + last.unconfirmed.length) + " need you. " + last.leftForYou.length + " could not be sent.") + '</p><p class="note">Stopped because ' + esc(last.stoppedBecause) + ". JEV today: $" + Number(last.jevUsd).toFixed(4) + "</p>" : '<p class="note">No daily run yet today.</p>') + "</div>";
+      '<div class="item"><h4>Today</h4>' + (last ? '<p class="line">' + esc(last.sent.length + " submitted. " + (last.waiting.length + last.unconfirmed.length) + " need you. " + last.leftForYou.length + " could not be sent.") + '</p><p class="note">Stopped because ' + esc(last.stoppedBecause) + ". DeepSeek today: $" + Number(last.jevUsd).toFixed(4) + "</p>" : '<p class="note">No daily run yet today.</p>') + "</div>";
   }
   const words = (id) => $("#" + id).value.split(",").map((x) => x.trim()).filter(Boolean);
   async function act(path, body, savedId) {
@@ -160,7 +190,7 @@ ${embedded}
     const t = data.totals;
     $("#when").textContent = "as of " + new Date(data.generatedAt).toLocaleString();
     $("#mode").textContent = live ? "" : "snapshot: statuses cannot be changed here";
-    $("#todayLine").textContent = t.appliedToday + " sent today. " + t.waitingForYou + " waiting for you. " + t.queued + " ready to apply to.";
+    $("#todayLine").textContent = t.appliedToday + " sent today. " + t.waitingForYou + " waiting for you. " + t.queued + " in the queue.";
     $("#cards").innerHTML = [["Applied", t.applied], ["Today", t.appliedToday], ["Unconfirmed", t.unconfirmed], ["Waiting for you", t.waitingForYou], ["Left for you", t.leftForYou], ["Queued", t.queued], ["Skipped", t.skipped], ["Considered", t.considered]].map(([l, n]) => '<div class="card"><div class="n">' + n + '</div><div class="l">' + l + '</div></div>').join("");
     bars($("#byDay"), Object.fromEntries(data.byDay.map((d) => [d.day, d.applied])), Math.max(1, ...data.byDay.map((d) => d.applied)));
     bars($("#byBoard"), data.byBoard, Math.max(1, ...Object.values(data.byBoard)));
@@ -195,7 +225,21 @@ ${embedded}
   const save = (id, patch) => act("/api/status", { id, ...patch }, "saved-" + id);
   document.addEventListener("click", async (e) => {
     const t = e.target;
-    const nav = t.closest("[data-screen]"); if (nav) { screen = nav.dataset.screen; renderNav(); return; }
+    if (t.id === "recentAll") { for (const cb of document.querySelectorAll("[data-pick]")) cb.checked = t.checked; return; }
+    if (t.id === "recentApply") {
+      const saved = $("#saved-recent");
+      const ids = [...document.querySelectorAll("[data-pick]")].filter((cb) => cb.checked).map((cb) => cb.dataset.pick);
+      if (!ids.length) { saved.textContent = "select at least one"; setTimeout(() => (saved.textContent = ""), 2500); return; }
+      const rows = (data && data.recent ? data.recent : []).filter((r) => ids.includes(r.id));
+      for (const r of rows) {
+        const res = await post("/api/status", { id: r.id, status: "applied", was: r.status_key });
+        if (!res.ok) { let said = "not saved"; try { said = (await res.json()).error || said; } catch (err) {} saved.textContent = said; return; }
+      }
+      saved.textContent = "saved";
+      await load();
+      return;
+    }
+    const nav = t.closest("[data-screen]"); if (nav) { screen = nav.dataset.screen; location.hash = screen; renderNav(); return; }
     const b = t.closest("[data-tab]"); if (b) { tab = b.dataset.tab; render(); return; }
     const th = t.closest("[data-sort]"); if (th) { if (sortKey === th.dataset.sort) sortDir = -sortDir; else { sortKey = th.dataset.sort; sortDir = 1; } render(); return; }
     const show = t.closest("[data-show]"); if (show) { const r = await post("/api/show", { id: show.dataset.show }); const ok = r.ok && (await r.json()).ok; show.textContent = ok ? "It is in front now" : "Its window is closed"; return; }
@@ -221,9 +265,11 @@ ${embedded}
   async function load() {
     data = live ? await (await fetch("/api/data")).json() : JSON.parse(embedded.textContent);
     if (live) { needs = await (await fetch("/api/needs")).json(); auto = await (await fetch("/api/automation")).json(); }
-    render(); renderNeeds(); renderAuto(); renderNav();
+    render(); renderRecent(); renderNeeds(); renderAuto(); renderNav();
   }
   load();
+  // The live page keeps itself current, so a job posted after it was opened appears without a reload.
+  if (live) setInterval(load, 60000);
 })();
 </script>
 </body></html>`;

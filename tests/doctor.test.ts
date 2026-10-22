@@ -30,7 +30,7 @@ describe("doctor", () => {
     expect(checkResume(null).ok).toBe(false);
   });
   it("names the first thing that blocks a run before anything optional", () => {
-    const checks = [ok("Node.js"), bad("Your drafts", "write drafts", true), bad("OpenRouter key", "add the key"), bad("Your profile", "run setup")];
+    const checks = [ok("Node.js"), bad("Your drafts", "write drafts", true), bad("DeepSeek key", "add the key"), bad("Your profile", "run setup")];
     expect(nextStep(checks)).toBe("add the key");
     expect(isReadyToRun(checks)).toBe(false);
     expect(formatChecks(checks)).toContain("Next step: add the key");

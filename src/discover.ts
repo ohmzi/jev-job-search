@@ -206,7 +206,7 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
   const described = await mapLimit(limited, DISCOVER.fetchConcurrency, (j) => describe(j));
   const ready = described.map((r, i) => (r.ok ? r.value : (limited[i] as Job)));
 
-  log(`[discover] rating ${ready.length} with JEV`);
+  log(`[discover] rating ${ready.length} with DeepSeek`);
   let done = 0;
   const ratings = CACHE.ratings ? new KeyedCache<Record<string, Answer>>(PATHS.ratings) : undefined;
   const rated = await mapLimit(ready, DISCOVER.rateConcurrency, async (j) => {

@@ -8,7 +8,7 @@ effort: low
 
 # /inbox
 
-Run `npx jev inbox`, or `npx jev inbox --days <n>` when they gave a number.
+Run `node bin/jev.js inbox`, or `node bin/jev.js inbox --days <n>` when they gave a number.
 It needs Gmail connected, read-only (`/accounts gmail`). If it says Gmail
 is not connected, say that this is optional and what it does, and stop.
 

@@ -272,6 +272,40 @@ run. The summary is appended to `data/runs/daily-<date>.json`.
 holds the path to Node, the project folder, the time and a search path,
 and nothing else.
 
+## The hourly search (`src/run/hourly.ts`)
+
+`hourly` is discovery only: no Chrome, no form, no sign-in, no mail, no send.
+One run ages held jobs out, searches the boards, and lays the finds over the
+queue.
+
+- `src/sources/jobspy.ts` runs the `jobspy` Docker image for each term and
+  place in the portal's `search` block. It parses the JSON with a zod schema,
+  maps the rows to `Job`, filters by the role family and area, and deduplicates
+  by posting and by company, title and location. A record with an employer form
+  wins over a board link.
+- `src/jobs/recency.ts` is the twelve-hour rule, `isRecent`, and the apply
+  order's `recentFirst`. First-seen time must be inside the window, and a
+  posted date must not be older than it. The rule is written once and used by
+  the page, the age-out and the apply order.
+- `src/jobs/fillable.ts` decides whether the apply loop can fill a posting.
+  Greenhouse, Lever, Ashby, Jobvite, Rippling and BambooHR can; Workday can
+  where the person has an account. Everything else is held for the person.
+- The merge is additive, not `writeDecided`: a one-hour search must not drop
+  the jobs it did not return. A job already in the queue keeps its link, id,
+  status and `discoveredAt`; only the dates and a missing description are
+  refreshed. A held job carries `holdUntil`, and the sweep moves it to
+  `needs_review` when the window closes. A status a person chose clears
+  `holdUntil`, so the sweep never undoes it.
+- The hourly run does not rate with DeepSeek, so it costs nothing beyond the
+  board calls.
+
+`src/report/recent.ts` builds the Last 12 hours rows. The dashboard embeds them
+in its data response and renders them on their own screen.
+
+`src/run/schedule.ts` also writes the hourly timer: a systemd user service and
+timer on Linux, a LaunchAgent with `StartCalendarInterval` on macOS. The label
+carries the portal's name so four clones do not overwrite each other.
+
 ## The dashboard (`src/report/`) and replies (`src/mail/status.ts`)
 
 The dashboard is the tool's main screen for a person: `server.ts` serves

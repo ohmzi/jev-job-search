@@ -71,6 +71,16 @@ export function buildNeeds(entries: QueueEntry[], o: { report?: typeof loadRepor
         items = [];
       }
       if (items.length) needs.questions.push({ ...brief(e), link: e.job.url, reason: e.statusReason ?? "", items });
+      else {
+        // A job added by hand, or one the tool could not fill: there is no form report, so the
+        // page says where to apply and why the tool cannot do it.
+        needs.questions.push({
+          ...brief(e),
+          link: e.job.url,
+          reason: e.statusReason ?? "",
+          items: [{ question: "Apply on the employer's site", kind: "sign", options: [], canRemember: false, note: e.statusReason ?? "The tool cannot fill this employer's form. Open the link and apply there yourself." }],
+        });
+      }
     }
   }
   const byId = new Map(entries.map((e) => [e.job.id, e]));
@@ -134,7 +144,7 @@ export function saveAnswers(id: string, answers: Answer[], files: { profile?: st
       if (!was) throw new Error(`No queue entry with id ${id}`);
       const mine = clean.filter((a) => !a.remember).map(({ question, answer }) => ({ question, answer }));
       const others = (was.answers ?? []).filter((x) => !clean.some((k) => k.question === x.question));
-      return updateEntry(q, id, { answers: [...others, ...mine], status: "queued", statusReason: null, waitingFor: null });
+      return updateEntry(q, id, { answers: [...others, ...mine], status: "queued", statusReason: null, waitingFor: null, holdUntil: null });
     }, files.queue);
     saveRows(upsertEntry(loadRows(files.rows), e), files.rows);
     return { company: e.job.company, title: e.job.title, kept: keep.length };

@@ -25,7 +25,8 @@ import { loadPolicy } from "./run/policy.js";
 import { formatInbox, recordReplies } from "./run/inbox.js";
 import { readInbox } from "./mail/status.js";
 import { gmailClient } from "./mail/gmail.js";
-import { installSchedule, removeSchedule, scheduleStatus } from "./run/schedule.js";
+import { hourlyScheduleStatus, installHourlySchedule, installSchedule, removeHourlySchedule, removeSchedule, scheduleStatus } from "./run/schedule.js";
+import { runHourly } from "./run/hourly.js";
 import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule, useBrowserPassword } from "./accounts/commands.js";
 import { adapterFor } from "./accounts/capability.js";
 import { signedInNow, signInFor } from "./accounts/gate.js";
@@ -48,6 +49,8 @@ import { setDocumentPolicy, tailorJob } from "./documents/tailor.js";
 import { activeTemplate, addTemplate, listTemplates, useTemplate } from "./documents/templates.js";
 import { addJob, looksLikeUrl } from "./jobs/addJob.js";
 import { buildReport } from "./report/data.js";
+import { buildRecent } from "./report/recent.js";
+import { installReportService, removeReportService, reportServiceStatus } from "./report/service.js";
 import { reportPage } from "./report/page.js";
 import { startReportServer } from "./report/server.js";
 import { endIfAbandoned, noteApplied, pipeline, reconcile, recordApplied, resolvePage, resume, submitAndRecord, sweep, takeJobs } from "./run/pipeline.js";
@@ -62,7 +65,7 @@ process.stdout.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EPIPE") process.exit(0);
 });
 const program = new Command();
-program.name("jev-job-search").description("Find and rate software jobs with JEV, fill and check each application form in Chrome, and let Claude write what needs writing.").version("1.6.0");
+program.name("jev-job-search").description("Find and rate software jobs with DeepSeek, fill and check each application form in Chrome, and let Claude write what needs writing.").version("1.6.0");
 
 const int = (v: string) => parseInt(v, 10);
 const whereTheRecordIs = () => `Applications you sent: ${PATHS.applied}\nJobs left for you to do by hand: ${PATHS.manual}\nTake-home assignments to do: ${PATHS.takehome}\nEvery job considered: ${PATHS.applications}`;
@@ -71,7 +74,7 @@ const whereTheRecordIs = () => `Applications you sent: ${PATHS.applied}\nJobs le
 
 program
   .command("discover")
-  .description("Find jobs: read every source, filter, rate with JEV, and write the queue and the record")
+  .description("Find jobs: read every source, filter, rate with DeepSeek, and write the queue and the record")
   .option("--no-boards", "skip polling company boards directly")
   .option("--limit <n>", "rate at most n new jobs (for a quick test)", int)
   .option("--max-age <days>", `consider postings up to this many days old (default ${DISCOVER.maxAgeDays})`, int)
@@ -80,9 +83,9 @@ program
     const { queue, summary } = await discover(loadProfile(), new JevClient(), { boards: o.boards, ...(o.limit !== undefined ? { limit: o.limit } : {}), ...(o.maxAge !== undefined ? { maxAgeDays: o.maxAge } : {}), log: (l) => console.error(l) });
     const top = sortEntries(queue.entries.filter((e) => e.status === "queued")).slice(0, RUN.listed);
     if (o.json) return console.log(JSON.stringify({ summary, top: top.map(brief) }, null, 2));
-    console.log(`\n${summary.unique} unique postings, ${summary.preFiltered} removed by code filters, ${summary.rated} rated by JEV (${summary.reused} of them from earlier ratings).`);
-    console.log(`${summary.queued} queued (score ≥ ${DISCOVER.applyThreshold}), ${summary.belowThreshold} below threshold, ${summary.skippedByJev} skipped by JEV.`);
-    console.log(`JEV: ${summary.jevCalls} calls, $${summary.jevCostUsd.toFixed(4)}.\n`);
+    console.log(`\n${summary.unique} unique postings, ${summary.preFiltered} removed by code filters, ${summary.rated} rated by DeepSeek (${summary.reused} of them from earlier ratings).`);
+    console.log(`${summary.queued} queued (score ≥ ${DISCOVER.applyThreshold}), ${summary.belowThreshold} below threshold, ${summary.skippedByJev} skipped by DeepSeek.`);
+    console.log(`DeepSeek: ${summary.jevCalls} calls, $${summary.jevCostUsd.toFixed(4)}.\n`);
     printTable(top);
   });
 
@@ -178,8 +181,8 @@ program
         const count = (...statuses: string[]) => reports.filter((r) => statuses.includes(done.get(r.jobId)?.status ?? "")).length;
         console.log(`\n${count("applied")} applied, ${count("needs_review", "blocked", "login_required")} left for you, ${count("skipped", "failed")} skipped, ${count("in_progress")} filled and waiting for submit`);
         const waiting = count("awaiting_user_action", "awaiting_email_verification");
-        if (waiting) console.log(`${waiting} form(s) are open and waiting for you (an emailed code, a robot check, a sign-in). Finish each in the tool's window, then run: npx jev resume`);
-        if (count("submission_unknown")) console.log(`${count("submission_unknown")} form(s) were clicked and not confirmed. They will not be sent again until settled: npx jev reconcile`);
+        if (waiting) console.log(`${waiting} form(s) are open and waiting for you (an emailed code, a robot check, a sign-in). Finish each in the tool's window, then run: node bin/jev.js resume`);
+        if (count("submission_unknown")) console.log(`${count("submission_unknown")} form(s) were clicked and not confirmed. They will not be sent again until settled: node bin/jev.js reconcile`);
         console.log(whereTheRecordIs());
       }
     });
@@ -243,19 +246,50 @@ program
   });
 
 program
+  .command("hourly")
+  .description("Find jobs posted recently, queue them, and move held jobs to Needs you after twelve hours. Read-only: no browser, no sign-in, no sending")
+  .option("--dry", "search and show what would be added, without writing")
+  .option("--json")
+  .action(async (o: { dry?: boolean; json?: boolean }) => {
+    const summary = await runHourly(loadProfile(), { dry: !!o.dry, log: (line) => { if (!o.json) console.error(line); } });
+    if (o.json) return console.log(JSON.stringify(summary, null, 2));
+    console.log(`\n${summary.found} matching postings. ${summary.added} new (${summary.held} held for you), ${summary.updated} refreshed, ${summary.skipped} skipped, ${summary.aged} aged out. ${summary.calls} board call(s)${summary.failures.length ? `, ${summary.failures.length} failed` : ""}.`);
+    console.log(o.dry ? "Nothing was written (--dry)." : "Open /report for the Last 12 hours page. To run this every hour: node bin/jev.js schedule install --hourly");
+  });
+
+program
   .command("schedule <action>")
-  .description("Run `daily` by itself every day. install [--at HH:MM] | remove | status. Nothing is scheduled until you run install")
-  .option("--at <time>", "the time of day, 24-hour", DAILY.at)
-  .action((action: string, o: { at: string }) => {
+  .description("Run `daily` every day or the hourly search every hour. install [--at HH:MM | --hourly] | remove [--hourly] | status [--hourly]. Nothing is scheduled until you run install")
+  .option("--at <time>", "the time of day for the daily run, 24-hour", DAILY.at)
+  .option("--hourly", "schedule the hourly search instead of the daily run")
+  .option("--portal <id>", "the portal's name for the hourly timer (default: search.portal in the profile)")
+  .action((action: string, o: { at: string; hourly?: boolean; portal?: string }) => {
+    if (o.hourly) {
+      const portal = o.portal ?? loadProfile().search?.portal;
+      if (!portal) return console.log("Add a search block to data/profile.json first, or pass --portal <id>.");
+      if (action === "install") {
+        const search = loadProfile().search;
+        const s = installHourlySchedule(portal, search?.minuteOffset ?? 0);
+        console.log(`Scheduled: \`jev hourly\` runs every hour at :${String(s.minute).padStart(2, "0")} for ${portal}.\nWhat it prints goes to ${PATHS.hourlyLog}. To stop it: node bin/jev.js schedule remove --hourly --portal ${portal}`);
+      } else if (action === "remove") {
+        console.log(removeHourlySchedule(portal) ? `The hourly schedule for ${portal} is removed.` : `No hourly schedule was installed for ${portal}.`);
+      } else if (action === "status") {
+        const s = hourlyScheduleStatus(portal);
+        console.log(s.installed ? `The hourly search for ${portal} is scheduled at :${String(s.minute ?? 0).padStart(2, "0")}${s.loaded ? "" : ", but the scheduler has not loaded it. Install it again: node bin/jev.js schedule install --hourly"}. Its file: ${s.file}` : `No hourly search is scheduled for ${portal}. Run it by hand with: node bin/jev.js hourly`);
+      } else {
+        console.log("The actions are: install, remove, status");
+      }
+      return;
+    }
     if (action === "install") {
       if (!loadPolicy()) return console.log(`Write your standing policy first: ${PATHS.policy} does not exist. Run /daily in Claude Code, or copy data/policy.example.json.`);
       const s = installSchedule(o.at);
-      console.log(`Scheduled: \`jev daily\` runs every day at ${s.at} while this Mac is on and you are signed in.\nWhat it prints goes to ${PATHS.dailyLog}. To stop it: npx jev schedule remove`);
+      console.log(`Scheduled: \`jev daily\` runs every day at ${s.at} while this Mac is on and you are signed in.\nWhat it prints goes to ${PATHS.dailyLog}. To stop it: node bin/jev.js schedule remove`);
     } else if (action === "remove") {
       console.log(removeSchedule() ? "The schedule is removed. Nothing runs by itself now." : "No schedule was installed.");
     } else if (action === "status") {
       const s = scheduleStatus();
-      console.log(s.installed ? `A daily run is scheduled${s.loaded ? "" : ", but macOS has not loaded it. Install it again: npx jev schedule install"}. Its file: ${s.file}` : "Nothing is scheduled. The daily run only happens when you run it: npx jev daily");
+      console.log(s.installed ? `A daily run is scheduled${s.loaded ? "" : ", but macOS has not loaded it. Install it again: node bin/jev.js schedule install"}. Its file: ${s.file}` : "Nothing is scheduled. The daily run only happens when you run it: node bin/jev.js daily");
     } else {
       console.log("The actions are: install, remove, status");
     }
@@ -263,7 +297,7 @@ program
 
 program
   .command("fill [ids...]")
-  .description("Fill the first page of each form with JEV and stop. Nothing is answered by Claude and nothing is sent")
+  .description("Fill the first page of each form with DeepSeek and stop. Nothing is answered by Claude and nothing is sent")
   .option("--count <n>", "with no ids: take this many jobs from the top of the queue", int, 1)
   .option("--dry", "a rehearsal: leave the queue untouched and close each tab once it is filled")
   .option("--tailor", "write a resume for each job from your profile and attach that one instead of your file")
@@ -310,9 +344,26 @@ program
   .option("--port <n>", "the port to listen on", int, REPORT.port)
   .option("--open", "open the page in your browser")
   .option("--static <file>", "write a self-contained snapshot page to this file and exit")
-  .action(async (o: { port: number; open?: boolean; static?: string }) => {
+  .option("--install-service", "install a systemd user service that keeps this dashboard running (Linux)")
+  .option("--remove-service", "remove the dashboard's systemd user service")
+  .option("--service-status", "say whether the dashboard's service is installed and running")
+  .action(async (o: { port: number; open?: boolean; static?: string; installService?: boolean; removeService?: boolean; serviceStatus?: boolean }) => {
+    if (o.serviceStatus) {
+      const s = reportServiceStatus();
+      console.log(s.installed ? `${s.name} is installed${s.active ? " and running" : " but not running"}${s.enabled ? ", and starts with your session" : ", but is not enabled"}. Its file: ${s.file}` : "No dashboard service is installed here. Install it with: node bin/jev.js report --port <port> --install-service");
+      return;
+    }
+    if (o.installService) {
+      const s = installReportService(o.port);
+      console.log(`Installed ${s.name}. The dashboard listens on port ${o.port} and restarts if it exits badly. What it prints goes to ${PATHS.reportLog}. To stop it: node bin/jev.js report --remove-service`);
+      return;
+    }
+    if (o.removeService) {
+      console.log(removeReportService() ? "The dashboard service is removed and stopped." : "No dashboard service was installed here.");
+      return;
+    }
     if (o.static) {
-      writeFileSync(o.static, reportPage(buildReport(loadRows())));
+      writeFileSync(o.static, reportPage(buildReport(loadRows(), new Date(), buildRecent(loadQueue().entries))));
       console.log(`Wrote ${o.static}`);
       if (o.open) spawn("open", [o.static], { stdio: "ignore", detached: true, env: childEnv() }).unref();
       return;
@@ -333,7 +384,7 @@ program
       const name = o.name ?? path.basename(path.resolve(o.add)).toLowerCase().replace(/[^a-z0-9-]+/g, "-");
       const r = await addTemplate(path.resolve(o.add), name);
       console.log(`Registered ${name} at ${r.template.dir}. Test print: resume ${r.resumePages} page(s)${r.coverPages !== null ? `, cover letter ${r.coverPages} page(s)` : ", no cover.html"}. Proof PDFs are in ${path.join(r.template.dir, ".proof")}.`);
-      console.log(`To use it: npx jev templates --use ${name}`);
+      console.log(`To use it: node bin/jev.js templates --use ${name}`);
       return;
     }
     if (o.use) {
@@ -343,7 +394,7 @@ program
     }
     const active = activeTemplate();
     for (const t of listTemplates()) console.log(`${t.name === active.name ? "*" : " "} ${t.name.padEnd(16)} ${t.shipped ? "shipped" : "yours"}  ${t.dir}`);
-    console.log("\n* is the one tailor uses. npx jev templates --use <name> changes it; --add <dir> --name <name> registers your own.");
+    console.log("\n* is the one tailor uses. node bin/jev.js templates --use <name> changes it; --add <dir> --name <name> registers your own.");
   });
 
 program
@@ -369,7 +420,7 @@ program
     await inRun("submit", async () => {
       const unknown = new Set(loadQueue().entries.filter((e) => e.status === "submission_unknown").map((e) => e.job.id));
       for (const id of ids) {
-        if (unknown.has(id)) console.log(`${id}  not sent: Submit was clicked on this form before and no confirmation was seen. Settle it first: npx jev reconcile ${id}`);
+        if (unknown.has(id)) console.log(`${id}  not sent: Submit was clicked on this form before and no confirmation was seen. Settle it first: node bin/jev.js reconcile ${id}`);
         else if (await submitAndRecord(jev, id, !!o.force, !!o.keepOpen)) sent.push(id);
       }
     });
@@ -420,7 +471,7 @@ program
       for (const e of unknown) {
         const outcome = await reconcile(jev, e.job.id).catch(() => "unknown" as const);
         if (outcome === "applied") sent.push(e.job.id);
-        console.log(`${e.job.id}  ${e.job.company} | ${e.job.title}: ${outcome === "applied" ? "confirmed, recorded as applied" : outcome === "not_sent" ? "the form is still open, so it was not sent. It is on your by-hand list" : `cannot tell. Look for a confirmation email from ${e.job.company}, then run: npx jev mark ${e.job.id} --status applied, or --status queued to try again`}`);
+        console.log(`${e.job.id}  ${e.job.company} | ${e.job.title}: ${outcome === "applied" ? "confirmed, recorded as applied" : outcome === "not_sent" ? "the form is still open, so it was not sent. It is on your by-hand list" : `cannot tell. Look for a confirmation email from ${e.job.company}, then run: node bin/jev.js mark ${e.job.id} --status applied, or --status queued to try again`}`);
       }
     });
     await noteApplied(sent);
@@ -449,7 +500,7 @@ program
     if (process.stdin.isTTY) console.log("Paste the code the board emailed, then press Enter. It is not echoed back.");
     const given = cleanCode(await readStdin());
     if ("why" in given) return console.log(`Not entered: ${given.why}.`);
-    if (!(await hasOpenTab(id))) return console.log(`${id}  no form is open for this job. Open it first: npx jev apply ${id} --submit`);
+    if (!(await hasOpenTab(id))) return console.log(`${id}  no form is open for this job. Open it first: node bin/jev.js apply ${id} --submit`);
     const page = await pageFor(id);
     let problem: string | null = null;
     try {
@@ -484,9 +535,9 @@ program
   .option("--yes", "do it without asking")
   .action(async (action: string, o: { yes?: boolean }) => {
     if (action !== "reset") return console.log("The only action is: browser reset");
-    if (!o.yes) return console.log("This clears every cookie and sign-in in the tool's own Chrome (your everyday browser is not touched). To go ahead: npx jev browser reset --yes");
+    if (!o.yes) return console.log("This clears every cookie and sign-in in the tool's own Chrome (your everyday browser is not touched). To go ahead: node bin/jev.js browser reset --yes");
     await inRun("browser reset", async () => {
-      if (Object.keys(loadSession()).length) return console.log("Forms are still open in the tool's window. Finish or close them first (npx jev resume, npx jev close <id>).");
+      if (Object.keys(loadSession()).length) return console.log("Forms are still open in the tool's window. Finish or close them first (node bin/jev.js resume, node bin/jev.js close <id>).");
       await clearBrowsingData();
       console.log("Cleared the cookies, cache and site data of the tool's Chrome.");
     });
@@ -619,7 +670,7 @@ program
     if (action === "forget") {
       if (!target) return console.log("Say which: an employer as /accounts shows it, or all.");
       const which = accountsNamed(target);
-      if (!o.yes) return console.log(`This removes from this Mac, for ${target === "all" ? "every account and the standing rule" : which.map((a) => a.id).join(", ") || target}: the entry, its stored password, and its sign-in session in the tool's Chrome.\nIt does not delete the account at the employer: close that on the employer's own site if you want it gone.\nTo go ahead: npx jev accounts forget ${target} --yes`);
+      if (!o.yes) return console.log(`This removes from this Mac, for ${target === "all" ? "every account and the standing rule" : which.map((a) => a.id).join(", ") || target}: the entry, its stored password, and its sign-in session in the tool's Chrome.\nIt does not delete the account at the employer: close that on the employer's own site if you want it gone.\nTo go ahead: node bin/jev.js accounts forget ${target} --yes`);
       const gone = forgetAccounts(target, store);
       // The sessions live in the tool's own Chrome. They are cleared now if it is open, and otherwise the next time it is asked.
       const origins = [...new Set(gone.flatMap((a) => a.allowedOrigins))];
@@ -631,7 +682,7 @@ program
         await closeTab(tab.id);
         console.log(`${gone.length} account(s) removed from this Mac, with their passwords and sessions.`);
       } else {
-        console.log(`${gone.length} account(s) removed from this Mac, with their passwords.${origins.length ? " The tool's Chrome is not open, so their sign-in sessions are still in it: npx jev browser reset --yes clears every session." : ""}`);
+        console.log(`${gone.length} account(s) removed from this Mac, with their passwords.${origins.length ? " The tool's Chrome is not open, so their sign-in sessions are still in it: node bin/jev.js browser reset --yes clears every session." : ""}`);
       }
       return console.log("The accounts themselves still exist at the employers.");
     }
@@ -646,11 +697,11 @@ program
     const store = defaultStore();
     if (action === "connect") {
       const email = await connectGmail(store, o.client ? { clientFile: o.client } : {});
-      console.log(`Connected ${email}, read-only. The tool reads one kind of message: the verification email a job board sends when one of your accounts is made or used.\nYou can delete the client file now. To withdraw access: npx jev gmail disconnect`);
+      console.log(`Connected ${email}, read-only. The tool reads one kind of message: the verification email a job board sends when one of your accounts is made or used.\nYou can delete the client file now. To withdraw access: node bin/jev.js gmail disconnect`);
     } else if (action === "status") {
       const g = loadGmail();
-      if (!g) return console.log("Gmail is not connected. To connect it: npx jev gmail connect --client <file>. docs/ACCOUNTS.md has the steps.");
-      console.log(`Connected: ${g.email}, read-only, since ${g.connectedAt.slice(0, 10)}. Token: ${store.get(GMAIL.refreshTokenItem) ? "in the Keychain" : "missing. Connect again: npx jev gmail connect"}`);
+      if (!g) return console.log("Gmail is not connected. To connect it: node bin/jev.js gmail connect --client <file>. docs/ACCOUNTS.md has the steps.");
+      console.log(`Connected: ${g.email}, read-only, since ${g.connectedAt.slice(0, 10)}. Token: ${store.get(GMAIL.refreshTokenItem) ? "in the Keychain" : "missing. Connect again: node bin/jev.js gmail connect"}`);
     } else if (action === "disconnect") {
       await disconnectGmail(store);
       console.log("Gmail is disconnected: access was withdrawn at Google and the tokens are gone from the Keychain.");
@@ -805,11 +856,11 @@ program
     console.log(`applied ${summary.applied} (today ${summary.appliedToday}) | queued ${summary.queued} | in progress ${summary.inProgress} | left for you ${summary.leftForYou} | failed ${summary.failed} | skipped ${summary.skipped}`);
     for (const [r, n] of summary.topSkipReasons) console.log(`  ${String(n).padStart(4)}  ${r}`);
     if (summary.waiting.length) {
-      console.log(`\nWaiting for you (${summary.waiting.length}), each open in the tool's Chrome window. Do it there, then: /resume, or npx jev resume`);
+      console.log(`\nWaiting for you (${summary.waiting.length}), each open in the tool's Chrome window. Do it there, then: /resume, or node bin/jev.js resume`);
       for (const w of summary.waiting) console.log(`  ${w.company} | ${w.title}: ${w.todo}${w.reason ? ` (${w.reason.slice(0, 140)})` : ""}  [${w.id}]`);
     }
     if (summary.unconfirmed.length) {
-      console.log(`\nClicked and not confirmed (${summary.unconfirmed.length}). To settle them: /resume, or npx jev reconcile`);
+      console.log(`\nClicked and not confirmed (${summary.unconfirmed.length}). To settle them: /resume, or node bin/jev.js reconcile`);
       for (const u of summary.unconfirmed) console.log(`  ${u.company} | ${u.title}  [${u.id}]`);
     }
     console.log(whereTheRecordIs());
@@ -817,7 +868,7 @@ program
 
 program
   .command("cost")
-  .description("What the tool has spent on JEV and on Claude, by purpose, and per form")
+  .description("What the tool has spent on DeepSeek and on Claude, by purpose, and per form")
   .option("--since <iso>", "count only calls at or after this time, for example 2026-10-02T16:00:00Z")
   .option("--json")
   .action((o: { since?: string; json?: boolean }) => {
@@ -853,7 +904,7 @@ program
 program
   .command("doctor")
   .description("Check that everything a run needs is in place, and say what to do next")
-  .option("--online", "also make one tiny JEV call and one tiny Claude call to prove the key and the sign-in work")
+  .option("--online", "also make one tiny DeepSeek call and one tiny Claude call to prove the key and the sign-in work")
   .option("--json")
   .action(async (o: { online?: boolean; json?: boolean }) => {
     const checks = await runChecks(!!o.online);

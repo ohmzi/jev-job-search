@@ -16,15 +16,15 @@ is off until the user turns it on.
 
 | They type | You do |
 |---|---|
-| `/daily` | Run `npx jev schedule status` and read today's `data/runs/daily-<date>.json` if there is one. Say what is set up and how today went. If `data/policy.json` does not exist, go to setup. |
+| `/daily` | Run `node bin/jev.js schedule status` and read today's `data/runs/daily-<date>.json` if there is one. Say what is set up and how today went. If `data/policy.json` does not exist, go to setup. |
 | `/daily setup` | The questions below, then write `data/policy.json` after a yes. |
-| `/daily dry` or `/daily dry 3` | `npx jev daily --dry --target <n>` (3 when no number). Read the summary with them. |
-| `/daily run` | `npx jev daily`. They typed it, so that is their go for today's run. Read the summary back when it ends. |
-| `/daily schedule` or `/daily schedule 08:30` | `npx jev schedule install --at <time>` (09:00 when no time). Say: the Mac must be on and signed in at that time, the tool's Chrome window will open, `/daily pause` removes it again, and `/daily stop` stops a run that is working. |
-| `/daily pause` | `npx jev schedule remove`. No further run starts by itself. Say that a run already working carries on. |
-| `/daily stop` | `npx jev daily --stop`. The run that is working finishes the application it is on and opens no other. Say that this does not remove the schedule; `/daily pause` does. |
+| `/daily dry` or `/daily dry 3` | `node bin/jev.js daily --dry --target <n>` (3 when no number). Read the summary with them. |
+| `/daily run` | `node bin/jev.js daily`. They typed it, so that is their go for today's run. Read the summary back when it ends. |
+| `/daily schedule` or `/daily schedule 08:30` | `node bin/jev.js schedule install --at <time>` (09:00 when no time). Say: the Mac must be on and signed in at that time, the tool's Chrome window will open, `/daily pause` removes it again, and `/daily stop` stops a run that is working. |
+| `/daily pause` | `node bin/jev.js schedule remove`. No further run starts by itself. Say that a run already working carries on. |
+| `/daily stop` | `node bin/jev.js daily --stop`. The run that is working finishes the application it is on and opens no other. Say that this does not remove the schedule; `/daily pause` does. |
 
-If `npx jev accounts` shows Workday is allowed, a daily run signs in at
+If `node bin/jev.js accounts` shows Workday is allowed, a daily run signs in at
 employers. Then you do not start `dry` or `run` yourself: show the command
 in a `bash` block, which has a Run button, and let them click it.
 
@@ -38,7 +38,7 @@ question at a time:
   United States, elsewhere.)
 - Internships, new-grad roles, or both?
 - Is there a fit score below which you would rather not apply? Show the
-  spread in their queue (`npx jev queue`) so the number means something.
+  spread in their queue (`node bin/jev.js queue`) so the number means something.
 - Any employers to leave out?
 - A resume written for each job, and a cover letter where a form has a
   box for one? This takes longer per job.

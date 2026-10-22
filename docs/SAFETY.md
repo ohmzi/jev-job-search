@@ -15,7 +15,7 @@ check before you publish a fork.*
 | Accepting terms the person did not approve, or ticking a marketing box. | `ensureSignedIn`; the adapter names the one terms box |
 | Using a verification email that does not fit: wrong sender, sender not verified by the mail server, wrong recipient, older than the request, used before, more than one, or a link off the employer's own site. | `whyNot`, `usable` in `src/mail/verification.ts`; `follow` in `src/accounts/authPage.ts` stops a redirect off-site |
 | Sending a password, a token or an email's content to Claude or JEV, or writing one to a file or a log. A code a board mailed is passed to `code` on standard input and is never printed or recorded. | `Secret` and `scrub` in `src/util/redact.ts`, `src/accounts/secrets.ts`, `src/run/code.ts` |
-| Passing a human check. This covers CAPTCHAs and robot checks: the filled form stays open, the person is notified, and `resume` records the application once they finish. A code a board emails to confirm an application is separate: with the person's consent it is read from their mailbox and given to `npx jev code <id>`, which writes it into the one box the form has for it, reads it back, and submits only with `--submit` and only records the application on a confirmation. | `submitJob` reports the page as it is; `submitAndRecord` in `src/run/pipeline.ts` records `awaiting_user_action` and calls `assist`; `src/run/code.ts` handles the emailed code |
+| Passing a human check. This covers CAPTCHAs and robot checks: the filled form stays open, the person is notified, and `resume` records the application once they finish. A code a board emails to confirm an application is separate: with the person's consent it is read from their mailbox and given to `node bin/jev.js code <id>`, which writes it into the one box the form has for it, reads it back, and submits only with `--submit` and only records the application on a confirmation. | `submitJob` reports the page as it is; `submitAndRecord` in `src/run/pipeline.ts` records `awaiting_user_action` and calls `assist`; `src/run/code.ts` handles the emailed code |
 | Sending an application twice. From the click on, a job is `submission_unknown` until a confirmation is read; it is never filled or sent again before that. A job already applied to is refused without `--resubmit`. | `submitAndRecord`, `reconcile` and `pickJobs` in `src/run/pipeline.ts` |
 | Signing in on a site with no adapter. A page with a password box is closed, the job is listed in `applications/manual.csv`, and the site is skipped from then on. | `fillJob` in `src/browser/formRunner.ts`, `outcomeOf` in `src/run/outcome.ts` |
 | Signing a contract. A form that asks the candidate to type their name under an agreement, or to tick that they are bound by one, is set aside for them. | `SIGNATURE_LABEL` in `src/forms/mapForm.ts`, the writer's rules in `src/answers/resolve.ts` |
@@ -41,11 +41,11 @@ profile. The tool makes that the only way.
   is fictional.
 - The answer memory (`data/memory.json`) holds answers Claude wrote for you
   and the questions they answered. It never leaves the machine.
-  `npx jev memory --clear` empties it.
-- The OpenRouter key is read from `.env` only. Error bodies are redacted
+  `node bin/jev.js memory --clear` empties it.
+- The DeepSeek key is read from `.env` only. Error bodies are redacted
   before they are printed (`src/jev/client.ts`).
 - What leaves the machine: job text and the profile's facts go to
-  OpenRouter (JEV) on every rating and form-mapping call; the facts, the
+  DeepSeek on every rating and form-mapping call; the facts, the
   posting and the open questions go to Anthropic through your own Claude Code
   login when a form has fields left for Claude; the form values go to the
   employer's ATS; nothing goes anywhere else. There is no telemetry.
@@ -61,7 +61,7 @@ profile. The tool makes that the only way.
   not hold, and git-ignored.
 - The runner's Chrome profile lives in `data/runs/chrome-profile`, apart
   from your own browser. It keeps its cookies between runs; nothing
-  clears them by itself. `npx jev browser reset --yes` clears them when you
+  clears them by itself. `node bin/jev.js browser reset --yes` clears them when you
   ask. The window can be driven only from your own machine.
 - Every record is written whole (a temp file, then a rename) and every
   change takes a short lock, so a dashboard, a search and a run can work at

@@ -14,7 +14,7 @@ its own Next button, and every value is read back from the page before
 anything is sent. Your job is to run it, read what it reports, and tell the
 user what was left for them.
 
-Run every command from the repo root with `npx jev <command>`.
+Run every command from the repo root with `node bin/jev.js <command>`.
 
 ## One posting the user found themselves
 
@@ -50,7 +50,7 @@ updated to match.
 |---|---|---|
 | `READY`, then `submitted` | Sent. The confirmation page was read by JEV. | Nothing. |
 | `READY`, no `--submit` | Filled and verified, waiting. | After the user says go: `submit <id>`. |
-| `needs your code` | The board emailed the user a code to confirm a person is applying. The filled form stays open. | Search the user's mailbox with the Gmail MCP for the board's newest code, then pass it on standard input: `npx jev code <id> --submit <<'EOF'` with the code on the next line and `EOF` after it. Never put the code on the command line itself, and never repeat it in your reply. If no code arrives, leave the form open for the user. |
+| `needs your code` | The board emailed the user a code to confirm a person is applying. The filled form stays open. | Search the user's mailbox with the Gmail MCP for the board's newest code, then pass it on standard input: `node bin/jev.js code <id> --submit <<'EOF'` with the code on the next line and `EOF` after it. Never put the code on the command line itself, and never repeat it in your reply. If no code arrives, leave the form open for the user. |
 | `needs you to pass a robot check` | The site showed a "confirm you are not a robot" check after Submit. The form stays open. | The same: the user passes it, then `resume`. |
 | `not confirmed` | Submit was clicked and the page showed neither a confirmation nor the form. The job is unconfirmed and will not be sent again. | Run `reconcile`. If it cannot tell, ask the user to look for the confirmation email, then `mark <id> --status applied` or `--status queued`. |
 | `not taken: already applied` | An id or a link names a job that was sent. | Nothing. `--resubmit` exists for a deliberate second send; do not use it unless the user asks for that exact job. |

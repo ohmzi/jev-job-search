@@ -13,6 +13,7 @@ import { z } from "zod";
 import { DAILY, PATHS } from "../config.js";
 import type { FillReport } from "../browser/report.js";
 import { sortEntries, type QueueEntry } from "../jobs/queue.js";
+import { recentFirst } from "../jobs/recency.js";
 import { withStore, writeAtomic } from "../util/store.js";
 import { policyRefuses, type Policy } from "./policy.js";
 
@@ -78,7 +79,7 @@ export type DailyDeps = {
   run: (id: string) => Promise<Outcome>;
   /** Speaks for the boards that want an account: null when a job may be taken today. */
   gate: () => (url: string) => string | null;
-  /** What JEV has cost since the local day began. */
+  /** What DeepSeek has cost since the local day began. */
   jevSpentToday: () => number;
   log: (line: string) => void;
   /** True once the person asked this run to stop. Looked at before every application. */
@@ -170,7 +171,7 @@ export async function dailyRun(policy: Policy, o: { target?: number; maxAttempts
     if (challenged.size >= DAILY.challengesStopRun) return end(`${challenged.size} boards asked for a human check, so the run stopped for today`);
     if (attempts >= maxAttempts) return end(`the run opened ${attempts} jobs, its limit`);
     if (deps.now().getTime() >= deadline) return end("the run reached its time limit");
-    if (deps.jevSpentToday() >= policy.jevBudgetUsd) return end(`JEV has cost $${deps.jevSpentToday().toFixed(2)} today, the limit in your policy`);
+    if (deps.jevSpentToday() >= policy.jevBudgetUsd) return end(`DeepSeek has cost $${deps.jevSpentToday().toFixed(2)} today, the limit in your policy`);
 
     const pauses = loadPauses(deps.pausesFile);
     const sentHere = (b: string) => (day.board.get(b) ?? 0) + (o.dry ? summary.sent.filter((s) => s.board === b).length : 0);
@@ -185,7 +186,7 @@ export async function dailyRun(policy: Policy, o: { target?: number; maxAttempts
       // A fresh gate each time: it answers for this one job, with today's accounts as they are now.
       return deps.gate()(e.job.url) === null;
     };
-    const suitable = sortEntries(entries.filter((e) => e.status === "queued")).filter(may);
+    const suitable = recentFirst(sortEntries(entries.filter((e) => e.status === "queued" && e.applyable !== false)), deps.now()).filter(may);
     if (!suitable.length) return end("no suitable job is left in the queue");
 
     // Two submissions to one board are minutes apart. The best job whose board is free goes now; if none is, the run waits for the first.
@@ -268,10 +269,10 @@ export function formatDaily(s: DailySummary): string {
   const names = (list: Line[]) => list.map((l) => `    ${l.company} | ${l.title}`).join("\n");
   const out = [resultLine(s), `${s.dry ? "Rehearsal. Nothing was sent. " : ""}${s.dry ? "Would have sent" : "Sent"} ${s.sent.length}${s.sentBefore ? ` (${s.sentBefore} more earlier today)` : ""} of ${s.target}. Stopped because ${s.stoppedBecause}.`];
   if (s.sent.length) out.push(names(s.sent));
-  if (s.waiting.length) out.push(`  Waiting for you (${s.waiting.length}), each open in the tool's window. Then run: npx jev resume --submit`, ...s.waiting.map((l) => `    ${l.company} | ${l.title}: ${l.why}`));
-  if (s.unconfirmed.length) out.push(`  Clicked and not confirmed (${s.unconfirmed.length}). To settle them: npx jev reconcile`, names(s.unconfirmed));
+  if (s.waiting.length) out.push(`  Waiting for you (${s.waiting.length}), each open in the tool's window. Then run: node bin/jev.js resume --submit`, ...s.waiting.map((l) => `    ${l.company} | ${l.title}: ${l.why}`));
+  if (s.unconfirmed.length) out.push(`  Clicked and not confirmed (${s.unconfirmed.length}). To settle them: node bin/jev.js reconcile`, names(s.unconfirmed));
   if (s.leftForYou.length) out.push(`  Not sent (${s.leftForYou.length}):`, ...s.leftForYou.map((l) => `    ${l.company} | ${l.title}: ${l.why || l.status}`));
   if (s.paused.length) out.push(...s.paused.map((p) => `  ${p.board} is left alone until tomorrow: ${p.why}`));
-  out.push(`  JEV today: $${s.jevUsd.toFixed(4)}`);
+  out.push(`  DeepSeek today: $${s.jevUsd.toFixed(4)}`);
   return out.join("\n");
 }

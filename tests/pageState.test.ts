@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { JEV } from "../src/config.js";
+import { DEEPSEEK } from "../src/config.js";
 import { decidePageState } from "../src/forms/pageState.js";
 import type { JevClient } from "../src/jev/client.js";
 
@@ -18,11 +18,11 @@ describe("decidePageState", () => {
         };
       },
     } as unknown as JevClient;
-    const page = `About the role. ${"word ".repeat(JEV.maxPageTextChars)}A verification code was sent to you.`;
+    const page = `About the role. ${"word ".repeat(DEEPSEEK.maxPageTextChars)}A verification code was sent to you.`;
     const res = await decidePageState(jev, page, "https://x/1");
     expect(res.state).toBe("application_form");
     expect(seen.startsWith("About the role.")).toBe(true);
     expect(seen.endsWith("A verification code was sent to you.")).toBe(true);
-    expect(seen.length).toBeLessThanOrEqual(JEV.maxPageTextChars + 10);
+    expect(seen.length).toBeLessThanOrEqual(DEEPSEEK.maxPageTextChars + 10);
   });
 });

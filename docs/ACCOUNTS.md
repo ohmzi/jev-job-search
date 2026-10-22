@@ -120,7 +120,7 @@ so and names this command.
 To say that one employer is different from the rest, in a terminal:
 
 ```bash
-npx jev accounts add https://acme.wd5.myworkdayjobs.com/Careers --off
+node bin/jev.js accounts add https://acme.wd5.myworkdayjobs.com/Careers --off
 ```
 
 `--off` leaves that employer alone whatever the rule says. Without it, the
@@ -174,15 +174,15 @@ In Claude Code, type the left column. Nothing here needs a terminal.
 
 | Type | What happens | In a terminal |
 |---|---|---|
-| `/accounts` | What is set up, and the next step. With nothing set up, it walks you through way 1 | `npx jev accounts` |
-| `/accounts signin <employer>` | Opens that employer's page for you to sign in yourself | `npx jev accounts signin <employer>` |
-| `/accounts password <employer>` | A window asks for that employer's password | `npx jev accounts password <employer>` |
-| `/accounts add workday` | Asks what the tool may do for every Workday employer, shows what that allows, saves after a yes | `npx jev accounts add workday --create --terms --verify-email`, with `--preview` to see it first |
-| `/accounts setup <employer>` | Signs in, or makes the account where you allowed it. Always started by you | `npx jev accounts setup <employer>` |
-| `/accounts clear` | Lifts every pause, after you fixed what caused it | `npx jev accounts clear` |
-| `/accounts off`, `/accounts on` | Switches every sign-in off, and on again. Everything you set up is kept | `npx jev accounts off` |
-| `/accounts forget <employer or all>` | Removes from this Mac the entry, its stored password and its session | `npx jev accounts forget all --yes` |
-| `/accounts gmail` | Connects Gmail for verification emails | `npx jev gmail connect --client <file>` |
+| `/accounts` | What is set up, and the next step. With nothing set up, it walks you through way 1 | `node bin/jev.js accounts` |
+| `/accounts signin <employer>` | Opens that employer's page for you to sign in yourself | `node bin/jev.js accounts signin <employer>` |
+| `/accounts password <employer>` | A window asks for that employer's password | `node bin/jev.js accounts password <employer>` |
+| `/accounts add workday` | Asks what the tool may do for every Workday employer, shows what that allows, saves after a yes | `node bin/jev.js accounts add workday --create --terms --verify-email`, with `--preview` to see it first |
+| `/accounts setup <employer>` | Signs in, or makes the account where you allowed it. Always started by you | `node bin/jev.js accounts setup <employer>` |
+| `/accounts clear` | Lifts every pause, after you fixed what caused it | `node bin/jev.js accounts clear` |
+| `/accounts off`, `/accounts on` | Switches every sign-in off, and on again. Everything you set up is kept | `node bin/jev.js accounts off` |
+| `/accounts forget <employer or all>` | Removes from this Mac the entry, its stored password and its session | `node bin/jev.js accounts forget all --yes` |
+| `/accounts gmail` | Connects Gmail for verification emails | `node bin/jev.js gmail connect --client <file>` |
 
 ## Turning it off, and removing what is stored
 
@@ -246,14 +246,14 @@ names below may have moved.
 5. Type `/accounts gmail <that file>`, or in a terminal:
 
 ```bash
-npx jev gmail connect --client ~/Downloads/client_secret_XXXX.json
+node bin/jev.js gmail connect --client ~/Downloads/client_secret_XXXX.json
 ```
 
 Your browser opens Google's consent page. Google warns that the app is not
 verified, because it is yours and only you use it: choose **Advanced**,
 continue, and approve "View your email messages and settings". When it
 says connected, you can delete the downloaded file.
-`npx jev gmail status` shows the connection, and `npx jev gmail
+`node bin/jev.js gmail status` shows the connection, and `node bin/jev.js gmail
 disconnect` withdraws it at Google and removes the tokens from your
 Keychain.
 

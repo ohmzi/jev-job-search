@@ -53,7 +53,7 @@ read, and it will not guess.
 ## 2. Rehearse
 
 ```bash
-npx jev daily --dry --target 3
+node bin/jev.js daily --dry --target 3
 ```
 
 A rehearsal fills and checks the forms, sends nothing, records nothing and
@@ -63,7 +63,7 @@ includes Workday, a rehearsal still signs in for real ([ACCOUNTS.md](ACCOUNTS.md
 ## 3. Run it
 
 ```bash
-npx jev daily
+node bin/jev.js daily
 ```
 
 It searches for jobs, then applies until the day's number is reached or a
@@ -93,7 +93,7 @@ one careful person, and they are not yours to raise from the command line.
 | JEV spend in a day | $0.50, or your policy's number |
 
 A form whose Submit was clicked with no confirmation seen counts towards
-the day's number until you settle it with `npx jev reconcile`, so the run
+the day's number until you settle it with `node bin/jev.js reconcile`, so the run
 never sends extra to make up for one it is unsure of.
 
 They live in `DAILY` in `src/config.ts`.
@@ -106,7 +106,7 @@ and the run goes on with another board. When you are back, type
 `/resume`, or in a terminal:
 
 ```bash
-npx jev resume --submit
+node bin/jev.js resume --submit
 ```
 
 The summary lists these under "Waiting for you". Forms left open longer
@@ -118,7 +118,7 @@ Nothing runs by itself until you install the schedule, with
 `/daily schedule 09:00` or in a terminal:
 
 ```bash
-npx jev schedule install --at 09:00
+node bin/jev.js schedule install --at 09:00
 ```
 
 This adds one entry to macOS's own scheduler for your account (a
@@ -127,11 +127,11 @@ that runs `jev daily` in this folder at that time each day. What it prints
 goes to `data/runs/daily.log`.
 
 ```bash
-npx jev schedule status
+node bin/jev.js schedule status
 ```
 
 ```bash
-npx jev schedule remove
+node bin/jev.js schedule remove
 ```
 
 Things to know:
@@ -147,7 +147,7 @@ Things to know:
 
 If you would rather have Claude run it and read you the result, make a
 scheduled task in the Claude desktop app with a prompt such as "Run
-`npx jev daily` in my jev-job-search folder and summarise what it printed."
+`node bin/jev.js daily` in my jev-job-search folder and summarise what it printed."
 Use one or the other, not both: two runs in one day share the same daily
 number, but there is no reason to run twice.
 
@@ -156,14 +156,14 @@ number, but there is no reason to run twice.
 These are three different things.
 
 - **Pause future runs**: `/daily pause`, the dashboard's "Pause future
-  runs", or `npx jev schedule remove`. No further run starts by itself. A
+  runs", or `node bin/jev.js schedule remove`. No further run starts by itself. A
   run that is already working is not touched.
 - **Stop the run that is working**: `/daily stop`, the dashboard's "Stop
-  it after this application", or `npx jev daily --stop`. The run finishes
+  it after this application", or `node bin/jev.js daily --stop`. The run finishes
   the application it is on, so no form is left half sent, opens no other,
   and writes its summary.
 - **Turn it off for good**: remove the schedule and delete
   `data/policy.json`.
 
-`npx jev schedule remove` removes the schedule. Deleting `data/policy.json`
+`node bin/jev.js schedule remove` removes the schedule. Deleting `data/policy.json`
 makes `daily` refuse to run at all.

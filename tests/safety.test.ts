@@ -28,10 +28,10 @@ describe("secrets stay out of what is printed and saved", () => {
   });
   it("a child process inherits only the allowed names", () => {
     process.env.JEV_TEST_PASSWORD = "nope";
-    process.env.OPENROUTER_API_KEY ??= "not-a-key";
+    process.env.DEEPSEEK_API_KEY ??= "not-a-key";
     const env = childEnv({ EXTRA: "1" });
     expect(env.JEV_TEST_PASSWORD).toBeUndefined();
-    expect(env.OPENROUTER_API_KEY).toBeUndefined();
+    expect(env.DEEPSEEK_API_KEY).toBeUndefined();
     expect(env.PATH).toBe(process.env.PATH);
     expect(env.EXTRA).toBe("1");
     delete process.env.JEV_TEST_PASSWORD;
@@ -113,5 +113,25 @@ describe("the dashboard server", () => {
     expect(fromThisPage({ headers: { host: "127.0.0.1:4545", origin: "http://127.0.0.1:4545" } }, 4545)).toBe(true);
     expect(fromThisPage({ headers: { host: "127.0.0.1:4545", origin: "https://evil.example" } }, 4545)).toBe(false);
     expect(fromThisPage({ headers: { host: "evil.example" } }, 4545)).toBe(false);
+  });
+  it("answers a public origin only when it was configured", () => {
+    const tunnel = ["https://job.example.ca"];
+    expect(fromThisPage({ headers: { host: "127.0.0.1:4545", origin: "https://job.example.ca" } }, 4545, tunnel)).toBe(true);
+    expect(fromThisPage({ headers: { host: "job.example.ca", origin: "https://job.example.ca" } }, 4545, tunnel)).toBe(true);
+    expect(fromThisPage({ headers: { host: "job.example.ca" } }, 4545, tunnel)).toBe(true);
+    expect(fromThisPage({ headers: { host: "job.example.ca", origin: "http://job.example.ca" } }, 4545, tunnel)).toBe(false);
+    expect(fromThisPage({ headers: { host: "other.example.ca", origin: "https://job.example.ca" } }, 4545, tunnel)).toBe(false);
+    expect(fromThisPage({ headers: { host: "job.example.ca", origin: "https://job.example.ca" } }, 4545)).toBe(false);
+    expect(fromThisPage({ headers: { host: "job.example.ca", origin: "https://job.example.ca" } }, 4545, ["https://job.example.ca/"])).toBe(true);
+  });
+  it("reads a public origin from the environment at request time, so .env is loaded first", () => {
+    const before = process.env.JEV_REPORT_PUBLIC_ORIGINS;
+    process.env.JEV_REPORT_PUBLIC_ORIGINS = "https://job.example.ca";
+    try {
+      expect(fromThisPage({ headers: { host: "job.example.ca", origin: "https://job.example.ca" } }, 4545)).toBe(true);
+    } finally {
+      if (before === undefined) delete process.env.JEV_REPORT_PUBLIC_ORIGINS;
+      else process.env.JEV_REPORT_PUBLIC_ORIGINS = before;
+    }
   });
 });

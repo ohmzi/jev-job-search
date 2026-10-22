@@ -1,6 +1,7 @@
 /**
- * Types for the OpenRouter Decisions API (typesafe/jev-1.13).
- * Reference: https://openrouter.ai/docs/guides/community/jev and docs.typesafe.ai.
+ * The typed decisions the rating client asks for. The shapes are kept from the
+ * JEV Decisions API so every consumer validates them the same way; the client
+ * now sends the questions to DeepSeek.
  */
 import { z } from "zod";
 

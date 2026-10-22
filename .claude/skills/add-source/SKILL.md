@@ -33,7 +33,7 @@ cache time, and a test on a captured fixture that holds no personal data.
 5. **Wire it in** `collectJobs` in `src/discover.ts`, and add a row to
    `docs/SOURCES.md`.
 6. **Run** `npx tsc --noEmit && npx vitest run`, then
-   `npx jev discover --limit 20` and show the user what came in from the
+   `node bin/jev.js discover --limit 20` and show the user what came in from the
    new source before it is kept.
 
 Never put a key, a cookie or a sign-in in a source. Nothing read from a

@@ -1,5 +1,11 @@
 # JEV: what it is and how this tool uses it
 
+> **Historical.** The rating client now sends these typed questions to
+> DeepSeek instead of JEV. The answer shapes below are the ones the code
+> still validates, and the criteria wording is still what the questions
+> carry, so this document remains the reference for the question schemas.
+> The transport sections (endpoint, key, prices) describe the old JEV API.
+
 *Research notes and the question schemas. Sources: the OpenRouter guide at
 openrouter.ai/docs/guides/community/jev, the tutorial at
 openrouter.ai/docs/guides/community/jev-tutorial, docs.typesafe.ai

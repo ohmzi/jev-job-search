@@ -53,7 +53,7 @@ describe("the writer's prompt", () => {
   });
   it("carries no secret and no resume path", () => {
     const text = system + JSON.stringify(prompt);
-    expect(text).not.toMatch(/sk-or-v1-|OPENROUTER/);
+    expect(text).not.toMatch(/sk-[A-Za-z0-9]{8,}|DEEPSEEK_API_KEY/);
     expect(text).not.toContain(profile.resume.path);
   });
 });

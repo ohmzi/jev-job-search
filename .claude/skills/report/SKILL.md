@@ -10,15 +10,22 @@ effort: low
 Run from the repo root:
 
 ```
-npx jev report --open
+node bin/jev.js report --open
 ```
 
 It starts a page on the user's own machine (`http://127.0.0.1:4545`) and
 opens it. Nothing leaves the machine. The command keeps running until they
-press Ctrl-C. The page has four screens:
+press Ctrl-C. The page has five screens:
 
-- **Today.** One line (sent today, waiting, ready to apply to), the
+- **Today.** One line (sent today, waiting, in the queue), the
   totals, and three small charts.
+- **Last 12 hours.** Every job the tool first saw in the last twelve hours,
+  newest first, with the posted time, found time, fit and why it is there.
+  `/apply` takes these before older queued jobs while they are fresh. A
+  board-only listing moves to **Needs you** when its twelve hours are over.
+  Tick one job, or the header box for all, then "Mark selected applied"; it
+  is recorded as applied and leaves the list for good. A link like
+  `/#recent` opens this screen directly.
 - **Needs you.** Everything only they can do, each with its button:
   - a question a form asked that their profile could not answer. They
     type or pick the answer and press "Save for next run". Nothing is
@@ -42,6 +49,25 @@ press Ctrl-C. The page has four screens:
   rules as a form, and today's result in one line. Turning the switch on installs the schedule;
   that is their click, not yours.
 
-`npx jev report --static applications/report.html` writes a snapshot page
+`node bin/jev.js report --static applications/report.html` writes a snapshot page
 with Today and Applications only, for keeping or sending. Nothing can be
 changed from a snapshot.
+
+## Keeping it running
+
+A portal's dashboard can run as a systemd user service, so it survives a
+reboot:
+
+```bash
+node bin/jev.js report --port <port> --install-service
+node bin/jev.js report --service-status
+node bin/jev.js report --remove-service
+```
+
+The service is named after the folder, so each portal has its own. It
+restarts if it exits badly and writes to `data/runs/report.log`. Run the
+install from the portal's own folder with that portal's port. On macOS,
+use a LaunchAgent instead.
+
+The five dashboards and their ports are listed in the README under
+**Where the five dashboards live**.

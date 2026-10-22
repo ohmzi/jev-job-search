@@ -53,6 +53,12 @@ export const PATHS = {
   dailyStop: path.join(ROOT, "data", "runs", "daily.stop"),
   /** What the scheduled run prints. */
   dailyLog: path.join(ROOT, "data", "runs", "daily.log"),
+  /** What the scheduled hourly search prints. */
+  hourlyLog: path.join(ROOT, "data", "runs", "hourly.log"),
+  /** When the hourly search last completed successfully, so a missed hour is not lost. */
+  hourlyState: path.join(ROOT, "data", "runs", "hourly.json"),
+  /** What a dashboard running as a service prints. */
+  reportLog: path.join(ROOT, "data", "runs", "report.log"),
   /** The job-board accounts the person allowed, and the rule for making new ones. No secret is in it. */
   accounts: path.join(ROOT, "data", "accounts.json"),
   accountsExample: path.join(ROOT, "data", "accounts.example.json"),
@@ -92,20 +98,24 @@ export function loadEnv(file = path.join(ROOT, ".env")): void {
   }
 }
 
-export const JEV = {
-  endpoint: "https://openrouter.ai/api/alpha/decisions",
-  model: "typesafe/jev-1.13",
-  /** Context window per the model page. We keep requests well under it. */
-  contextTokens: 32_000,
+export const DEEPSEEK = {
+  endpoint: "https://api.deepseek.com/chat/completions",
+  model: "deepseek-flash",
+  /** Context window. Requests stay well under it. */
+  contextTokens: 128_000,
   /** Approximate budget for the job description inside a rating request (chars, ~4 chars per token). */
   maxDescriptionChars: 14_000,
   /** Approximate budget for a page's text when deciding page state. */
   maxPageTextChars: 8_000,
-  timeoutMs: 20_000,
+  timeoutMs: 60_000,
   maxRetries: 3,
   retryBaseMs: 500,
-  /** Hard stop for one discover run, in USD. The model page lists $0.042 per million input tokens. */
+  /** Hard stop for one run, in USD. */
   runSpendCapUsd: 1.0,
+  /** List prices per million tokens, used to estimate spend from usage. Update when DeepSeek changes them. */
+  pricePerMillionInputUsd: 0.28,
+  pricePerMillionCachedInputUsd: 0.028,
+  pricePerMillionOutputUsd: 0.42,
 } as const;
 
 export const DISCOVER = {
@@ -228,7 +238,7 @@ export const CACHE = {
 
 export const BROWSER = {
   /** The Chrome binary the fill runner drives over the DevTools protocol. */
-  chromePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  chromePath: "/usr/bin/google-chrome",
   /** Local DevTools port of the runner's own Chrome window. */
   port: 9333,
   /** Its profile lives with the other run data, so it is git-ignored and keeps cookies between runs. */
@@ -264,8 +274,17 @@ export const BROWSER = {
  * no API key. With ANTHROPIC_API_KEY in .env the Claude API is called directly instead.
  */
 export const WRITER = {
-  command: "claude",
-  model: "claude-sonnet-5-5",
+  /**
+   * The command that runs the writer headless. `WRITER_COMMAND=deepseek` sends the same flags
+   * through a local Claude Code wrapper that routes to another provider.
+   */
+  get command(): string {
+    return process.env.WRITER_COMMAND?.trim() || "claude";
+  },
+  /** The model the writer asks for. WRITER_MODEL overrides it, for a wrapper that routes elsewhere. */
+  get model(): string {
+    return process.env.WRITER_MODEL?.trim() || "claude-sonnet-5-5";
+  },
   effort: "low",
   timeoutMs: 180_000,
   /** Job description characters handed to the writer. The posting is most of what each call costs. */
@@ -379,6 +398,32 @@ export const DAILY = {
   at: "09:00",
 } as const;
 
+/**
+ * The hourly search and its Last 12 hours page. The search itself is read-only: it never opens
+ * Chrome, fills a form, signs in or reads mail. The role terms and places come from the portal's
+ * profile, not from here.
+ */
+export const HOURLY = {
+  /** A job is recent while the tool first saw it less than this long ago and its posted date is not older. */
+  windowHours: 12,
+  /** JobSpy asks each board for jobs at most this many hours old. One, because the run is hourly. */
+  hoursOld: 1,
+  /** How many results to ask for per board in one call. Two sites and more than this often time out. */
+  resultsWanted: 50,
+  /** The image the JobSpy command line runs from. */
+  dockerImage: "jobspy:latest",
+  /** Longest one JobSpy call may run. */
+  timeoutMs: 90_000,
+  /** Pause between two JobSpy calls, so a portal does not burst a board. */
+  gapMs: 4_000,
+  /** A run stops asking after this many calls, whatever the profile allows. */
+  maxQueries: 12,
+  /** The reason a job held for the person gets when its 12 hours are over. */
+  staleReason: "posted more than 12 hours ago; apply on the employer's site yourself",
+  /** The prefix of the scheduled job's name. The portal id makes it unique among the four clones. */
+  labelPrefix: "jev-hourly",
+} as const;
+
 /** Signing in to job boards the person has an account on, and making an account where they allowed it (`src/accounts/`). */
 export const ACCOUNTS = {
   /** The name every secret is kept under in the Keychain. */
@@ -443,7 +488,7 @@ export const ASSIST = {
 
 /** What a child process may inherit from the environment. Keys and passwords are not on the list, so no child ever sees one. */
 export const CHILD_ENV = {
-  allow: ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "__CF_USER_TEXT_ENCODING", "DISPLAY"],
+  allow: ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "__CF_USER_TEXT_ENCODING", "DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"],
 } as const;
 
 /** The environment for a child process: the allowed names only, plus what the caller adds on purpose. */
@@ -469,7 +514,21 @@ export const REPORT = {
   port: 4545,
   /** The statuses the page lets a person set, in the order they are offered. */
   statuses: ["applied", "needs_review", "queued", "skipped", "blocked", "failed"],
+  /** The name a dashboard gets when it runs as a systemd user service. The folder name makes it unique. */
+  servicePrefix: "jev-report",
 } as const;
+
+/**
+ * Extra origins the dashboard may be served from, such as a Cloudflare tunnel. Full origins,
+ * comma-separated, in JEV_REPORT_PUBLIC_ORIGINS. Empty by default: localhost only. Read at call
+ * time, because .env is loaded after this module is evaluated.
+ */
+export function reportPublicOrigins(): string[] {
+  return (process.env.JEV_REPORT_PUBLIC_ORIGINS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
 
 export type WriterBackend = "claude-code" | "api";
 

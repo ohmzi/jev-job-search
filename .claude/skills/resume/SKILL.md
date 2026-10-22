@@ -12,14 +12,14 @@ A form waits for the user when only they can do the next thing: pass a
 robot check, finish a sign-in, or type a code the board emailed. It stays
 open in the tool's own Chrome window. This skill does the rest.
 
-1. Run `npx jev status`. If nothing waits and nothing is unconfirmed, say
+1. Run `node bin/jev.js status`. If nothing waits and nothing is unconfirmed, say
    so and stop.
 
 2. For a form that waits at an **emailed code**, find the board's newest code
    with the Gmail MCP and give it to the tool on standard input:
 
    ```bash
-   npx jev code <id> --submit <<'EOF'
+   node bin/jev.js code <id> --submit <<'EOF'
    <the code>
    EOF
    ```
@@ -33,16 +33,16 @@ open in the tool's own Chrome window. This skill does the rest.
    finish by hand, run:
 
    ```
-   npx jev resume
+   node bin/jev.js resume
    ```
 
    It watches each form while they finish it and records the application
    when the confirmation shows. Tell them which form it is on.
 
 4. For forms whose Submit was clicked with no confirmation seen, run
-   `npx jev reconcile`. If it cannot tell, look for the
+   `node bin/jev.js reconcile`. If it cannot tell, look for the
    employer's confirmation email. If it is there, show it and mark the job
-   with `npx jev mark <id> --status applied`; if not,
+   with `node bin/jev.js mark <id> --status applied`; if not,
    `--status queued` to try again.
 
 5. A form that waits at a **sign-in** (the reason mentions a sign-in, a
@@ -51,7 +51,7 @@ open in the tool's own Chrome window. This skill does the rest.
    Show the command, which has a Run button:
 
    ```bash
-   npx jev resume --submit
+   node bin/jev.js resume --submit
    ```
 
 6. Say what was sent, what still waits and why.

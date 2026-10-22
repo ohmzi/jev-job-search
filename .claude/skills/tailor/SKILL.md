@@ -10,7 +10,7 @@ effort: high
 The CLI does the writing. Run from the repo root:
 
 ```
-npx jev tailor <job id> [<job id> ...] [--cover] [--fresh] [--open]
+node bin/jev.js tailor <job id> [<job id> ...] [--cover] [--fresh] [--open]
 ```
 
 It asks the writer for a one-page resume (and, with `--cover`, a one-page
@@ -37,8 +37,8 @@ does not say is refused with the claims named; fix the profile with
 ## Templates
 
 The PDFs come from the template in use: the stock one, or one the user
-registered with `npx jev templates --add <folder> --name <name>` and chose
-with `--use <name>`. `npx jev templates` lists them. A template is a folder
+registered with `node bin/jev.js templates --add <folder> --name <name>` and chose
+with `--use <name>`. `node bin/jev.js templates` lists them. A template is a folder
 with `resume.html` and `cover.html` in the small placeholder language the
 README's "Custom resume and cover letter templates" section describes.
 Registering runs a test print; a template that fails is not kept.

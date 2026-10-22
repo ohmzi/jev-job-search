@@ -98,7 +98,7 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
     for (let i = 0; i < 40 && !(await page.evaluate<boolean>("!!document.querySelector('#nav button')").catch(() => false)); i++) await sleep(150);
     expect(errors).toEqual([]);
     const nav = await page.evaluate<string[]>("[...document.querySelectorAll('#nav button')].map((b) => b.textContent)");
-    expect(nav).toEqual(["Today", "Needs you (4)", "Applications", "Automation"]);
+    expect(nav).toEqual(["Today", "Last 12 hours", "Needs you (4)", "Applications", "Automation"]);
 
     await page.evaluate("document.querySelector('[data-screen=needs]').click()");
     const text = await page.evaluate<string>("document.querySelector('#s-needs').innerText");

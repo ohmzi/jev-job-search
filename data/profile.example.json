@@ -131,6 +131,28 @@
     "Shipped an iOS app to many users as the sole engineer.",
     "Won first place at a hackathon."
   ],
+  "search": {
+    "portal": "example-portal",
+    "titleInclude": ["(software|backend|full[\\s-]?stack)", "(developer|engineer|programmer)"],
+    "titleExclude": ["designer|manager|sales|recruit|marketing"],
+    "terms": ["software developer", "backend engineer"],
+    "sites": ["indeed", "linkedin"],
+    "countryIndeed": "Canada",
+    "resultsWanted": 50,
+    "hoursOld": 6,
+    "maxQueries": 6,
+    "gapMs": 4000,
+    "minuteOffset": 0,
+    "locations": [
+      {
+        "query": "Toronto, ON, Canada",
+        "distance": 40,
+        "accept": ["Toronto|Ontario|\\bON\\b"]
+      }
+    ],
+    "excludeRemoteOnly": true,
+    "excludeCompanies": []
+  },
   "answers": [
     {
       "question": "Which area of engineering are you most interested in?",

@@ -10,7 +10,7 @@ const headline = (r: FillReport) => {
 };
 
 export function printFill(r: FillReport): void {
-  console.log(`\n== ${r.company} | ${r.title} [${r.jobId}] ${headline(r)} in ${r.seconds.toFixed(1)}s${r.page > 1 ? `, ${r.page} pages` : ""}, JEV $${r.jevCostUsd.toFixed(4)}`);
+  console.log(`\n== ${r.company} | ${r.title} [${r.jobId}] ${headline(r)} in ${r.seconds.toFixed(1)}s${r.page > 1 ? `, ${r.page} pages` : ""}, DeepSeek $${r.jevCostUsd.toFixed(4)}`);
   if (r.resolution) console.log(`   ${r.writerCalled === false ? "Memory" : "Claude"}: ${r.resolution.verdict}${r.resolution.reason ? `, ${r.resolution.reason}` : ""} (${r.resolution.answers.length} answers${r.recalled ? `, ${r.recalled} from memory` : ""}${r.writerCalled === false ? ", Claude was not asked" : ""})`);
   console.log(`   ${r.url}`);
   if (r.reason) console.log(`   ${r.reason}`);

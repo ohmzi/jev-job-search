@@ -51,6 +51,8 @@ const JobSchema = z.object({
   ats: z.string(),
   locations: z.array(z.string()),
   postedAt: z.string().nullable(),
+  /** The full timestamp a board gave, when it gave one. */
+  postedAtExact: z.string().nullable().optional(),
   terms: z.array(z.string()),
   sponsorship: z.string(),
   degrees: z.array(z.string()),
@@ -73,6 +75,17 @@ export const QueueEntry = z.object({
     })
     .nullable(),
   preFilterReason: z.string().nullable(),
+  /**
+   * Whether the tool can fill this posting's form. False for a board-only listing (Indeed,
+   * LinkedIn and the like) found by the hourly search: it waits for the person instead of being
+   * handed to an apply run.
+   */
+  applyable: z.boolean().default(true),
+  /**
+   * When a held job stops waiting for its twelve hours and becomes the person's. Null for every
+   * other job, and cleared when a person changes the job's status: their choice is final.
+   */
+  holdUntil: z.string().nullable().default(null),
   status: QueueStatus,
   statusReason: z.string().nullable(),
   attempts: z.number().int(),
@@ -146,6 +159,8 @@ export function entryFor(job: Job, fit: FitResult | null, preFilterReason: strin
     job: job as QueueEntry["job"],
     fit: fit as QueueEntry["fit"],
     preFilterReason,
+    applyable: true,
+    holdUntil: null,
     status: fit?.decision === "apply" ? "queued" : "skipped",
     statusReason: preFilterReason ?? fit?.skipReason ?? (fit?.decision === "below_threshold" ? `score ${fit.score} below threshold` : null),
     attempts: 0,
@@ -169,6 +184,8 @@ export function entryFor(job: Job, fit: FitResult | null, preFilterReason: strin
     status: keepStatus ? previous.status : fresh.status,
     statusReason: keepStatus ? previous.statusReason : fresh.statusReason,
     waitingFor: keepStatus ? previous.waitingFor : null,
+    applyable: previous.applyable,
+    holdUntil: previous.holdUntil ?? null,
     attempts: previous.attempts,
     discoveredAt: previous.discoveredAt,
     appliedAt: previous.appliedAt,

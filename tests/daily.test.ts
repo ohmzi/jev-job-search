@@ -182,7 +182,7 @@ describe("the daily run", () => {
     expect(s.leftForYou[0]).toMatchObject({ id: "j1", status: "needs_review" });
   });
 
-  it("stops at its limits of jobs, time and JEV spend", async () => {
+  it("stops at its limits of jobs, time and DeepSeek spend", async () => {
     const many = () => Array.from({ length: 12 }, (_, i) => job({ ats: ["greenhouse", "lever", "ashby", "rippling"][i % 4] as string }));
     const failing = (): Partial<Outcome> => ({ status: "needs_review", ready: false, reason: "a required question has no answer" });
     const attempts = await dailyRun(policy(), { dry: false, maxAttempts: 3 }, world(many(), failing).deps);
@@ -193,7 +193,7 @@ describe("the daily run", () => {
     expect(time.sent.length).toBeLessThan(4);
     const w = world(many());
     const budget = await dailyRun(policy({ jevBudgetUsd: 0.004 }), { dry: false }, w.deps);
-    expect(budget.stoppedBecause).toMatch(/JEV has cost/);
+    expect(budget.stoppedBecause).toMatch(/DeepSeek has cost/);
     expect(w.ran).toHaveLength(2);
   });
 

@@ -11,7 +11,7 @@ how it learns. The README has the short version; this is the long one.
 1. **Find jobs.** This takes about a minute and does not open a browser.
 
    ```bash
-   npx jev discover
+   node bin/jev.js discover
    ```
 
 2. **Rehearse.** The tool fills five forms, sends nothing, and closes them.
@@ -19,7 +19,7 @@ how it learns. The README has the short version; this is the long one.
    holds.
 
    ```bash
-   npx jev apply --dry --count 5
+   node bin/jev.js apply --dry --count 5
    ```
 
    If an answer is wrong, correct your profile and rehearse again.
@@ -29,23 +29,23 @@ how it learns. The README has the short version; this is the long one.
    Fill the forms and look at them before anything is sent:
 
    ```bash
-   npx jev apply --count 5
+   node bin/jev.js apply --count 5
    ```
 
    ```bash
-   npx jev submit <job id> <job id>
+   node bin/jev.js submit <job id> <job id>
    ```
 
    Or fill and send in one step:
 
    ```bash
-   npx jev apply --count 10 --submit
+   node bin/jev.js apply --count 10 --submit
    ```
 
 4. **Check the result.**
 
    ```bash
-   npx jev log
+   node bin/jev.js log
    ```
 
 Stay near your computer while the tool runs. Some forms show a "prove you
@@ -55,12 +55,11 @@ are not a robot" test. Only you can pass that.
 
 After several applications in a short time, Greenhouse sometimes emails
 an 8-character code and waits for it. The code goes into the form with
-`npx jev code`, which takes it on standard input, writes it into
-the form's code box, reads it back, and sends only when you add
-`--submit`:
+`code`, which takes it on standard input, writes it into the form's code
+box, reads it back, and sends only when you add `--submit`:
 
 ```bash
-npx jev code <job id> --submit
+node bin/jev.js code <job id> --submit
 ```
 
 With Claude Code, the `/apply` and `/resume` skills find the code in your
@@ -75,7 +74,7 @@ a notification, and the run goes on with the next job. When you have passed
 the check and clicked Submit:
 
 ```bash
-npx jev resume
+node bin/jev.js resume
 ```
 
 It watches each waiting form, sees the confirmation, and records the
@@ -90,12 +89,12 @@ not be with the employer, so the tool records it as unconfirmed, keeps the
 tab, and never fills or sends that job again by itself. To settle it:
 
 ```bash
-npx jev reconcile
+node bin/jev.js reconcile
 ```
 
 It reads the tab again. A confirmation records the application; the form
 still open means it was not sent. If the page proves neither, look for the
-employer's confirmation email and run `npx jev mark <id> --status applied`,
+employer's confirmation email and run `node bin/jev.js mark <id> --status applied`,
 or `--status queued` to try again.
 
 ## What the tool handles
@@ -224,7 +223,7 @@ stays **open** in the tool's window, you get a notification, and the run
 goes on to the next job. That happens for a robot check, a phone code, a
 passkey, single sign-on, account terms you did not approve, a password the
 board refused, and a verification email the tool could not use. Finish it
-there, then run `npx jev resume --submit`.
+there, then run `node bin/jev.js resume --submit`.
 
 ## Find your applications
 
@@ -234,7 +233,7 @@ for each application you sent, newest first. Open it in any spreadsheet
 program, or run:
 
 ```bash
-npx jev log --open
+node bin/jev.js log --open
 ```
 
 | Column | What it holds |
@@ -252,7 +251,7 @@ npx jev log --open
 | `job_id` | The tool's id for the job, which the commands accept |
 
 The column names never change, so a script can rely on them. For the same
-rows as JSON, run `npx jev log --json`.
+rows as JSON, run `node bin/jev.js log --json`.
 
 ### Jobs left for you
 
@@ -262,7 +261,7 @@ reason, and the link, best fit first. Apply to these by hand if you want
 them.
 
 ```bash
-npx jev log --manual
+node bin/jev.js log --manual
 ```
 
 ### Take-home assignments
@@ -279,7 +278,7 @@ assignment.
 `applications/all.csv` is the full record. It lists every job the tool
 looked at, including the ones it skipped, with the reason. Its first 15
 columns match a common job-tracking sheet, so you can paste it into one.
-To print it, run `npx jev log --all`.
+To print it, run `node bin/jev.js log --all`.
 
 ## How well it works
 
@@ -342,11 +341,11 @@ found. A site that emailed a code gets a longer pause between applications.
 To see the notes, and the list of controls the tool has not learned yet:
 
 ```bash
-npx jev knowledge
+node bin/jev.js knowledge
 ```
 
 ```bash
-npx jev knowledge --trouble
+node bin/jev.js knowledge --trouble
 ```
 
 ### Share what your runs learned
@@ -358,7 +357,7 @@ reason before it is kept.
 To add your notes to the copy that ships with the repository:
 
 ```bash
-npx jev knowledge --share
+node bin/jev.js knowledge --share
 ```
 
 Then commit `knowledge/sites.json` and open a pull request. Every person who
@@ -369,8 +368,8 @@ does this makes the tool better on the sites they applied to, for everyone.
 - Your profile, your drafts, your resume, your record of applications and
   the answers the tool remembers stay on your computer. Git ignores all of
   them, so you cannot commit them by accident.
-- The job text and the facts in your profile go to OpenRouter when JEV rates
-  a job or maps a form.
+- The job text and the facts in your profile go to DeepSeek when the rating
+  model rates a job or maps a form.
 - The job text, your facts and the open questions go to Anthropic, through
   your own Claude Code sign-in or your own Claude API key, when a form has
   questions for Claude.
@@ -401,9 +400,9 @@ None of this is built yet.
 - **Download and open.** Today the tool is a repository you clone, with
   Node and Claude Code installed first. A packaged desktop app, with the
   dashboard as its window, would remove that. The command line would stay.
-- **One connection for both models.** Setup asks for Claude and for an
-  OpenRouter key. Writing through OpenRouter as well would make that one
-  key, billed there and not to a Claude subscription. Not built or tested.
+- **One connection for both models.** Setup asks for Claude and for a
+  DeepSeek key. Writing through DeepSeek as well would make that one key,
+  billed there and not to a Claude subscription. Not built or tested.
 - **A shared Google sign-in for verification emails**, so nobody needs a
   Google Cloud project of their own. That takes Google's review of the
   app, which this project has not done.

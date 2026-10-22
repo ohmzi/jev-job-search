@@ -1,5 +1,5 @@
 /**
- * The fit rating. One JEV call per job with every question the pipeline
+ * The fit rating. One DeepSeek call per job with every question the pipeline
  * might need (speculative fan-out). Code turns the typed answers into a
  * composite score, hard skips, and human-readable reasons.
  */
@@ -120,7 +120,7 @@ export function buildFitState(job: Job, profile: Profile, now = new Date()): Rec
 /**
  * What a rating depends on: the posting as JEV sees it, the candidate, and the questions. The
  * posting's age is left out. It changes every day, it is not what the questions are about, and
- * the score takes it from the date, not from JEV.
+ * the score takes it from the date, not from the rating model.
  */
 export function ratingKey(job: Job, profile: Profile): string {
   const state = buildFitState(job, profile, new Date(0)) as { job: Record<string, unknown>; candidate: unknown };

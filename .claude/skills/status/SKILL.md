@@ -10,10 +10,10 @@ effort: low
 Run these and give one short answer, not four dumps:
 
 ```
-npx jev status
-npx jev doctor
-npx jev cost
-npx jev schedule status
+node bin/jev.js status
+node bin/jev.js doctor
+node bin/jev.js cost
+node bin/jev.js schedule status
 ```
 
 Say, in this order and only what applies:
@@ -22,7 +22,7 @@ Say, in this order and only what applies:
 2. **Waiting for you**: each form, what it asks for, and that `/resume`
    picks it up after they have done it in the tool's Chrome window.
 3. **Left for you**: how many are on the by-hand list, and the two or
-   three most common reasons. `npx jev log --manual` lists them.
+   three most common reasons. `node bin/jev.js log --manual` lists them.
 4. **Queue**: how many jobs are ready to apply to, and how old the search
    is. Offer `/discover` when it is more than a day old.
 5. **Accounts and the daily run**: one line each, only if set up.

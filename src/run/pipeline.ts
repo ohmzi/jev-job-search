@@ -18,6 +18,7 @@ import { logNotes } from "../answers/resolve.js";
 import { JevClient } from "../jev/client.js";
 import { applyUrlFor, hostIs, type Job } from "../jobs/normalize.js";
 import { loadQueue, mutateQueue, RUN_OWNED, sortEntries, updateEntry, type QueueEntry } from "../jobs/queue.js";
+import { recentFirst } from "../jobs/recency.js";
 import { withStore } from "../util/store.js";
 import { rememberWalledHost } from "../jobs/walled.js";
 import { learn, loadKnowledge } from "../knowledge/sites.js";
@@ -66,11 +67,12 @@ export function takeJobs(ids: string[], o: { count: number; dry: boolean; resubm
  * rehearsal sends nothing, so it may take any. `gate` speaks for the boards that want an account:
  * a job there is taken only when the tool may sign in today, and never more new accounts than the day allows.
  */
-export function pickJobs(entries: QueueEntry[], ids: string[], o: { count: number; dry: boolean; resubmit?: boolean }, gate: (url: string) => string | null = () => null): { picked: QueueEntry[]; refused: { id: string; why: string }[] } {
+export function pickJobs(entries: QueueEntry[], ids: string[], o: { count: number; dry: boolean; resubmit?: boolean; now?: Date }, gate: (url: string) => string | null = () => null): { picked: QueueEntry[]; refused: { id: string; why: string }[] } {
   if (!ids.length) {
     const picked: QueueEntry[] = [];
     const perEmployer = new Map<string, number>();
-    for (const e of sortEntries(entries.filter((x) => x.status === "queued"))) {
+    // The jobs the hourly search found inside its window go first, then the queue's own score order.
+    for (const e of recentFirst(sortEntries(entries.filter((x) => x.status === "queued" && x.applyable !== false)), o.now ?? new Date())) {
       if (picked.length >= o.count) break;
       // A job that must wait for another day stays in the queue, untouched.
       if (gate(e.job.url)) continue;
@@ -87,10 +89,14 @@ export function pickJobs(entries: QueueEntry[], ids: string[], o: { count: numbe
   for (const id of ids) {
     const e = entries.find((x) => x.job.id === id);
     if (!e) throw new Error(`No queue entry ${id}`);
+    if (e.applyable === false) {
+      refused.push({ id, why: "this is a board-only listing the tool cannot fill. Open it and apply yourself, or wait for it in Needs you" });
+      continue;
+    }
     const held = gate(e.job.url);
     if (held) refused.push({ id, why: held });
     else if (o.dry) picked.push(e);
-    else if (e.status === "submission_unknown") refused.push({ id, why: `Submit was clicked on this form before and no confirmation was seen. Settle it first: npx jev reconcile ${id}` });
+    else if (e.status === "submission_unknown") refused.push({ id, why: `Submit was clicked on this form before and no confirmation was seen. Settle it first: node bin/jev.js reconcile ${id}` });
     else if (e.status === "applied" && !o.resubmit) refused.push({ id, why: `already applied on ${e.appliedAt?.slice(0, 10) ?? "an earlier day"}. To send it again on purpose, add --resubmit` });
     else picked.push(e);
   }
@@ -316,7 +322,7 @@ function submitAndRecordOnSite(jev: JevClient, id: string, force: boolean, keepO
           keepTab(id, "awaiting_user_action");
           if (r.needsCode) learn(r.url, { emailsCode: true });
           assist(e.job, waitingFor, r.url);
-          console.log(`  left open for you: ${waitingWords(waitingFor)}. Then run: npx jev resume`);
+          console.log(`  left open for you: ${waitingWords(waitingFor)}. Then run: node bin/jev.js resume`);
           return false;
         }
         if (r.refused) {
@@ -336,11 +342,11 @@ function submitAndRecordOnSite(jev: JevClient, id: string, force: boolean, keepO
         }
         // Neither a confirmation nor the form: the application may or may not be with the employer.
         record(id, "submission_unknown", `${UNKNOWN_REASON}: the page became ${r.state}`);
-        console.log(`  not confirmed. The tab stays open. To settle it: npx jev reconcile ${id}`);
+        console.log(`  not confirmed. The tab stays open. To settle it: node bin/jev.js reconcile ${id}`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (clicked) {
-          console.log(`${id}  not confirmed: ${message}. The tab stays open. To settle it: npx jev reconcile ${id}`);
+          console.log(`${id}  not confirmed: ${message}. The tab stays open. To settle it: node bin/jev.js reconcile ${id}`);
         } else {
           // Nothing was clicked: the form was not ready, or its tab is gone. It is listed for the person with the reason.
           console.log(`${id}  not sent: ${message}`);
@@ -384,7 +390,7 @@ export async function reconcile(jev: JevClient, id: string): Promise<"applied" |
  */
 export async function resume(jev: JevClient, id: string, opts: { stop?: () => boolean } = {}): Promise<"applied" | "still_waiting" | "gone" | "signed_in" | "retry"> {
   if (!(await hasOpenTab(id))) {
-    record(id, "needs_review", "the form that was left open for you is closed. Apply by hand, or run: npx jev apply " + id + " --submit");
+    record(id, "needs_review", "the form that was left open for you is closed. Apply by hand, or run: node bin/jev.js apply " + id + " --submit");
     return "gone";
   }
   if (waitsAtSignIn(id)) {
@@ -522,7 +528,7 @@ async function settle(jev: JevClient, r: FillReport, o: RunOptions): Promise<boo
     const waitingFor = outcome.waitingFor ?? (outcome.action === "awaiting_email_verification" ? "email_link" : "unknown");
     keepTab(r.jobId, outcome.action);
     assist(rec.job, waitingFor, r.url);
-    console.log(`  left open for you: ${waitingWords(waitingFor)}. Then run: npx jev resume`);
+    console.log(`  left open for you: ${waitingWords(waitingFor)}. Then run: node bin/jev.js resume`);
     return false;
   }
   if (outcome.rememberSite) rememberWalledHost(rec.job.url);

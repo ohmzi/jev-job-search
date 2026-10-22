@@ -41,7 +41,7 @@ export function askPassword(dialog: Dialog = macDialog, o: { what?: string; exis
   let note = "";
   let last: Asked = { ok: false, why: "cancelled" };
   for (let round = 0; round < ACCOUNTS.askRounds; round++) {
-    const first = dialog(`${note}${what}\n\nIt goes into your Mac's Keychain. It is not shown, not saved in a file, and never sent to Claude or JEV.\n\n${rules}`);
+    const first = dialog(`${note}${what}\n\nIt goes into your Mac's Keychain. It is not shown, not saved in a file, and never sent to Claude or DeepSeek.\n\n${rules}`);
     if (first === null) return { ok: false, why: "cancelled" };
     const password = new Secret(first);
     const problems = check(password);

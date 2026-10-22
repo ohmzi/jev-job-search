@@ -12,6 +12,48 @@ const YesNo = z.enum(["yes", "no"]);
 /** A voluntary self-identification question may be declined. */
 const YesNoDecline = z.enum(["yes", "no", "decline"]);
 
+/**
+ * One portal's hourly search: the roles it wants and the places it counts as close. This is
+ * candidate and region data, so it lives here and not in source. The four clones each carry
+ * their own block.
+ */
+const SearchSchema = z.object({
+  /** A short name for this portal, used in the scheduled job's name. */
+  portal: z.string().min(1).max(60),
+  /** Every regex must match the title. A title that matches none is not a role this portal wants. */
+  titleInclude: z.array(z.string().min(1)).min(1),
+  /** A title that matches any of these is left out (designers, managers, sales and the like). */
+  titleExclude: z.array(z.string()).default([]),
+  /** The terms handed to each board. */
+  terms: z.array(z.string().min(1)).min(1),
+  sites: z.array(z.enum(["indeed", "linkedin"])).default(["indeed", "linkedin"]),
+  /** The Indeed country the searches belong to. */
+  countryIndeed: z.string().min(2).max(60).default("USA"),
+  resultsWanted: z.number().int().min(1).max(100).default(50),
+  hoursOld: z.number().int().min(1).max(24).default(1),
+  /** A run stops asking after this many calls, whatever the terms and places add up to. */
+  maxQueries: z.number().int().min(1).max(30).default(12),
+  /** Pause between two calls. */
+  gapMs: z.number().int().min(0).max(60_000).default(4_000),
+  /** The minute past each hour this portal's timer starts, so the four clones do not ask at once. */
+  minuteOffset: z.number().int().min(0).max(59).default(0),
+  /** One query per place. `accept` is tested against the location the board returns. */
+  locations: z
+    .array(
+      z.object({
+        query: z.string().min(1),
+        distance: z.number().int().min(0).max(500).default(50),
+        accept: z.array(z.string().min(1)).min(1),
+      }),
+    )
+    .min(1),
+  /** Leave out a posting whose only location is Remote or the whole United States, so it cannot reach two portals. */
+  excludeRemoteOnly: z.boolean().default(true),
+  /** Employer names to leave out of this portal. */
+  excludeCompanies: z.array(z.string()).default([]),
+});
+export type Search = z.infer<typeof SearchSchema>;
+
 export const ProfileSchema = z.object({
   name: z.object({
     first: z.string().min(1),
@@ -55,7 +97,7 @@ export const ProfileSchema = z.object({
         startYear: z.number().int(),
         gradMonth: z.number().int().min(1).max(12),
         gradYear: z.number().int(),
-        status: z.enum(["in_progress", "completed", "transferred"]),
+        status: z.enum(["in_progress", "completed", "transferred", "attended"]),
         gpa: z
           .object({
             cumulative: z.number().optional(),
@@ -140,6 +182,8 @@ export const ProfileSchema = z.object({
   summary: z.string().min(40),
   /** Short facts Claude may use when drafting free text. Nothing outside this list is claimed. */
   facts: z.array(z.string()),
+  /** This portal's hourly search. Optional: a profile without it simply has no hourly run. */
+  search: SearchSchema.optional(),
   /**
    * Standing answers: how the candidate wants a recurring question answered.
    * JEV reads them when it picks an option; Claude reads them when it drafts.

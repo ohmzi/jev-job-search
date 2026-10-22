@@ -29,7 +29,7 @@ before adding anything.
    right list, facts as one sentence each. Every added bullet is plain, has
    one fact, and uses only what the source said.
 5. Say that the answer memory starts over, because the profile changed,
-   and offer `npx jev apply --dry --count 2` to see the effect.
+   and offer `node bin/jev.js apply --dry --count 2` to see the effect.
 
 Never invent a number, a date or a credential. If a source and the profile
 disagree, ask; do not pick.

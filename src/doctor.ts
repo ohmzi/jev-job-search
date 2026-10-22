@@ -1,7 +1,7 @@
 /**
  * `doctor`: checks everything a run needs and names the one thing to do next.
  * The setup skill runs it after every step, so a person never has to work out
- * what is missing. With `online` it also makes one tiny JEV call and one tiny
+ * what is missing. With `online` it also makes one tiny DeepSeek call and one tiny
  * Claude Code call to prove the key and the sign-in work.
  */
 import { spawnSync } from "node:child_process";
@@ -49,13 +49,13 @@ export function checkClaude(): Check {
   return { name: "Claude", ok, detail: ok ? `Claude Code ${r.stdout.trim()} on your subscription` : "the claude command was not found", fix: "Install Claude Code from https://code.claude.com and run `claude` once to sign in, or put ANTHROPIC_API_KEY in .env to use the Claude API instead" };
 }
 
-export function checkKey(key = process.env.OPENROUTER_API_KEY ?? ""): Check {
+export function checkKey(key = process.env.DEEPSEEK_API_KEY ?? ""): Check {
   const ok = key.trim().length > 0;
   return {
-    name: "OpenRouter key",
+    name: "DeepSeek key",
     ok,
-    detail: ok ? "set in .env" : existsSync(path.join(ROOT, ".env")) ? ".env exists but OPENROUTER_API_KEY is empty" : "no .env file yet",
-    fix: "Create a key at https://openrouter.ai/keys, run `cp .env.example .env`, and paste the key after OPENROUTER_API_KEY= in .env. Do not paste the key into a chat.",
+    detail: ok ? "set in .env" : existsSync(path.join(ROOT, ".env")) ? ".env exists but DEEPSEEK_API_KEY is empty" : "no .env file yet",
+    fix: "Create a key at https://platform.deepseek.com/api_keys, run `cp .env.example .env`, and paste the key after DEEPSEEK_API_KEY= in .env. Do not paste the key into a chat.",
   };
 }
 
@@ -89,7 +89,7 @@ export function checkOwnWords(): Check[] {
 }
 
 export function checkQueue(): Check {
-  const fix = "Run `npx jev discover` to find jobs";
+  const fix = "Run `node bin/jev.js discover` to find jobs";
   if (!existsSync(PATHS.queue)) return { name: "Job queue", ok: false, optional: true, detail: "no jobs found yet", fix };
   const q = loadQueue();
   const queued = q.entries.filter((e) => e.status === "queued").length;
@@ -120,15 +120,15 @@ export function checkAccounts(store: SecretStore = defaultStore(), files: { acco
   return { name, ok: true, optional: true, detail: `Workday: ${how}, ${file.accounts.filter((a) => a.mode !== "off").length} employer account(s)${verify}`, fix: "" };
 }
 
-/** One tiny JEV call: proves the key is valid and has credit. */
+/** One tiny DeepSeek call: proves the key is valid and has credit. */
 export async function checkKeyOnline(): Promise<Check> {
-  const fix = "Check the key at https://openrouter.ai/keys and that the account has credit";
+  const fix = "Check the key at https://platform.deepseek.com/api_keys and that the account has credit";
   try {
     const jev = new JevClient({ usageLog: null });
     await jev.decide("The sky is blue.", { ok: noul("Does the text mention a colour?") }, "doctor");
-    return { name: "JEV answers", ok: true, detail: `one test call, $${jev.usage.costUsd.toFixed(6)}`, fix: "" };
+    return { name: "DeepSeek answers", ok: true, detail: `one test call, $${jev.usage.costUsd.toFixed(6)}`, fix: "" };
   } catch (err) {
-    return { name: "JEV answers", ok: false, detail: (err instanceof Error ? err.message : String(err)).slice(0, 300), fix };
+    return { name: "DeepSeek answers", ok: false, detail: (err instanceof Error ? err.message : String(err)).slice(0, 300), fix };
   }
 }
 
@@ -171,7 +171,7 @@ export function nextStep(checks: Check[]): string {
   if (blocking) return blocking.fix;
   const optional = checks.find((c) => !c.ok && c.optional);
   if (optional) return optional.fix;
-  return "Everything is in place. Rehearse with `npx jev apply --dry --count 3`, then apply.";
+  return "Everything is in place. Rehearse with `node bin/jev.js apply --dry --count 3`, then apply.";
 }
 
 export const isReadyToRun = (checks: Check[]) => checks.every((c) => c.ok || c.optional);

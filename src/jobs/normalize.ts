@@ -21,6 +21,8 @@ export type Job = {
   locations: string[];
   /** ISO date (YYYY-MM-DD) or null when the source does not say. */
   postedAt: string | null;
+  /** The full timestamp when a board gives one, so the page can say "posted 2 hours ago". Optional. */
+  postedAtExact?: string | null;
   terms: string[];
   sponsorship: Sponsorship;
   degrees: string[];
@@ -153,6 +155,7 @@ export function dedupe(jobs: Job[]): Job[] {
       ...existing,
       locations: existing.locations.length >= j.locations.length ? existing.locations : j.locations,
       postedAt: existing.postedAt ?? j.postedAt,
+      postedAtExact: existing.postedAtExact ?? j.postedAtExact ?? null,
       terms: existing.terms.length ? existing.terms : j.terms,
       sponsorship: existing.sponsorship !== "unknown" ? existing.sponsorship : j.sponsorship,
       degrees: existing.degrees.length ? existing.degrees : j.degrees,

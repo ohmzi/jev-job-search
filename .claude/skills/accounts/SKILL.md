@@ -22,15 +22,15 @@ per employer, and say that it is experimental.
 
 ## `/accounts` with nothing after it
 
-Run `npx jev accounts`. If nothing is set up, this is the guided setup:
+Run `node bin/jev.js accounts`. If nothing is set up, this is the guided setup:
 
 1. Say in two sentences what this is: Workday employers each want an
    account, and the simplest way is to sign in once yourself.
-2. Run `npx jev status` and name the two or three Workday employers with
-   the best jobs they are missing (`npx jev queue` lists skipped jobs with
+2. Run `node bin/jev.js status` and name the two or three Workday employers with
+   the best jobs they are missing (`node bin/jev.js queue` lists skipped jobs with
    `workday` as the reason; use the companies, not ids).
 3. Ask which one to start with, then do `/accounts signin <employer>`.
-4. After it works, run `npx jev discover` and say how many jobs at that
+4. After it works, run `node bin/jev.js discover` and say how many jobs at that
    employer are now in the queue. Offer `/apply`.
 
 If something is set up, say what, what waits for them, and the next step.
@@ -39,17 +39,17 @@ If something is set up, say what, what waits for them, and the next step.
 
 | They type | You do |
 |---|---|
-| `/accounts signin <employer>` | Show `npx jev accounts signin <employer>` in a `bash` block. It opens the employer's page in the tool's Chrome window; they sign in there themselves. Tell them to click Run and then look at that window. |
-| `/accounts password <employer>` | Run `npx jev accounts password <employer>`. A window opens on their Mac; they type that employer's password there, twice. You never see it. With no employer it stores the one password they use on accounts they already had. |
-| `/accounts browser <employer>` | Only when they say they saved that employer's password in the tool's Chrome and want the tool to use it. Run `npx jev accounts browser <employer>`. The tool then presses Sign In once that browser has filled the page in; it types nothing and never reads the password. `--off` takes it back. |
+| `/accounts signin <employer>` | Show `node bin/jev.js accounts signin <employer>` in a `bash` block. It opens the employer's page in the tool's Chrome window; they sign in there themselves. Tell them to click Run and then look at that window. |
+| `/accounts password <employer>` | Run `node bin/jev.js accounts password <employer>`. A window opens on their Mac; they type that employer's password there, twice. You never see it. With no employer it stores the one password they use on accounts they already had. |
+| `/accounts browser <employer>` | Only when they say they saved that employer's password in the tool's Chrome and want the tool to use it. Run `node bin/jev.js accounts browser <employer>`. The tool then presses Sign In once that browser has filled the page in; it types nothing and never reads the password. `--off` takes it back. |
 | `/accounts add workday` | The questions below. Run it with `--preview` first and read what it allows back to them. Save only after a yes, with exactly the flags they agreed to. |
-| `/accounts setup <employer>` | Show `npx jev accounts setup <employer>` in a `bash` block. It signs in, or makes the account. They click Run. |
-| `/accounts clear` | `npx jev accounts clear`, after they fixed what paused an account. |
-| `/accounts off` / `/accounts on` | `npx jev accounts off` / `on`. Say that everything set up is kept. |
+| `/accounts setup <employer>` | Show `node bin/jev.js accounts setup <employer>` in a `bash` block. It signs in, or makes the account. They click Run. |
+| `/accounts clear` | `node bin/jev.js accounts clear`, after they fixed what paused an account. |
+| `/accounts off` / `/accounts on` | `node bin/jev.js accounts off` / `on`. Say that everything set up is kept. |
 | `/accounts forget <employer or all>` | Run it without `--yes` first and read back what it removes. After a yes, run it with `--yes`. Say that the account at the employer still exists. |
-| `/accounts gmail` | Only if they want verification emails read for them. Say first that the default needs no setup: they click the link and type `/resume`. If they still want it, walk through "Verification emails" in `docs/ACCOUNTS.md` one step at a time. Do not promise how long it takes. Then `/accounts gmail <file>` runs `npx jev gmail connect --client <file>`. |
+| `/accounts gmail` | Only if they want verification emails read for them. Say first that the default needs no setup: they click the link and type `/resume`. If they still want it, walk through "Verification emails" in `docs/ACCOUNTS.md` one step at a time. Do not promise how long it takes. Then `/accounts gmail <file>` runs `node bin/jev.js gmail connect --client <file>`. |
 
-After any of these, run `npx jev accounts` and read the result back.
+After any of these, run `node bin/jev.js accounts` and read the result back.
 
 ## The questions for `add workday`
 
