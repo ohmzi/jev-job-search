@@ -127,7 +127,7 @@ Every skill runs a command you can also type yourself, as `npx jev <command>` fr
 | `/report` | `npx jev report --open` |
 | `/accounts`, `/accounts signin acme`, `/accounts password acme` | `npx jev accounts`, `npx jev accounts signin acme`, `npx jev accounts password acme` |
 | `/daily dry`, `/daily run`, `/daily schedule 09:00`, `/daily pause`, `/daily stop` | `npx jev daily --dry`, `npx jev daily`, `npx jev schedule install --at 09:00`, `npx jev schedule remove`, `npx jev daily --stop` |
-| `/resume` | `npx jev resume`, `npx jev reconcile` |
+| `/resume` | `npx jev resume`, `npx jev reconcile`, `npx jev code <job id> --submit` |
 | `/status` | `npx jev status`, `npx jev doctor`, `npx jev cost`, `npx jev log` |
 | `/inbox` | `npx jev inbox --days 7` |
 
@@ -455,7 +455,7 @@ Every recurring question you answer by hand once (pay, relocation, start date, a
 
 ### Stay near your computer the first few runs
 
-Boards sometimes email a code or show a "not a robot" check after Submit. The tool never types such a code or passes a check for you. It leaves that form open and filled, sends you a notification, opens your mail at a search for the code, and moves on to the next job, so a run never waits on you. Type the code or pass the check in the tool's Chrome window, then run `npx jev resume` and it records the application.
+Boards sometimes email a code or show a "not a robot" check after Submit. A code goes into the form with `npx jev code <id> --submit`, which reads it on standard input, writes it, reads it back, and sends only when the page confirms; `/apply` and `/resume` find it over the Gmail MCP for you. The tool never passes a robot check. It leaves that form open and filled, sends you a notification, and moves on to the next job, so a run never waits on you. Pass the check in the tool's Chrome window, then run `npx jev resume` and it records the application.
 
 ## Contributing
 

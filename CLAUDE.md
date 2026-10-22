@@ -60,30 +60,35 @@ doctor` says what is in place and what to do next.
   with certainty waits for the person. Any other page with a password box
   is blocked as before: the job goes on the by-hand list and the site is
   noted. The tool solves no CAPTCHAs.
-- **You never touch a credential.** When you work in this repo you never
-  ask for, read, type or repeat a password, a code or a token, and never
+- **You never touch a password or a token.** When you work in this repo you
+  never ask for, read, type or repeat a password or a token, and never
   read the Keychain. The password is typed by the person into a window of
   their own Mac (`src/accounts/ask.ts`). You never start a run that signs
   in or signs up at an employer, which includes `apply` on a Workday job
   with or without `--dry`: show the command in a `bash` block and let the
-  person click Run. You build and test against the scripted pages
-  in `tests/helpers/` with made-up credentials.
+  person click Run. The one exception is a code a board emails to confirm
+  an application: at the person's request you may read it from their
+  mailbox and give it to `npx jev code <id>` on standard input,
+  never as an argument, never repeated in a reply or a record. You build
+  and test against the scripted pages in `tests/helpers/` with made-up
+  credentials.
 - **Secrets live in the Keychain and travel as `Secret`.** Passwords and
   the Gmail tokens are in the macOS Keychain (`src/accounts/secrets.ts`),
   never in a file, never in a command's arguments, never in a prompt to
   Claude or JEV, a report, a plan, a trace or a record. Password boxes and
   one-time-code boxes are never dumped.
-- **A human check is the person's to pass.** That includes a CAPTCHA and
-  a code a board emails to confirm a person is applying. No such code is
-  ever read from mail or typed into a form, by the tool or by you. The
-  filled form stays open (`awaiting_user_action`), the person is told
-  (`src/run/assist.ts`: a notification, the tab in front, their own mail
-  opened at a search for the code), and the run moves on. `resume` records
-  the application once they finish. The email an employer sends to prove
-  the inbox of an account the person set up is a different thing:
-  `src/mail/verification.ts` may read that one email, with their consent.
-  It is never used for a human-check code, and an email's content goes to
-  its parser and nowhere else.
+- **A CAPTCHA is the person's to pass.** That includes a robot check after
+  Submit: `src/run/assist.ts` notifies the person, brings the tab in front,
+  and the run moves on. A code a board emails to confirm an application is
+  different. With the person's consent it is read from their mailbox and
+  entered by `npx jev code <id>` (`src/run/code.ts`): the code
+  arrives on standard input, goes into the one box the form has for it,
+  and is read back from the page before anything is sent. `--submit` clicks
+  Submit, and the application is recorded only when the page confirms. A
+  code is never an argument, never printed and never recorded. The email an
+  employer sends to prove the inbox of an account the person set up is read
+  by `src/mail/verification.ts`, with their consent. An email's content
+  goes to its parser and nowhere else.
 - **Never send twice.** From the moment Submit is clicked the application
   may be with the employer. The job is recorded `submission_unknown` before
   the click and is never filled or sent again until a confirmation,

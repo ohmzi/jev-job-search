@@ -17,7 +17,7 @@ export type SubmitResult = {
   confidence: number;
   url: string;
   errors: string[];
-  /** The board emailed a code to confirm a person is applying. A human check: the person's to type. */
+  /** The board emailed a code to confirm a person is applying. Entered with `code`, or by the person. */
   needsCode: boolean;
   /** The page shows a robot check. The person's to pass. */
   humanCheck: boolean;
@@ -155,7 +155,7 @@ export const ALREADY_APPLIED = /recently applied for another role|unable to acce
 export const HUMAN_CHECK = /not a robot|i am human|i'm human|human check|verify (that )?you('re| are) (a )?human|complete the captcha|captcha (is )?required/i;
 const withoutBadges = (text: string) => text.replace(/(this site is )?protected by (re|h)captcha[^.\n]*[.\n]?/gi, " ").replace(/recaptcha (privacy|terms)[^.\n]*/gi, " ");
 
-/** A board that emails a code to confirm a person is applying. Only the person can enter it. */
+/** A board that emails a code to confirm a person is applying. `code` enters it; the person may too. */
 export const SECURITY_CODE = /verification code was sent|enter the \S+ code|security code/i;
 
 /**

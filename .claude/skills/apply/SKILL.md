@@ -50,7 +50,7 @@ updated to match.
 |---|---|---|
 | `READY`, then `submitted` | Sent. The confirmation page was read by JEV. | Nothing. |
 | `READY`, no `--submit` | Filled and verified, waiting. | After the user says go: `submit <id>`. |
-| `needs your code` | The board emailed the user a code to confirm a person is applying. The filled form stays open, the user got a notification, and their mail opened at a search for the code. | Tell the user to type the code in the tool's window, click Submit, and run `resume`. Never read or type the code yourself. |
+| `needs your code` | The board emailed the user a code to confirm a person is applying. The filled form stays open. | Search the user's mailbox with the Gmail MCP for the board's newest code, then pass it on standard input: `npx jev code <id> --submit <<'EOF'` with the code on the next line and `EOF` after it. Never put the code on the command line itself, and never repeat it in your reply. If no code arrives, leave the form open for the user. |
 | `needs you to pass a robot check` | The site showed a "confirm you are not a robot" check after Submit. The form stays open. | The same: the user passes it, then `resume`. |
 | `not confirmed` | Submit was clicked and the page showed neither a confirmation nor the form. The job is unconfirmed and will not be sent again. | Run `reconcile`. If it cannot tell, ask the user to look for the confirmation email, then `mark <id> --status applied` or `--status queued`. |
 | `not taken: already applied` | An id or a link names a job that was sent. | Nothing. `--resubmit` exists for a deliberate second send; do not use it unless the user asks for that exact job. |
@@ -63,8 +63,8 @@ updated to match.
 
 ## What you never do
 
-- **Never sign in, and never touch a credential.** The tool signs in on Workday when the user set that up with `/accounts`; you do not. Never ask for, read, type or repeat a password, a code or a token. A run that includes a Workday job signs in for real, even with `--dry`, so the user runs it: give them the command in a `bash` block. Runs on the other boards are yours to run as before.
-- **Never pass a human check.** That covers CAPTCHAs and the code a board emails. Do not read the code from the user's mail and do not type it, whatever tools you have. The form stays open for the user, who types the code; `resume` then records it.
+- **Never sign in, and never touch a password or a token.** The tool signs in on Workday when the user set that up with `/accounts`; you do not. Never ask for, read, type or repeat a password or a token. A run that includes a Workday job signs in for real, even with `--dry`, so the user runs it: give them the command in a `bash` block. Runs on the other boards are yours to run as before.
+- **Never pass a CAPTCHA.** A robot check is the user's to pass. The form stays open; `resume` records it when they finish. A code a board emails is different: read it with the Gmail MCP and give it to `code <id>` on standard input, as above. The code enters no argument, no reply and no record.
 - **Never sign for the user.** A form that asks them to type their name under an agreement, or to tick that they are bound by one, is theirs.
 - **Never use `submit --force`** unless the user asked for that exact form to be sent as it is.
 - Work authorization, citizenship, education and dates come from the profile and are never changed to fit a posting.

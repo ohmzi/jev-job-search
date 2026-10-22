@@ -12,12 +12,12 @@ import { contextFingerprint } from "./answers/resolve.js";
 import { loadMemory, prune, saveMemory } from "./answers/memory.js";
 import { inspect, setValues } from "./browser/formRunner.js";
 import { loadReport, type Fill, type FillReport } from "./browser/report.js";
-import { closeJobTab, loadSession, pageFor } from "./browser/session.js";
+import { closeJobTab, dump, hasOpenTab, loadSession, pageFor } from "./browser/session.js";
 import { clearBrowsingData, closeTab, ensureBrowser, listTargets, newTab, Page, sleep } from "./browser/cdp.js";
 import { acquireRun, currentRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
-import { checkJob } from "./browser/submit.js";
+import { checkJob, SECURITY_CODE } from "./browser/submit.js";
 import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
 import { accountGate } from "./accounts/capability.js";
 import { clearStop, dailyRun, formatDaily, localDay, requestStop, saveDaily, stopRequested, type Outcome } from "./run/daily.js";
@@ -51,6 +51,7 @@ import { buildReport } from "./report/data.js";
 import { reportPage } from "./report/page.js";
 import { startReportServer } from "./report/server.js";
 import { endIfAbandoned, noteApplied, pipeline, reconcile, recordApplied, resolvePage, resume, submitAndRecord, sweep, takeJobs } from "./run/pipeline.js";
+import { cleanCode, codeTargetIn, enterCode } from "./run/code.js";
 import { brief, printFill, printTable } from "./run/print.js";
 import { limiter } from "./util/pace.js";
 
@@ -421,6 +422,58 @@ program
         if (outcome === "applied") sent.push(e.job.id);
         console.log(`${e.job.id}  ${e.job.company} | ${e.job.title}: ${outcome === "applied" ? "confirmed, recorded as applied" : outcome === "not_sent" ? "the form is still open, so it was not sent. It is on your by-hand list" : `cannot tell. Look for a confirmation email from ${e.job.company}, then run: npx jev mark ${e.job.id} --status applied, or --status queued to try again`}`);
       }
+    });
+    await noteApplied(sent);
+  });
+
+/**
+ * Everything written to standard input. A code travels this way, never as an argument, so it is
+ * not in the shell's history, the process list or a log.
+ */
+async function readStdin(): Promise<string> {
+  let data = "";
+  process.stdin.setEncoding("utf8");
+  try {
+    for await (const chunk of process.stdin) data += String(chunk);
+  } catch {
+    /* a closed input is an empty one */
+  }
+  return data;
+}
+
+program
+  .command("code <id>")
+  .description("Type the code a board emailed into the box on the form left open for it. The code is read from standard input, so it never appears in an argument or a log. With --submit the form is sent, and recorded only when the page confirms it")
+  .option("--submit", "click Submit once the page shows the code")
+  .action(async (id: string, o: { submit?: boolean }) => {
+    if (process.stdin.isTTY) console.log("Paste the code the board emailed, then press Enter. It is not echoed back.");
+    const given = cleanCode(await readStdin());
+    if ("why" in given) return console.log(`Not entered: ${given.why}.`);
+    if (!(await hasOpenTab(id))) return console.log(`${id}  no form is open for this job. Open it first: npx jev apply ${id} --submit`);
+    const page = await pageFor(id);
+    let problem: string | null = null;
+    try {
+      const text = await page.evaluate<string>("window.__awj.pageText()");
+      if (!SECURITY_CODE.test(text)) problem = "this form is not asking for a code a board emailed";
+      else {
+        const target = codeTargetIn(await dump(page));
+        if ("why" in target) problem = target.why;
+        else {
+          problem = await enterCode(page, loadProfile(), target, given.code);
+          if (!problem) console.log(`${id}  the code is in the "${target.label}" box and reads back from the page`);
+        }
+      }
+    } catch (err) {
+      problem = err instanceof Error ? err.message : String(err);
+    } finally {
+      page.close();
+    }
+    if (problem) return console.log(`Not entered: ${problem}.`);
+    if (!o.submit) return console.log("Not sent. Run the same command with --submit to send it.");
+    const jev = new JevClient();
+    const sent: string[] = [];
+    await inRun("code", async () => {
+      if (await submitAndRecord(jev, id, false)) sent.push(id);
     });
     await noteApplied(sent);
   });

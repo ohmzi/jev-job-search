@@ -49,19 +49,30 @@ how it learns. The README has the short version; this is the long one.
    ```
 
 Stay near your computer while the tool runs. Some forms show a "prove you
-are not a robot" test or email you a code. Only you can do those.
+are not a robot" test. Only you can pass that.
 
-### Codes and checks that are yours
+### Codes a board emails
 
 After several applications in a short time, Greenhouse sometimes emails
-an 8-character code and waits for it. BambooHR and JazzHR show a "confirm
-you are not a robot" check. The tool does not read such a code, does not
-type it, and does not pass a robot check.
+an 8-character code and waits for it. The code goes into the form with
+`npx jev code`, which takes it on standard input, writes it into
+the form's code box, reads it back, and sends only when you add
+`--submit`:
 
-What it does: the filled form stays open in its Chrome window, you get a
-notification, your own mail opens at a search for the code email, and the
-run goes on with the next job. When you have typed the code or passed the
-check and clicked Submit:
+```bash
+npx jev code <job id> --submit
+```
+
+With Claude Code, the `/apply` and `/resume` skills find the code in your
+mailbox over the Gmail MCP and run that command for you. The code never
+appears in a command argument, a reply or a record.
+
+### Robot checks are yours
+
+BambooHR and JazzHR show a "confirm you are not a robot" check, which the
+tool never passes. The filled form stays open in its Chrome window, you get
+a notification, and the run goes on with the next job. When you have passed
+the check and clicked Submit:
 
 ```bash
 npx jev resume
