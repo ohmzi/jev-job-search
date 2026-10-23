@@ -22,6 +22,13 @@ const WORDS: Record<WaitingFor, string> = {
 
 export const waitingWords = (w: WaitingFor) => WORDS[w];
 
+/**
+ * What the person is told at a robot check. When the run is going to wait and then send,
+ * it must not tell them to click Submit as well: two clicks can send the application twice.
+ */
+export const captchaWords = (toolSends: boolean): string =>
+  toolSends ? "pass the robot check; the tool sends the application once you are through" : WORDS.robot_check;
+
 /** The mail search that finds a board's code email: the board's name and "code", from the last hour. No address, nothing personal. */
 export function mailSearchUrl(host: string): string {
   // Workday mails from its own domain, whatever the employer's address is.
@@ -49,8 +56,8 @@ export function notify(title: string, body: string): void {
 }
 
 /** Tells the person a form waits on them and, for an emailed code, opens their mail at the search for it. */
-export function assist(job: { company: string; title: string }, waitingFor: WaitingFor, pageUrl: string): void {
-  notify("jev-job-search needs you", `${job.company}: ${WORDS[waitingFor]}`);
+export function assist(job: { company: string; title: string }, waitingFor: WaitingFor, pageUrl: string, words = WORDS[waitingFor]): void {
+  notify("jev-job-search needs you", `${job.company}: ${words}`);
   if ((waitingFor === "human_code" || waitingFor === "email_link") && ASSIST.openMail && process.platform === "darwin") {
     let host = "";
     try {

@@ -14,7 +14,7 @@ import { blockedReport, loadPlan, loadReport, pickSubmit, saveReport, type FillR
 import { blockingCaptcha, captchaState, waitForCaptcha } from "../browser/captcha.js";
 import { closeJobTab, hasOpenTab, loadSession, mutateSession, pageFor } from "../browser/session.js";
 import { checkJob, submitJob, watchForConfirmation } from "../browser/submit.js";
-import { assist, notify, waitingWords } from "./assist.js";
+import { assist, captchaWords, notify, waitingWords } from "./assist.js";
 import { logNotes } from "../answers/resolve.js";
 import { JevClient } from "../jev/client.js";
 import { applyUrlFor, hostIs, type Job } from "../jobs/normalize.js";
@@ -314,8 +314,8 @@ export async function personPasses(jev: JevClient, id: string, ms: number, watch
   return ms > 0 && (await watch(jev, id, { timeoutMs: ms })) === "submitted";
 }
 
-/** A challenge on a job's form, and how to watch it while the person works. */
-export type CaptchaWait = { blocking: boolean; wait: (ms: number) => Promise<"cleared" | "submitted" | "timeout"> };
+/** A challenge on a job's form, and how to watch it while the person works. `close` releases the tab session. */
+export type CaptchaWait = { blocking: boolean; wait: (ms: number) => Promise<"cleared" | "submitted" | "timeout">; close?: () => void };
 
 /** Reads a job's tab for a challenge. Null when there is no tab, or nothing could be read. */
 async function readCaptcha(jev: JevClient, id: string): Promise<CaptchaWait | null> {
@@ -326,19 +326,9 @@ async function readCaptcha(jev: JevClient, id: string): Promise<CaptchaWait | nu
     const pick = pickSubmit(loadPlan(id).plan.submitSelectors);
     const reading = await captchaState(page);
     if (!pick || !blockingCaptcha(reading.descriptors, reading.tokens)) {
-      page.close();
-      return { blocking: false, wait: async () => "cleared" };
+      return { blocking: false, wait: async () => "cleared", close: () => page.close() };
     }
-    return {
-      blocking: true,
-      wait: async (ms) => {
-        try {
-          return await waitForCaptcha(jev, page, id, { timeoutMs: ms, submitSelector: pick.selector });
-        } finally {
-          page.close();
-        }
-      },
-    };
+    return { blocking: true, wait: (ms) => waitForCaptcha(jev, page, id, { timeoutMs: ms, submitSelector: pick.selector }), close: () => page.close() };
   } catch {
     page.close();
     return null;
@@ -352,12 +342,17 @@ async function readCaptcha(jev: JevClient, id: string): Promise<CaptchaWait | nu
  */
 export async function waitAtCaptcha(jev: JevClient, id: string, ms: number, onHandOff: () => void, read: (id: string) => Promise<CaptchaWait | null> = (jobId) => readCaptcha(jev, jobId)): Promise<"go" | "applied" | "left"> {
   const c = await read(id).catch(() => null);
-  if (!c || !c.blocking) return "go";
-  onHandOff();
-  if (ms <= 0) return "left";
-  const w = await c.wait(ms);
-  if (w === "cleared") return "go";
-  return w === "submitted" ? "applied" : "left";
+  if (!c) return "go";
+  try {
+    if (!c.blocking) return "go";
+    onHandOff();
+    if (ms <= 0) return "left";
+    const w = await c.wait(ms);
+    if (w === "cleared") return "go";
+    return w === "submitted" ? "applied" : "left";
+  } finally {
+    c.close?.();
+  }
 }
 
 /** Brings a job's tab to the front, or does nothing when it has none. */
@@ -394,7 +389,8 @@ function submitAndRecordOnSite(jev: JevClient, id: string, force: boolean, keepO
         const gate = await waitAtCaptcha(jev, id, humanWaitMs, () => {
           const e = record(id, "awaiting_user_action", ROBOT_REASON, {}, "robot_check");
           keepTab(id, "awaiting_user_action");
-          assist(e.job, "robot_check", loadReport(id).url);
+          // The words say who sends it: the tool when it is waiting, the person when it is not.
+          assist(e.job, "robot_check", loadReport(id).url, captchaWords(humanWaitMs > 0));
           void focusTab(id);
         });
         if (gate === "applied") {

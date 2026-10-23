@@ -51,6 +51,14 @@ describe("a challenge before Submit", () => {
     const r = await waitAtCaptcha(jev, "a", RUN.humanWaitMs, () => {}, async () => ({ blocking: true, wait: async () => "submitted" }));
     expect(r).toBe("applied");
   });
+  it("closes the tab session it opened on every path", async () => {
+    let closed = 0;
+    const read = async () => ({ blocking: true, wait: async () => "cleared" as const, close: () => { closed++; } });
+    expect(await waitAtCaptcha({} as JevClient, "a", 0, () => {}, read)).toBe("left");
+    expect(await waitAtCaptcha({} as JevClient, "a", RUN.humanWaitMs, () => {}, read)).toBe("go");
+    expect(await waitAtCaptcha({} as JevClient, "a", RUN.humanWaitMs, () => {}, async () => ({ blocking: false, wait: async () => "cleared" as const, close: () => { closed++; } }))).toBe("go");
+    expect(closed).toBe(3);
+  });
   it("goes straight on when the form shows no challenge", async () => {
     let told = false;
     const r = await waitAtCaptcha(jev, "a", RUN.humanWaitMs, () => { told = true; }, async () => ({ blocking: false, wait: async () => "cleared" }));

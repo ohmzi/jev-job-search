@@ -4,7 +4,7 @@ import { registerSecret, safeUrl, scrub, Secret } from "../src/util/redact.js";
 import { showsValue } from "../src/util/dates.js";
 import { showsPlanned } from "../src/browser/report.js";
 import { settleStep } from "../src/browser/session.js";
-import { mailSearchUrl } from "../src/run/assist.js";
+import { captchaWords, mailSearchUrl } from "../src/run/assist.js";
 import { fromThisPage } from "../src/report/server.js";
 import { HUMAN_CHECK, captchaStopsSubmit } from "../src/browser/submit.js";
 import { readFileSync, readdirSync, statSync } from "node:fs";
@@ -104,6 +104,11 @@ describe("help for the person", () => {
     expect(HUMAN_CHECK.test("This site is protected by reCAPTCHA and the Google Privacy Policy apply.")).toBe(false);
     expect(HUMAN_CHECK.test("Almost there! Please confirm you're not a robot to continue.")).toBe(true);
     expect(HUMAN_CHECK.test("Human Check* Please verify.")).toBe(true);
+  });
+  it("tells the person to click Submit only when the tool will not", () => {
+    // Told to click when the run is about to click for them, and the application may go twice.
+    expect(captchaWords(true)).not.toMatch(/click Submit/);
+    expect(captchaWords(false)).toMatch(/click Submit/);
   });
   it("a challenge stops the click, and force is not consent to pass it", () => {
     expect(captchaStopsSubmit(["iframe:recaptcha:normal"], [])).toBe(true);
