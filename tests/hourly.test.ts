@@ -284,6 +284,49 @@ describe("one hourly run", () => {
   });
 });
 
+describe("board listings that lead to an employer form", () => {
+  const setup = () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "jev-hourly-links-"));
+    return { queueFile: path.join(dir, "queue.json"), rowsFile: path.join(dir, "all.csv"), stateFile: path.join(dir, "hourly.json"), cacheFile: path.join(dir, "links.json") };
+  };
+  const rows = JSON.stringify([{ site: "linkedin", title: "Android Engineer", company: "Delta", location: "Jersey City, NJ", job_url: "https://www.linkedin.com/jobs/view/4252026496", date_posted: "2026-10-22" }]);
+
+  it("queues a listing for filling when the board's MCP gives the employer's link", async () => {
+    const f = setup();
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [] }, f.queueFile);
+    const asked: unknown[] = [];
+    const listings = { call: async (board: string, args: Record<string, unknown>) => (asked.push([board, args]), "apply at https://boards.greenhouse.io/delta/jobs/777"), close: () => {} };
+    const summary = await runHourly(profile(), { now: NOW, ...f, runner: () => ({ ok: true, stdout: rows, error: "" }), linksFile: f.cacheFile, listings: listings as never });
+    expect(asked).toEqual([["linkedin", { job_id: "4252026496" }]]);
+    expect(summary).toMatchObject({ added: 1, held: 0 });
+    const e = loadQueue(f.queueFile).entries[0];
+    expect(e?.status).toBe("queued");
+    expect(e?.applyable).toBe(true);
+    expect(e?.holdUntil).toBeNull();
+    expect(e?.job.url).toBe("https://boards.greenhouse.io/delta/jobs/777");
+    expect(e?.job.ats).toBe("greenhouse");
+  });
+
+  it("holds the listing for the person when the MCP has no link, and Chrome gets the page later", async () => {
+    const f = setup();
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [] }, f.queueFile);
+    const listings = { call: async () => "no application link in this posting", close: () => {} };
+    const summary = await runHourly(profile(), { now: NOW, ...f, runner: () => ({ ok: true, stdout: rows, error: "" }), linksFile: f.cacheFile, listings: listings as never });
+    expect(summary).toMatchObject({ added: 1, held: 1 });
+    const e = loadQueue(f.queueFile).entries[0];
+    expect(e?.applyable).toBe(false);
+    expect(e?.job.url).toBe("https://www.linkedin.com/jobs/view/4252026496");
+    expect(e?.holdUntil).not.toBeNull();
+  });
+
+  it("starts no MCP server when listings are off", async () => {
+    const f = setup();
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [] }, f.queueFile);
+    const summary = await runHourly(profile(), { now: NOW, ...f, runner: () => ({ ok: true, stdout: rows, error: "" }), linksFile: f.cacheFile, listings: false });
+    expect(summary.held).toBe(1);
+  });
+});
+
 describe("the hourly schedule", () => {
   it("writes a LaunchAgent at a minute of every hour", () => {
     const plist = hourlyAgentPlist({ portal: "android-nj", node: "/usr/bin/node", root: "/repo", minute: 20, searchPath: "/usr/bin:/bin", log: "/repo/data/runs/hourly.log" });

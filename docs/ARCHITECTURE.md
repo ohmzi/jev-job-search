@@ -71,6 +71,7 @@ Timing on 2026-10-02: 4,748 unique postings, 478 rated, 61 seconds, $0.075.
 | `src/answers/` | The writer (DeepSeek), the answer memory, drafts and voice |
 | `src/documents/` | Tailored resumes and cover letters: the writer's draft, the truth gate (`unsupportedClaims`), HTML rendered to PDF through Chrome (`printPdf`) |
 | `src/accounts/` | Boards that want an account: what the person allowed (`config.ts`), the Keychain (`secrets.ts`), the sign-in itself (`auth.ts`), one adapter per board (`workday.ts`), whether a job may be taken (`capability.ts`) |
+| `src/mcp/`, `src/sources/listingLink.ts` | A small stdio MCP client, and the lookup of the employer's form behind an Indeed or LinkedIn listing |
 | `src/mail/` | Gmail, read-only (`gmail.ts`), and finding the one verification email an account asked for (`verification.ts`) |
 | `src/knowledge/sites.ts` | What the tool has learned about each site |
 | `src/log/` | The record files and the cost summary |
@@ -296,6 +297,17 @@ queue.
   refreshed. A held job carries `holdUntil`, and the sweep moves it to
   `needs_review` when the window closes. A status a person chose clears
   `holdUntil`, so the sweep never undoes it.
+- `src/sources/listingLink.ts` follows a new Indeed or LinkedIn listing to the
+  employer's own form. It starts the board's MCP server (`uvx mcp-server-linkedin`,
+  and the `openings-mcp` Docker image for Indeed; both in `MCP`), asks about the
+  one posting, and takes from the reply an https link that is not the board's and
+  is a known application board or looks like an application. A link found makes
+  the job fillable and it is queued; the job keeps its first id. No link, or a
+  server that fails, leaves the listing held for the person, and the apply pass
+  asks again (an answer of "no link" is kept for `MCP.retryAfterHours`, a link
+  for good, a failure not at all). Chrome is the fallback: when the job's turn
+  comes, `openForm` loads the listing and follows its Apply button as it does for
+  any careers page. The servers read postings and apply for no one.
 - The hourly run does not rate with DeepSeek, so it costs nothing beyond the
   board calls.
 

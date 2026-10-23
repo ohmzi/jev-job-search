@@ -4,9 +4,10 @@
  * what is missing. With `online` it also makes one tiny DeepSeek typed call and one tiny
  * DeepSeek writer call to prove the key works.
  */
+import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
-import { BROWSER, DOCTOR, GMAIL, PATHS, ROOT, WRITER } from "./config.js";
+import { BROWSER, childEnv, DOCTOR, GMAIL, MCP, PATHS, ROOT, WRITER } from "./config.js";
 import { loadAccounts } from "./accounts/config.js";
 import { defaultStore, type SecretStore } from "./accounts/secrets.js";
 import { loadGmail } from "./mail/gmail.js";
@@ -36,6 +37,19 @@ export function checkNode(version = process.versions.node): Check {
 
 export function checkChrome(file: string = BROWSER.chromePath): Check {
   return { name: "Google Chrome", ok: existsSync(file), detail: existsSync(file) ? "installed" : `not found at ${file}`, fix: "Install Google Chrome from https://www.google.com/chrome, or set BROWSER.chromePath in src/config.ts" };
+}
+
+/** Whether the programs that start the Indeed and LinkedIn MCP servers are installed. Optional: without them a listing goes straight to Chrome. */
+export function checkListingServers(): Check {
+  const has = (cmd: string) => spawnSync(cmd, ["--version"], { encoding: "utf8", env: childEnv(), timeout: 10_000 }).status === 0;
+  const missing = [MCP.linkedin.command, MCP.indeed.command].filter((c, i, all) => all.indexOf(c) === i && !has(c));
+  return {
+    name: "Indeed and LinkedIn links",
+    ok: missing.length === 0,
+    optional: true,
+    detail: missing.length === 0 ? `${MCP.linkedin.command} and ${MCP.indeed.command} found, so board listings are followed to the employer` : `${missing.join(" and ")} not found, so board listings go straight to Chrome`,
+    fix: "Install uv (https://docs.astral.sh/uv/) for LinkedIn and Docker for Indeed, or ignore this: Chrome follows the listing's Apply button",
+  };
 }
 
 export function checkKey(key = process.env.DEEPSEEK_API_KEY ?? ""): Check {
@@ -135,7 +149,7 @@ export async function checkWriterOnline(): Promise<Check> {
 export async function runChecks(online: boolean): Promise<Check[]> {
   const { check: profileCheck, profile } = checkProfile();
   const key = checkKey();
-  const checks = [checkNode(), checkChrome(), key, profileCheck, checkResume(profile), ...checkOwnWords(), checkQueue(), checkAccounts()];
+  const checks = [checkNode(), checkChrome(), key, checkListingServers(), profileCheck, checkResume(profile), ...checkOwnWords(), checkQueue(), checkAccounts()];
   if (online) {
     if (key.ok) checks.push(await checkKeyOnline());
     if (key.ok) checks.push(await checkWriterOnline());

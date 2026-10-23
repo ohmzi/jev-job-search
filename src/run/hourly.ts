@@ -20,6 +20,7 @@ import { loadQueue, mutateQueue, type QueueEntry } from "../jobs/queue.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import { usStatus, type Profile, type Search } from "../profile/schema.js";
 import { searchJobspy, type JobspyRunner } from "../sources/jobspy.js";
+import { listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
 import { withStore, writeAtomic } from "../util/store.js";
 
 const keyPart = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -161,6 +162,14 @@ export type HourlyOptions = {
   log?: (line: string) => void;
   /** Injected in tests so no Docker call is made. */
   runner?: JobspyRunner;
+  /**
+   * The Indeed and LinkedIn MCP servers, asked for the employer's link behind each new board
+   * listing. False leaves the listings as they are. Left out, the real servers are used, unless a
+   * test injected a runner: then no process is started.
+   */
+  listings?: Caller | false;
+  /** Where the answers of the boards' servers are kept. */
+  linksFile?: string;
   queueFile?: string;
   rowsFile?: string;
   stateFile?: string;
@@ -227,7 +236,28 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
   for (const f of result.failures) log(`[hourly] a board call failed: ${f}`);
   log(`[hourly] ${result.jobs.length} matching postings from ${result.calls} call(s)`);
 
-  // 3. Lay them over the queue.
+  // 3. A new Indeed or LinkedIn listing may have the employer's own form behind it. The boards' MCP
+  // servers say where, so the listing can be filled instead of held. A listing already in the queue keeps its link.
+  const known = new Set(loadQueue(files.queue).entries.map((e) => e.job.id));
+  const unresolved = result.jobs.filter((j) => !known.has(j.id) && !canFill(j) && listingOf(j.url));
+  const listings = o.listings === undefined && o.runner ? false : o.listings;
+  if (unresolved.length && listings !== false) {
+    const caller = listings ?? mcpCaller(log);
+    try {
+      const links = await resolveListings(unresolved, { call: caller.call, country: search.countryIndeed, now, log, ...(o.dry ? { dry: true } : {}), ...(o.linksFile ? { cacheFile: o.linksFile } : {}) });
+      if (links.size) {
+        result.jobs = result.jobs.map((j) => {
+          const url = links.get(j.id);
+          return url ? withEmployerLink(j, url) : j;
+        });
+        log(`[hourly] ${links.size} of ${unresolved.length} board listing(s) led to the employer's own form`);
+      }
+    } finally {
+      caller.close();
+    }
+  }
+
+  // 4. Lay them over the queue.
   let counts = { added: 0, updated: 0, held: 0, skipped: 0 };
   if (o.dry) {
     const q = loadQueue(files.queue);

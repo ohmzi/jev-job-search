@@ -34,6 +34,8 @@ export const PATHS = {
   walledHosts: path.join(ROOT, "data", "cache", "walled-hosts.json"),
   /** JEV's ratings of postings, kept so an unchanged posting is not rated again. */
   ratings: path.join(ROOT, "data", "cache", "ratings.json"),
+  /** The employer links the Indeed and LinkedIn MCPs gave for board listings, and the listings they had none for. */
+  listingLinks: path.join(ROOT, "data", "cache", "listing-links.json"),
   /** JEV's field mappings of forms, kept so an unchanged form is not mapped again. */
   plans: path.join(ROOT, "data", "cache", "plans.json"),
   /** Jobs the tool could not finish and left for the person, with the reason and the link. */
@@ -115,6 +117,31 @@ export const DEEPSEEK = {
   pricePerMillionInputUsd: 0.28,
   pricePerMillionCachedInputUsd: 0.028,
   pricePerMillionOutputUsd: 0.42,
+} as const;
+
+/**
+ * Finding the employer's own form behind an Indeed or LinkedIn listing. Each board's MCP server is
+ * started as a child process and asked for the posting's apply link. Neither server applies for
+ * anyone: they read the posting. What they give back is a link, and the existing Chrome flow fills it.
+ * An MCP that fails or has no link leaves the listing to Chrome, which follows the page's Apply button.
+ */
+export const MCP = {
+  /** Longest wait for a server to start and answer its handshake. The first start pulls an image or a package. */
+  startupMs: 90_000,
+  /** Longest wait for one tool call. */
+  callMs: 30_000,
+  /** The most listings one hourly search or apply pass asks the servers about. */
+  maxPerRun: 30,
+  /** A listing the servers had no employer link for is not asked about again for this long. */
+  retryAfterHours: 6,
+  /** LinkedIn: the mcp-server-linkedin package, whose tool reads how a posting takes applications. */
+  linkedin: { command: "uvx", args: ["mcp-server-linkedin@latest"], tool: "get_job_apply_url" },
+  /** Indeed: the openings-mcp image, whose Indeed tool returns a posting's details. */
+  indeed: { command: "docker", args: ["run", "-i", "--rm", "ghcr.io/amikai/openings-mcp"], tool: "indeed_get_job_detail" },
+  /** The openings-mcp Indeed tools want a country name. The profile keeps JobSpy's spelling. */
+  indeedCountries: { USA: "United States", US: "United States", UK: "United Kingdom", Canada: "Canada", Australia: "Australia", Ireland: "Ireland", India: "India", Germany: "Germany", France: "France", Netherlands: "Netherlands", Singapore: "Singapore" } as Record<string, string>,
+  /** Hosts that are the board itself, not an employer. A link on one of these is not the employer's form. */
+  boardHosts: ["linkedin.com", "licdn.com", "lnkd.in", "indeed.com", "indeedapps.com", "indeed.net", "indeedcdn.com"],
 } as const;
 
 export const DISCOVER = {

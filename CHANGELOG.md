@@ -21,6 +21,16 @@ changed for a person using the tool and what changed for a contributor.
   apart from the typed questions, and the daily budget counts both. For a
   contributor: the rule in `CLAUDE.md` now reads "DeepSeek decides and writes,
   code acts", and `writerBackend()` and `apiCostUsd()` were removed.
+- An Indeed or LinkedIn listing is followed to the employer's own form before it
+  is held. The hourly search and the apply pass ask the board's MCP server
+  (`uvx mcp-server-linkedin`, the `openings-mcp` image for Indeed) for the
+  posting's apply link; a link found makes the job fillable. With none, Chrome
+  opens the listing and follows its Apply button as before. For a contributor:
+  `src/mcp/client.ts` is a small stdio MCP client with no new dependency, and
+  `src/sources/listingLink.ts` holds the lookup and its cache.
+- A run takes at most three roles from one employer, never two in a row, and
+  waits eight minutes between two applications to the same employer.
+  Submissions to Greenhouse are spaced 90 seconds apart.
 
 ### Fixed
 

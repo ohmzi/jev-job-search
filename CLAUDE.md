@@ -153,6 +153,16 @@ doctor` says what is in place and what to do next.
   against the job as it is now, under the lock (`saveAnswers`,
   `applyStatusChange`). A question about the right to work is never
   answered there: that is one answer per country, in the profile.
+- **A board listing is followed to the employer through its MCP, then Chrome.**
+  An Indeed or LinkedIn listing is not a form. `src/sources/listingLink.ts`
+  starts the board's MCP server (`MCP` in `src/config.ts`) as a child process
+  with `childEnv()`, asks it about the one posting, and takes from the reply
+  only an https link that is not the board's own and is either a known
+  application board or looks like an application. The servers read postings;
+  they apply for no one, and nothing in a reply is run or followed. A server that
+  fails is not an answer and is not cached. A listing with no link is left to
+  Chrome, which follows the page's Apply button (`openForm`), and what Chrome
+  cannot open is held for the person. Never type into a board for this.
 - **Pace every site.** Job boards drop or refuse bursts. Concurrency and
   gaps per host are in `RUN`; do not remove them to go faster.
 - **The tool learns by keeping notes, and reads them before it acts.** Site

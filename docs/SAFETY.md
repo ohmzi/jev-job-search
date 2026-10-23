@@ -47,7 +47,8 @@ profile. The tool makes that the only way.
 - What leaves the machine: job text and the profile's facts go to
   DeepSeek on every rating and form-mapping call, and the facts, the
   posting and the open questions go to DeepSeek again when a form has fields
-  left for the writer; the form values go to the
+  left for the writer; a listing's id goes to the Indeed or LinkedIn MCP server
+  you have set up, to find the employer's link; the form values go to the
   employer's ATS; nothing goes anywhere else. There is no telemetry.
 - Some boards save each field to their server as it is typed, before
   anything is submitted. Ashby does. A rehearsal (`--dry`) on such a board
@@ -68,7 +69,7 @@ profile. The tool makes that the only way.
   the same time without losing each other's writes. Two browser runs at
   once are refused.
 - Everything the tool prints passes a filter that replaces keys, tokens and
-  anything registered as secret. Child processes (Chrome, JobSpy) get
+  anything registered as secret. Child processes (Chrome, JobSpy, the MCP servers) get
   an environment with no keys in it.
 - JEV usage is appended to `data/runs/jev-usage.jsonl` (ids, token counts,
   cost; no content).

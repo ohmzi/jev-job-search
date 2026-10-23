@@ -14,7 +14,7 @@ account, reads mail or sends anything.
 
 ## One run
 
-`node bin/jev.js hourly`, or `/hourly run` in Claude Code, does three things:
+`node bin/jev.js hourly`, or `/hourly run` in Claude Code, does four things:
 
 1. **Ages held jobs out.** A board-only listing whose twelve hours are over
    becomes `needs_review`, so it appears in **Needs you** with the reason
@@ -24,7 +24,16 @@ account, reads mail or sends anything.
 2. **Searches.** It runs the portal's JobSpy queries through the `jobspy`
    Docker image, asking for jobs posted inside the profile's window. The four
    portals start at six hours.
-3. **Writes the finds.** Each job is mapped, filtered by the portal's roles and
+3. **Follows board listings to the employer.** A new Indeed or LinkedIn listing is
+   not a form. The board's MCP server (LinkedIn: `uvx mcp-server-linkedin`; Indeed:
+   the `openings-mcp` Docker image) is asked for the posting's apply link. If the
+   reply holds an https link to an application board, or to a page that looks like
+   an application, the job is queued at that link and the apply pass can fill it. The
+   servers read postings and apply for no one. `data/cache/listing-links.json` keeps
+   each answer: a link for good, "no link" for six hours, a failure not at all. At most
+   `MCP.maxPerRun` listings are asked about per run, and a server that will not start is
+   skipped for the run.
+4. **Writes the finds.** Each job is mapped, filtered by the portal's roles and
    area, deduplicated across Indeed and LinkedIn, and written to
    `data/queue.json` and `applications/all.csv`.
 
@@ -54,7 +63,8 @@ and ages out twelve hours after first seen.
 | Kind of job | In the queue | On the page | At twelve hours |
 |---|---|---|---|
 | A form the tool can fill | `queued` | Yes | Leaves the page, stays queued for `/apply` |
-| A board-only listing (Indeed, LinkedIn) | `queued`, held | Yes | Becomes `needs_review` in **Needs you** |
+| A listing whose MCP gave an employer form | `queued`, at the employer's link | Yes | Leaves the page, stays queued for `/apply` |
+| A board-only listing (Indeed, LinkedIn) with no link | `queued`, held | Yes | Becomes `needs_review` in **Needs you** |
 | Refused by a code filter | `skipped` with the reason | Yes, with the reason | Leaves the page |
 | Already applied to | Its existing status | No | Never comes back |
 
