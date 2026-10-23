@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { BROWSER, childEnv } from "../config.js";
 import { safeUrl } from "../util/redact.js";
+import { STEALTH } from "./stealth.js";
 
 export type Target = { id: string; type: string; url: string; title: string; webSocketDebuggerUrl: string };
 
@@ -162,6 +163,9 @@ export class Page {
     await page.send("Network.enable");
     // Lets a tab that is not the frontmost one keep focus semantics, so dropdowns open.
     await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    // The page sees this before any of its own scripts, on this document and every later one.
+    await page.addInitScript(STEALTH);
+    await page.rawEvaluate(STEALTH).catch(() => undefined);
     return page;
   }
 
@@ -239,6 +243,11 @@ export class Page {
       this.pending.set(id, { resolve: resolve as (v: unknown) => void, reject });
       this.ws.send(JSON.stringify({ id, method, params }));
     });
+  }
+
+  /** Runs a fixed script in every document this tab loads, before the document's own scripts. */
+  async addInitScript(source: string): Promise<void> {
+    await this.send("Page.addScriptToEvaluateOnNewDocument", { source });
   }
 
   /** Puts the in-page helpers on the page, and remembers them for the next time the page loads again. */
