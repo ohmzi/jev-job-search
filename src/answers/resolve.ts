@@ -242,6 +242,11 @@ async function callWriter(prompt: string, system: string, meta: WriterMeta): Pro
       const first = reply.choices[0];
       const content = first?.message.content ?? "";
       recordWriterCall(reply.usage ?? {}, meta, Date.now() - started);
+      // A reply stopped at max_tokens is half-written JSON. Handing it to a parser reports a
+      // syntax error at the cut, which reads as a bad draft instead of the length limit it is.
+      if (first?.finish_reason === "length") {
+        throw new Error(`the writer's reply was cut off at the ${WRITER.maxOutputTokens}-token limit`);
+      }
       if (!content.trim()) {
         last = new Error(`DeepSeek returned an empty reply for the writer${first?.finish_reason ? ` (${first.finish_reason})` : ""}`);
         continue;

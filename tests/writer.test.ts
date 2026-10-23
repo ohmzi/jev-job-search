@@ -55,6 +55,23 @@ describe("the DeepSeek writer call", () => {
     expect(calls).toBe(2);
   });
 
+  it("treats a reply cut off at the token limit as a failure, not as text a parser should try to read", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: '{"verdict":"ready","answers":[{"selector":"#q1"' }, finish_reason: "length" }],
+          usage: { prompt_tokens: 10, completion_tokens: 100 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    }) as typeof fetch;
+    const { askWriter } = await import("../src/answers/resolve.js");
+    await expect(askWriter("hello", "x")).rejects.toThrow(/cut off at the .*token limit/);
+    expect(calls).toBe(1);
+  });
+
   it("explains a refusal without the key and does not retry it", async () => {
     let calls = 0;
     globalThis.fetch = (async () => {

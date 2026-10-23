@@ -314,8 +314,8 @@ export const WRITER = {
   },
   /** Free text is slower to produce than a typed answer. */
   timeoutMs: 180_000,
-  /** Longest reply the writer may give. A tailored resume is the longest thing it writes. */
-  maxOutputTokens: 8_192,
+  /** Longest reply the writer may give. A tailored resume is the longest thing it writes, and a reply cut at this limit is unusable JSON. */
+  maxOutputTokens: 16_384,
   /** Tries per call when DeepSeek answers 429 or 5xx, or the network drops. */
   maxRetries: 3,
   retryBaseMs: 1_000,
