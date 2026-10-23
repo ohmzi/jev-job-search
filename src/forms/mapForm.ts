@@ -85,7 +85,7 @@ export function buildFormState(profile: Profile, job: Job, dump: FieldsDump, fie
 }
 
 /** Raised whenever the gates below change, so a plan cached under the old rules is not reused. */
-const PLAN_VERSION = 11;
+const PLAN_VERSION = 12;
 
 /** A box that asks for somebody else's contact details: a reference, a supervisor, an emergency contact. Never the applicant's. */
 const OTHER_PERSON = /\b(reference|referee|referr(?:al|er)|referred by|supervisor|manager|emergency|next of kin|recruiter|contact person|guardian|parent|spouse|alternate|secondary)\b/i;
@@ -95,7 +95,10 @@ const NEEDS_PERMIT_Q = /\b(?:require|need)s?\b[^.?]{0,25}\b(?:(?:work|employment
 const SPONSOR_Q = new RegExp(`sponsor|${NEEDS_PERMIT_Q.source}`, "i");
 /** A tick that accepts something: terms, an agreement, a notice. */
 const AGREEMENT_Q = /\b(agree|agreement|acknowledg|consent|terms|privacy|arbitration|attest|certify|accept)/i;
-/** Ticks that say the application is true or that a privacy notice was read: every application needs them. */
+/** A tick that asks to be marketed to. It is never ticked, however sure the model is. */
+const MARKETING_Q = /\b(marketing|newsletter|job alerts?|alerts? (?:about|for) (?:jobs|roles)|promotional|product updates|text messages?|sms|subscribe|mailing list|future (?:roles|opportunities|positions)|talent (?:pool|community)|may we contact)\b/i;
+/** A tick that only states the applicant is a person. It is a form field, not a CAPTCHA, which is a widget in a frame. */
+const HUMAN_CONFIRM_Q = /\b(i am (?:a )?human|i'm (?:a )?human|not a robot|human verification|confirm (?:that )?(?:you are|you're) (?:a )?human)\b/i;
 /**
  * The part of a date a box labelled Month, Day or Year takes, as a plain number. Null when the box
  * is not one of those, or the value is not a date. A date that names only a month is its first day.
@@ -113,7 +116,6 @@ const WORKPLACE_Q = /\brelocat|\bon[- ]?site\b|\bin[- ](?:the[- ])?office\b|\bin
 const BOTH_NAMES = /\bfirst\b[^.]{0,12}\blast\b|\bfull name\b/i;
 /** A box that says the person goes by a name other than their legal one. */
 const PREFERRED_NAME_BOX = /\b(i have|i use|i go by)\b[^.]{0,30}\b(preferred|different|another) name\b/i;
-const ROUTINE_AGREEMENT = /\b(privacy|true|accurate|correct|complete|information (?:i|provided|above)|data (?:protection|processing))/i;
 
 export type Category = "contact_other" | "authorization" | "sponsorship" | "agreement" | "general";
 
@@ -151,9 +153,6 @@ export function truthFor(category: Category, label: string, profile: Profile, jo
   const auth = authForCountry(profile, country);
   return category === "authorization" ? auth.authorized : category === "sponsorship" ? auth.requires_sponsorship : null;
 }
-
-/** True when the person's standing answers say the tool may accept agreements for them. */
-export const approvesAgreements = (profile: Profile): boolean => profile.answers.some((a) => /agreement|acknowledg|terms|attestation/i.test(a.question) && /\b(i agree|tick)\b/i.test(a.answer));
 
 /**
  * Why an answer about the right to work may not go in, or null when it may: the option must say
@@ -210,8 +209,8 @@ export function questionsFor(fields: DumpedField[]): Questions {
       q[f.id] = choice(`${title}: which option is correct for the candidate?`, criteria);
     } else if (f.kind === "checkbox") {
       q[f.id] = noul(`${title}: should this checkbox be checked for the candidate?`, {
-        true: "A consent, acknowledgement, terms or accuracy box needed to submit, or a true statement about the candidate",
-        false: "A marketing or alert opt-in, or a statement that is not true of the candidate",
+        true: "A consent, acknowledgement, terms, accuracy, or human-confirmation box needed to submit, or a true statement about the candidate",
+        false: "A marketing, newsletter, job-alert or other opt-in, or a statement that is not true of the candidate",
       });
     }
   }
@@ -472,13 +471,11 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
         : { ...base, action: "skip", key: "unchecked", value: null, confidence: 1, note: "the profile gives no other name" };
     }
     const p = (answer as NoulAnswer).noul;
-    if (p >= FORM.gates.tick) {
-      // Accepting an agreement is the person's: the tool ticks it when their standing answers say so, or when it only says the application is true.
-      if (categoryOf(f) === "agreement" && !ROUTINE_AGREEMENT.test(f.label) && !approvesAgreements(profile)) {
-        return { ...base, action: "review", key: "unknown", value: null, confidence: p, note: "accepting this is yours to decide; a standing answer about agreements lets the tool tick it" };
-      }
-      return { ...base, action: "fill", key: "checked", value: "true", confidence: p, note: null };
-    }
+    // A marketing box is never ticked, whatever the model answered; one that also states a fact is still a marketing box.
+    if (MARKETING_Q.test(`${f.label} ${f.section ?? ""}`)) return { ...base, action: "skip", key: "unchecked", value: null, confidence: 1, note: "a marketing or alert opt-in is never ticked" };
+    // A plain box that only says the applicant is a person is a form field like any other.
+    if (HUMAN_CONFIRM_Q.test(f.label)) return { ...base, action: "fill", key: "checked", value: "true", confidence: 1, note: "confirming the applicant is a person" };
+    if (p >= FORM.gates.tick) return { ...base, action: "fill", key: "checked", value: "true", confidence: p, note: null };
     if (p <= FORM.gates.leave) return { ...base, action: "skip", key: "unchecked", value: null, confidence: 1 - p, note: "left unchecked" };
     return { ...base, action: "review", key: "unknown", value: null, confidence: Math.max(p, 1 - p), note: "unsure whether to check" };
   }

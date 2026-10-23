@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { ProfileSchema } from "../src/profile/schema.js";
 import { PROFILE_KEYS, profileFacts, valueFor } from "../src/profile/fieldKeys.js";
-import { alternatesFor, datePart, approvesAgreements, authForCountry, categoryOf, educationDatePlan, employmentDatePlan, fileBoxWants, gateAnswer, hasChoosableOptions, isSlotChoice, planField, questionsFor, sectionOf, valueForJob } from "../src/forms/mapForm.js";
+import { alternatesFor, datePart, authForCountry, categoryOf, educationDatePlan, employmentDatePlan, fileBoxWants, gateAnswer, hasChoosableOptions, isSlotChoice, planField, questionsFor, sectionOf, valueForJob } from "../src/forms/mapForm.js";
 import { FieldsDump, isApplicationForm, type DumpedField } from "../src/forms/fields.js";
 import type { Job } from "../src/jobs/normalize.js";
 
@@ -93,15 +93,6 @@ describe("questionsFor", () => {
     expect(valueForJob(profile, job(["Remote"]), "authorized_to_work")).toBeNull();
     expect(valueForJob(profile, job(["Remote"]), "authorized_to_work", "Are you authorized to work in Canada?")).toBe("Yes");
   });
-  it("ticks an agreement only when it is routine or the person's standing answers allow it", () => {
-    const j = job(["Toronto, ON"]);
-    const sure = { type: "noul", noul: 0.95, confidence: 0.95 } as never;
-    expect(planField(field({ kind: "checkbox", label: "I certify that the information above is true and complete" }), sure, profile, j)).toMatchObject({ action: "fill" });
-    expect(planField(field({ kind: "checkbox", label: "I agree to the Arbitration Agreement" }), sure, profile, j)).toMatchObject({ action: "review" });
-    const allowed = { ...profile, answers: [...profile.answers, { question: "Arbitration agreements, terms and acknowledgements", answer: "I agree. Tick every box needed to submit." }] };
-    expect(planField(field({ kind: "checkbox", label: "I agree to the Arbitration Agreement" }), sure, allowed, j)).toMatchObject({ action: "fill" });
-    expect(approvesAgreements(profile)).toBe(false);
-  });
   it("puts the section into the question", () => {
     const q = questionsFor([field({ id: "s", kind: "text", label: "Start Date", section: "Education" })]);
     expect((q.s as { instructions: string }).instructions).toContain('in the "Education" section');
@@ -141,6 +132,25 @@ describe("planField", () => {
     expect(planField(field({ kind: "checkbox", label: "I have a preferred name" }), { type: "noul", noul: 0.94 }, plain, j)).toMatchObject({ action: "skip", key: "unchecked" });
     const other = { ...profile, name: { ...profile.name, preferred: "Sam" } } as typeof profile;
     expect(planField(field({ kind: "checkbox", label: "I have a preferred name" }), { type: "noul", noul: 0.1 }, other, j)).toMatchObject({ action: "fill", value: "true" });
+  });
+  it("ticks an agreement, a human-confirmation, and an accuracy box without a standing answer", () => {
+    const sure = { type: "noul", noul: 0.95, confidence: 0.95 } as never;
+    const box = (label: string) => field({ kind: "checkbox", label });
+    for (const label of ["I agree to the Arbitration Agreement", "I certify that the information above is true and complete", "I confirm I am a human", "I am not a robot"]) {
+      expect(planField(box(label), sure, profile, j)).toMatchObject({ action: "fill" });
+    }
+  });
+  it("never ticks a marketing box, however sure the model is", () => {
+    const sure = { type: "noul", noul: 0.99, confidence: 0.99 } as never;
+    for (const label of ["Send me job alerts", "Subscribe to our newsletter", "May we contact you about future roles?"]) {
+      expect(planField(field({ kind: "checkbox", label }), sure, profile, j)).toMatchObject({ action: "skip" });
+    }
+    // A box that says both is a marketing box: it is left alone.
+    expect(planField(field({ kind: "checkbox", label: "I am a human. Send me job alerts" }), sure, profile, j)).toMatchObject({ action: "skip" });
+  });
+  it("still sets a signature aside", () => {
+    const sure = { type: "noul", noul: 0.95, confidence: 0.95 } as never;
+    expect(planField(field({ kind: "checkbox", label: "Type your full legal name to sign this NDA" }), sure, profile, j).action).toBe("review");
   });
   it("never fills salary", () => {
     const p = planField(field({ label: "Salary expectation" }), { type: "choice", choice: "salary_expectation", probabilities: {}, confidence: 0.95 }, profile, j);
