@@ -455,6 +455,25 @@
 
   // Some careers sites embed the real form in an iframe (Greenhouse, Lever). Report those so the caller can navigate into one.
   out.hasPassword = [...document.querySelectorAll("input[type=password]")].some(visible);
+  // Bot checks are read as facts. Whether one blocks the form is decided in code, so a page that
+  // only carries an invisible score or a badge is not mistaken for a challenge.
+  out.captcha = [];
+  const captchaProvider = (s) => /recaptcha/i.test(s) ? "recaptcha" : /hcaptcha/i.test(s) ? "hcaptcha" : /turnstile|challenges\.cloudflare/i.test(s) ? "turnstile" : /arkose|funcaptcha/i.test(s) ? "arkose" : /geetest/i.test(s) ? "geetest" : "unknown";
+  const captchaSize = (n) => {
+    const s = `${(n.getAttribute && n.getAttribute("data-size")) || ""} ${n.src || ""}`;
+    return /invisible|\bbadge\b/i.test(s) ? "invisible" : /compact/i.test(s) ? "compact" : s.trim() ? "normal" : "unknown";
+  };
+  const CAPTCHA_WORDS = /recaptcha|hcaptcha|turnstile|arkose|funcaptcha|geetest|challenge/i;
+  for (const f of document.querySelectorAll("iframe[src], iframe[title]")) {
+    const tag = `${f.src || ""} ${f.getAttribute("title") || ""}`;
+    if (CAPTCHA_WORDS.test(tag) && visible(f)) out.captcha.push(`iframe:${captchaProvider(tag)}:${captchaSize(f)}`);
+  }
+  for (const n of document.querySelectorAll(".g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]")) {
+    if (visible(n)) out.captcha.push(`widget:${captchaProvider(`${n.className} ${(n.getAttribute("data-sitekey") && "recaptcha") || ""}`)}:${captchaSize(n)}`);
+  }
+  for (const n of document.querySelectorAll("textarea[name='g-recaptcha-response'], textarea[name='h-captcha-response'], input[name='cf-turnstile-response'], textarea[name='cf-turnstile-response']")) {
+    out.captcha.push(`token:${captchaProvider(n.name)}`);
+  }
   // Told by the frame's own host. A share widget that merely names a job board in its address is not a form.
   const hostOf = (src) => { try { return new URL(src).hostname; } catch { return ""; } };
   out.frames = [...document.querySelectorAll("iframe[src]")].map((f) => f.src).filter((src) => /greenhouse|lever\.co|ashbyhq|workday|smartrecruiters|jobvite|bamboohr|rippling|icims/i.test(hostOf(src)));

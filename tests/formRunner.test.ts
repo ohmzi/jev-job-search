@@ -7,6 +7,7 @@ import { askAgain } from "../src/run/pipeline.js";
 import { showsPicked } from "../src/util/dates.js";
 import { comparePages, fieldsBlamed, showsPlanned, isClean, isReady, pickNext, pickSubmit, notOnScreen, showsAnother, splitFailures } from "../src/browser/report.js";
 import type { FieldsDump } from "../src/forms/fields.js";
+import { FieldsDump as FieldsDumpSchema } from "../src/forms/fields.js";
 
 const hints = ["Edmonton", "Alberta", "AB", "Canada"];
 
@@ -74,6 +75,10 @@ describe("the in-page scripts", () => {
     const src = readFileSync(new URL("../src/forms/dumpFields.js", import.meta.url), "utf8");
     expect(src).toMatch(/SKIP_TYPES = new Set\(\[[^\]]*"password"/);
     expect(src).toContain("out.hasPassword");
+  });
+  it("carries captcha descriptors, and none when the page shows none", () => {
+    expect(FieldsDumpSchema.parse({ url: "https://x", fields: [] }).captcha).toEqual([]);
+    expect(FieldsDumpSchema.parse({ url: "https://x", fields: [], captcha: ["iframe:recaptcha:normal", "token:turnstile"] }).captcha).toHaveLength(2);
   });
 });
 
