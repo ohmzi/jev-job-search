@@ -396,10 +396,11 @@
     pageText() {
       return document.body ? document.body.innerText : "";
     },
-    // The same descriptor grammar dumpFields.js reports, read without a full dump while the person
-    // works. Keep the two in step. Only vendor names are returned for responses, never a value.
+    // Read while the person works, without a full dump. Only vendor names are returned for
+    // responses, never a value.
     captchaState() {
-      const provider = (s) => /recaptcha/i.test(s) ? "recaptcha" : /hcaptcha/i.test(s) ? "hcaptcha" : /turnstile|challenges\.cloudflare/i.test(s) ? "turnstile" : /arkose|funcaptcha/i.test(s) ? "arkose" : /geetest/i.test(s) ? "geetest" : "unknown";
+      // The class or id names the vendor first: a sitekey of its own does not make every widget a reCAPTCHA.
+      const provider = (s) => /hcaptcha/i.test(s) ? "hcaptcha" : /turnstile|challenges\.cloudflare/i.test(s) ? "turnstile" : /arkose|funcaptcha/i.test(s) ? "arkose" : /geetest/i.test(s) ? "geetest" : /recaptcha/i.test(s) ? "recaptcha" : "unknown";
       const size = (n) => {
         const s = `${(n.getAttribute && n.getAttribute("data-size")) || ""} ${n.src || ""}`;
         return /invisible|\bbadge\b/i.test(s) ? "invisible" : /compact/i.test(s) ? "compact" : s.trim() ? "normal" : "unknown";
@@ -410,7 +411,9 @@
         if (/recaptcha|hcaptcha|turnstile|arkose|funcaptcha|geetest|challenge/i.test(tag) && visible(f)) descriptors.push(`iframe:${provider(tag)}:${size(f)}`);
       }
       for (const n of document.querySelectorAll(".g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]")) {
-        if (visible(n)) descriptors.push(`widget:${provider(`${n.className} ${(n.getAttribute("data-sitekey") && "recaptcha") || ""}`)}:${size(n)}`);
+        if (!visible(n)) continue;
+        const named = provider(`${n.className || ""} ${n.id || ""}`);
+        descriptors.push(`widget:${named !== "unknown" ? named : n.getAttribute("data-sitekey") ? "recaptcha" : "unknown"}:${size(n)}`);
       }
       const tokens = [];
       for (const name of ["g-recaptcha-response", "h-captcha-response", "cf-turnstile-response"]) {

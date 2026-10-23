@@ -48,8 +48,6 @@ export const FieldsDump = z.object({
   frames: z.array(z.string()).default([]),
   /** True when the page shows a password box: a login or account page, which the tool never fills. */
   hasPassword: z.boolean().default(false),
-  /** CAPTCHA and bot-check widgets on the page, as raw descriptors. Whether one blocks is decided in code, not here. */
-  captcha: z.array(z.string()).default([]),
   /** A take-home assignment the page asks for, with its link: the application still goes, and the assignment is listed for the person. */
   takeHome: z.array(z.object({ text: z.string(), url: z.string() })).default([]),
 });

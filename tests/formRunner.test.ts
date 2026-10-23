@@ -7,7 +7,6 @@ import { askAgain } from "../src/run/pipeline.js";
 import { showsPicked } from "../src/util/dates.js";
 import { comparePages, fieldsBlamed, showsPlanned, isClean, isReady, pickNext, pickSubmit, notOnScreen, showsAnother, splitFailures } from "../src/browser/report.js";
 import type { FieldsDump } from "../src/forms/fields.js";
-import { FieldsDump as FieldsDumpSchema } from "../src/forms/fields.js";
 
 const hints = ["Edmonton", "Alberta", "AB", "Canada"];
 
@@ -76,19 +75,17 @@ describe("the in-page scripts", () => {
     expect(src).toMatch(/SKIP_TYPES = new Set\(\[[^\]]*"password"/);
     expect(src).toContain("out.hasPassword");
   });
-  it("carries captcha descriptors, and none when the page shows none", () => {
-    expect(FieldsDumpSchema.parse({ url: "https://x", fields: [] }).captcha).toEqual([]);
-    expect(FieldsDumpSchema.parse({ url: "https://x", fields: [], captcha: ["iframe:recaptcha:normal", "token:turnstile"] }).captcha).toHaveLength(2);
-  });
-  it("reads the same captcha grammar in the dump and in the live helper", () => {
-    const dumpSrc = readFileSync(new URL("../src/forms/dumpFields.js", import.meta.url), "utf8");
-    const helperSrc = readFileSync(new URL("../src/forms/pageHelpers.js", import.meta.url), "utf8");
-    for (const src of [dumpSrc, helperSrc]) {
-      expect(src).toContain("g-recaptcha-response");
-      expect(src).toContain("h-captcha-response");
-      expect(src).toContain("cf-turnstile-response");
-    }
-    expect(helperSrc).toContain("captchaState()");
+  it("names a challenge widget by its class, so hCaptcha and Turnstile can be cleared", () => {
+    const src = readFileSync(new URL("../src/forms/pageHelpers.js", import.meta.url), "utf8");
+    const at = src.indexOf("captchaState()");
+    const body = src.slice(at, at + 2200);
+    expect(body).toMatch(/h-captcha/i);
+    expect(body).toMatch(/cf-turnstile/i);
+    // A sitekey alone does not make every widget a reCAPTCHA.
+    expect(body).not.toContain('&& "recaptcha"');
+    expect(body).toContain("g-recaptcha-response");
+    expect(body).toContain("h-captcha-response");
+    expect(body).toContain("cf-turnstile-response");
   });
 });
 
