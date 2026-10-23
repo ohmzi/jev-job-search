@@ -12,6 +12,17 @@ changed for a person using the tool and what changed for a contributor.
 ## [Unreleased]
 
 ### Changed
+- A bot check on a filled form is found before Submit, not only after it. The
+  tool tells the person, brings the tab to the front, waits up to
+  `RUN.humanWaitMs` for them to pass it, reads the form again and clicks Submit
+  once; the application is recorded only when the page then confirms. A
+  challenge that blocks a page with no form at all is left open for the person
+  instead of writing the site off. `daily` does not wait. Nothing is ever
+  solved, and `--force` does not click through a challenge.
+- On an application form, a plain human-confirmation box ("I am a human") and
+  an agreement, consent or privacy box are ticked from the model's answer
+  without a standing answer in the profile. A marketing, newsletter or
+  job-alert box is never ticked, and a signature or NDA is still set aside.
 - A robot check or an emailed code after Submit is kept in front of the person
   for at most two minutes (`RUN.humanWaitMs`) in `apply`, `submit` and the
   hourly pass. If the page then confirms the application it is recorded;

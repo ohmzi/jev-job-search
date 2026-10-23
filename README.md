@@ -484,7 +484,7 @@ Every recurring question you answer by hand once (pay, relocation, start date, a
 
 ### Stay near your computer the first few runs
 
-Boards sometimes email a code or show a "not a robot" check after Submit. A code goes into the form with `node bin/jev.js code <id> --submit`, which reads it on standard input, writes it, reads it back, and sends only when the page confirms; `/apply` and `/resume` find it over the Gmail MCP for you. The tool never passes a robot check. It leaves that form open and filled, sends you a notification, and moves on to the next job, so a run never waits on you. Pass the check in the tool's Chrome window, then run `node bin/jev.js resume` and it records the application.
+Boards sometimes email a code or show a "not a robot" check after Submit. A code goes into the form with `node bin/jev.js code <id> --submit`, which reads it on standard input, writes it, reads it back, and sends only when the page confirms; `/apply` and `/resume` find it over the Gmail MCP for you. The tool never passes a robot check. In `apply`, `submit` and the hourly pass it brings that form to the front, notifies you, waits up to two minutes while you pass the check, then reads the form again and sends it once, recording the application only when the page confirms. `daily` does not wait: the job is left for you and the run moves on. Pass the check in the tool's Chrome window, or run `node bin/jev.js resume` afterwards.
 
 ## Contributing
 

@@ -88,7 +88,9 @@ sent.
   a sign-in, the tool brings the window to the front, notifies the person and waits up to two
   minutes (`HOURLY.signInWaitMs`). If they sign in, it fills and continues; if not, the job is
   skipped and waits in Needs you with its tab open. A robot check or an emailed code after Submit
-  is kept in front of the person for the same two minutes (`RUN.humanWaitMs`) and then skipped. It never types a password, makes an account or passes a
+  is kept in front of the person for the same two minutes (`RUN.humanWaitMs`); a robot check the
+  person passes is read again and sent once, and the application is recorded only when the page
+  confirms. It never types a password, makes an account or passes a
   robot check.
 - A page the tool could not fill, or one with no form at all, is left open in front instead of
   being closed, so the person can look at it.

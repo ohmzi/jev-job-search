@@ -77,9 +77,18 @@ doctor` says what is in place and what to do next.
   never in a file, never in a command's arguments, never in a prompt to
   DeepSeek, a report, a plan, a trace or a record. Password boxes and
   one-time-code boxes are never dumped.
-- **A CAPTCHA is the person's to pass.** That includes a robot check after
-  Submit: `src/run/assist.ts` notifies the person, brings the tab in front,
-  and the run moves on. A code a board emails to confirm an application is
+- **A CAPTCHA is the person's to pass, and the tool waits for them.** The
+  tool never solves or clicks a CAPTCHA, reCAPTCHA, hCaptcha or Turnstile
+  widget. It finds the challenge before the form is sent
+  (`src/browser/captcha.ts`), tells the person, brings the tab in front,
+  waits at most `RUN.humanWaitMs`, then reads the form again and sends it
+  once (`waitAtCaptcha` in `src/run/pipeline.ts`). The `daily` run does not
+  wait: the job is left for the person and the board is left alone. A
+  plain checkbox that only states the applicant is a person, or accepts a
+  privacy notice or agreement, is a form field like any other and is
+  ticked from the model's answer; a marketing or newsletter box is never
+  ticked and a signature is never typed (`MARKETING_Q`, `HUMAN_CONFIRM_Q`
+  in `src/forms/mapForm.ts`). A code a board emails to confirm an application is
   different. With the person's consent it is read from their mailbox and
   entered by `node bin/jev.js code <id>` (`src/run/code.ts`): the code
   arrives on standard input, goes into the one box the form has for it,

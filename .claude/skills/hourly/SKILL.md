@@ -75,7 +75,8 @@ page is opened and tried too.
   brings the window to the front, notifies the person and waits up to two
   minutes. If they sign in, it fills and continues; if not, the job is skipped,
   the tab stays open in Needs you and the pass moves on. A robot check or an
-  emailed code after Submit gets the same two minutes (`RUN.humanWaitMs`). A page with no form is left open in front too.
+  emailed code after Submit gets the same two minutes (`RUN.humanWaitMs`); a
+  robot check the person passes is read again and sent once. A page with no form is left open in front too.
 - Most of what the hourly search finds is board-only, so many passes end with a
   window waiting for the person rather than an application sent.
 
