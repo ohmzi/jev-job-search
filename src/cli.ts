@@ -245,7 +245,9 @@ program
       const entries = takeJobs([id], { count: 1, dry, shared: sharedAppliedKeys() });
       const { reports, sent: now } = entries.length ? await pipeline(entries, { submit: !dry, dry, fresh: false, quiet: true }) : { reports: [], sent: [] };
       sent.push(...now);
-      const e = loadQueue().entries.find((x) => x.job.id === id);
+      // A listing taken to the employer's link has a new id, since a job's id follows its link. A rehearsal changes no file.
+      const at = dry ? id : (entries[0]?.job.id ?? id);
+      const e = loadQueue().entries.find((x) => x.job.id === at);
       return { status: e?.status ?? "failed", waitingFor: e?.waitingFor ?? null, reason: e?.statusReason ?? null, ready: !!reports[0]?.ready, report: reports[0] ?? null };
     };
     const summary = await inRun(`daily${dry ? " --dry" : ""}`, async () => {

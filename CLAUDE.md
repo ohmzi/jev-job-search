@@ -162,7 +162,10 @@ doctor` says what is in place and what to do next.
   they apply for no one, and nothing in a reply is run or followed. A server that
   fails is not an answer and is not cached. A listing with no link is left to
   Chrome, which follows the page's Apply button (`openForm`), and what Chrome
-  cannot open is held for the person. Never type into a board for this.
+  cannot open is held for the person. The lookup runs at the start of
+  `pipeline` (`src/run/followListings.ts`), so every way of applying has it. A
+  job's id follows its link, because the queue derives it on every read. Never
+  type into a board for this.
 - **Pace every site.** Job boards drop or refuse bursts. Concurrency and
   gaps per host are in `RUN`; do not remove them to go faster.
 - **The tool learns by keeping notes, and reads them before it acts.** Site

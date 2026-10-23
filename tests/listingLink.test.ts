@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+import { jobId } from "../src/jobs/normalize.js";
 import { McpClient } from "../src/mcp/client.js";
 import { employerLinkIn, linksIn, listingOf, loadListingLinks, resolveListings, withEmployerLink } from "../src/sources/listingLink.js";
 
@@ -80,9 +81,9 @@ describe("the employer's link in a reply", () => {
   it("ignores http links and images", () => {
     expect(linksIn("http://acme.com/careers/1 https://acme.com/logo.png")).toEqual([]);
   });
-  it("keeps the job id and changes the link and the board", () => {
+  it("changes the link and the board, and the id follows the link as the queue derives it", () => {
     const j = withEmployerLink({ id: "abc", url: "https://www.indeed.com/viewjob?jk=1", ats: "other" }, "https://boards.greenhouse.io/acme/jobs/123");
-    expect(j).toEqual({ id: "abc", url: "https://boards.greenhouse.io/acme/jobs/123", ats: "greenhouse" });
+    expect(j).toEqual({ id: jobId("https://boards.greenhouse.io/acme/jobs/123"), url: "https://boards.greenhouse.io/acme/jobs/123", ats: "greenhouse" });
   });
 });
 

@@ -19,6 +19,8 @@ import { JevClient } from "../jev/client.js";
 import { applyUrlFor, hostIs, type Job } from "../jobs/normalize.js";
 import { loadQueue, mutateQueue, RUN_OWNED, sortEntries, updateEntry, type QueueEntry } from "../jobs/queue.js";
 import { appliedKey } from "../jobs/keys.js";
+import { followListings } from "./followListings.js";
+import type { Caller } from "../sources/listingLink.js";
 import { recentFirst } from "../jobs/recency.js";
 import { withStore } from "../util/store.js";
 import { rememberWalledHost } from "../jobs/walled.js";
@@ -42,6 +44,10 @@ export type RunOptions = {
   signInWaitMs?: number;
   /** Leave a page the tool could not fill open and in front, instead of closing it, so the person can look. */
   keepOpenOnNeedsReview?: boolean;
+  /** The Indeed and LinkedIn MCP servers, asked for the employer's form behind a board listing. False skips them. */
+  listings?: Caller | false;
+  /** Where the answers of the boards' servers are kept. */
+  linksFile?: string;
 };
 
 const asJob = (e: QueueEntry) => e.job as unknown as Job;
@@ -566,6 +572,8 @@ async function settle(jev: JevClient, r: FillReport, o: RunOptions): Promise<boo
 
 export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ reports: FillReport[]; sent: string[] }> {
   const profile = loadProfile();
+  // An Indeed or LinkedIn listing is taken to the employer's own form first, when its board's MCP server has the link.
+  await followListings(entries, profile, { dry: o.dry, quiet: o.quiet, ...(o.listings !== undefined ? { listings: o.listings } : {}), ...(o.linksFile ? { linksFile: o.linksFile } : {}) });
   const jev = new JevClient();
   await ensureBrowser();
   const writer = limiter(RUN.writerConcurrency);

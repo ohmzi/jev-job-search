@@ -28,6 +28,10 @@ changed for a person using the tool and what changed for a contributor.
   opens the listing and follows its Apply button as before. For a contributor:
   `src/mcp/client.ts` is a small stdio MCP client with no new dependency, and
   `src/sources/listingLink.ts` holds the lookup and its cache.
+- The apply step asks the same servers. `followListings` runs at the start of
+  `pipeline`, so `/apply`, `daily` and the hourly apply pass take a listing to the
+  employer's form when the board's server has the link. A job's id follows its
+  link, as the queue derives it on every read.
 - A run takes at most three roles from one employer, never two in a row, and
   waits eight minutes between two applications to the same employer.
   Submissions to Greenhouse are spaced 90 seconds apart.

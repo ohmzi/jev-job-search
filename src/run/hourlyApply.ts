@@ -8,14 +8,11 @@
  */
 import { accountGate } from "../accounts/capability.js";
 import { DAILY, HOURLY } from "../config.js";
-import { canFill } from "../jobs/fillable.js";
 import { appliedKey } from "../jobs/keys.js";
 import { loadQueue, mutateQueue, sortEntries, type QueueEntry } from "../jobs/queue.js";
 import { recentFirst } from "../jobs/recency.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
-import type { Job } from "../jobs/normalize.js";
 import type { Profile } from "../profile/schema.js";
-import { listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
 import { withStore } from "../util/store.js";
 import { boardOf, countToday, employerOf, loadPauses, localDay, pauseBoard } from "./daily.js";
 import { employerKey, interleaveEmployers, noteApplied, pipeline, takeJobs } from "./pipeline.js";
@@ -152,10 +149,6 @@ export type HourlyApplyOptions = {
   now?: Date;
   count?: number;
   log?: (line: string) => void;
-  /** The Indeed and LinkedIn MCP servers. False skips them; left out, the real servers are used. */
-  listings?: Caller | false;
-  /** Where the answers of the boards' servers are kept. */
-  linksFile?: string;
 };
 
 /**
@@ -192,43 +185,6 @@ export async function applyFresh(profile: Profile, policy: Policy, o: HourlyAppl
   }
   if (o.dry) return summary;
 
-  // A board listing picked here may have the employer's form behind it. The boards' MCP servers say where;
-  // when they have nothing, Chrome opens the listing and follows its Apply button as before.
-  const held = picked.filter((e) => e.applyable === false && listingOf(e.job.url));
-  if (held.length && o.listings !== false) {
-    const caller = o.listings ?? mcpCaller(log);
-    try {
-      const links = await resolveListings(held.map((e) => e.job), { call: caller.call, country: profile.search?.countryIndeed ?? "USA", now, log, ...(o.linksFile ? { cacheFile: o.linksFile } : {}) });
-      if (links.size) {
-        withStore(() => {
-          const changed = mutateQueue((q) => {
-            const out: QueueEntry[] = [];
-            for (const x of q.entries) {
-              const url = links.get(x.job.id);
-              if (!url || x.status !== "queued") continue;
-              x.job = withEmployerLink(x.job, url);
-              x.applyable = canFill(x.job as Job);
-              if (x.applyable) x.holdUntil = null;
-              x.updatedAt = now.toISOString();
-              out.push(x);
-            }
-            return out;
-          });
-          let rows = loadRows();
-          for (const x of changed) rows = upsertEntry(rows, x);
-          saveRows(rows);
-        });
-        for (let i = 0; i < picked.length; i++) {
-          const url = links.get((picked[i] as QueueEntry).job.id);
-          if (url) picked[i] = { ...(picked[i] as QueueEntry), job: withEmployerLink((picked[i] as QueueEntry).job, url) };
-        }
-        log(`[hourly] ${links.size} of ${held.length} board listing(s) led to the employer's own form`);
-      }
-    } finally {
-      caller.close();
-    }
-  }
-
   for (const e of picked) {
     const board = boardOf(e.job);
     const last = day.last.get(board);
@@ -238,6 +194,8 @@ export async function applyFresh(profile: Profile, policy: Policy, o: HourlyAppl
     }
     const entries = takeJobs([e.job.id], { count: 1, dry: false, shared: sharedAppliedKeys() });
     if (!entries.length) continue;
+    // The run may take a listing to the employer's link, and a job's id follows its link: read it after the run.
+    const taken = entries[0] as QueueEntry;
     let sent: string[] = [];
     try {
       const r = await pipeline(entries, {
@@ -267,14 +225,14 @@ export async function applyFresh(profile: Profile, policy: Policy, o: HourlyAppl
     withStore(() => {
       const out = mutateQueue((q) => {
         const next: QueueEntry[] = [];
-        for (const x of q.entries) if (x.job.id === e.job.id && settleAfterAttempt(x, now)) next.push(x);
+        for (const x of q.entries) if (x.job.id === taken.job.id && settleAfterAttempt(x, now)) next.push(x);
         return next;
       });
       let rows = loadRows();
       for (const x of out) rows = upsertEntry(rows, x);
       saveRows(rows);
     });
-    const after = loadQueue().entries.find((x) => x.job.id === e.job.id);
+    const after = loadQueue().entries.find((x) => x.job.id === taken.job.id);
     if (after && (after.status === "awaiting_user_action" || after.status === "awaiting_email_verification") && (after.waitingFor === "human_code" || after.waitingFor === "robot_check")) {
       pauseBoard(board, "it asked for a human check", new Date());
       log(`[hourly] ${board} is left alone until tomorrow: it asked for a human check`);

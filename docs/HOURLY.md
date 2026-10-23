@@ -68,8 +68,9 @@ and ages out twelve hours after first seen.
 | Refused by a code filter | `skipped` with the reason | Yes, with the reason | Leaves the page |
 | Already applied to | Its existing status | No | Never comes back |
 
-A board-only listing is one whose MCP gave no employer link. The hourly pass asks again
-when the job's turn comes, and if there is still none it opens the page in Chrome and
+A board-only listing is one whose MCP gave no employer link. The apply step asks again
+when the job's turn comes (`followListings`, at the start of every apply run, so `/apply`
+and `daily` do too), and if there is still none it opens the page in Chrome and
 follows its Apply button (`openForm`), which is the Chromium fallback. If it wants a sign-in, the tool brings the window to the front, notifies
 the person and waits; they sign in, and the form is filled. If the page has no
 form or the wait runs out, the tab is left open for them. The job is not

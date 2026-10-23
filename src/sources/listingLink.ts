@@ -9,7 +9,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 import { MCP, PATHS } from "../config.js";
-import { atsFromUrl, hostIs, type Job } from "../jobs/normalize.js";
+import { atsFromUrl, hostIs, jobId, type Job } from "../jobs/normalize.js";
 import { McpClient } from "../mcp/client.js";
 import { safeUrl } from "../util/redact.js";
 import { withStore, writeAtomic } from "../util/store.js";
@@ -99,9 +99,12 @@ export function employerLinkIn(text: string): string | null {
   return links.find((l) => LOOKS_LIKE_APPLY.test(new URL(l).pathname + new URL(l).search)) ?? null;
 }
 
-/** The same job at the employer's link. The id stays: the record and the CSV are keyed by it. */
-export function withEmployerLink<T extends { url: string; ats: string }>(job: T, url: string): T {
-  return { ...job, url, ats: atsFromUrl(url) } as T;
+/**
+ * The same job at the employer's link. A job's id is derived from its link and is recomputed every
+ * time the queue is read, so the id moves with the link: the record and the sheet row are keyed by it.
+ */
+export function withEmployerLink<T extends { id: string; url: string; ats: string }>(job: T, url: string): T {
+  return { ...job, id: jobId(url), url, ats: atsFromUrl(url) } as T;
 }
 
 const Cache = z.record(z.object({ url: z.string().nullable(), at: z.string() }));
