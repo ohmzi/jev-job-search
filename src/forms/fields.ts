@@ -71,13 +71,13 @@ export function isApplicationForm(d: FieldsDump): boolean {
 export const PlanAction = z.enum([
   /** fillFields.js writes the value. */
   "fill",
-  /** Claude uses the Chrome upload tool with the resume path. */
+  /** The writer uses the Chrome upload tool with the resume path. */
   "upload",
-  /** Claude drafts text from answer-context and fills it. */
+  /** The writer drafts text from answer-context and fills it. */
   "draft",
   /** Deliberately left empty. */
   "skip",
-  /** JEV was unsure; Claude reads the label and decides. */
+  /** JEV was unsure; the writer reads the label and decides. */
   "review",
 ]);
 export type PlanAction = z.infer<typeof PlanAction>;
@@ -93,7 +93,7 @@ export const PlannedField = z.object({
   key: z.string(),
   /** What goes in the box (for select and radio: the option value). Null when not fill. */
   value: z.string().nullable(),
-  /** For select and radio: the option label matched, for Claude's eyes. */
+  /** For select and radio: the option label matched, for the writer's eyes. */
   optionLabel: z.string().nullable(),
   confidence: z.number(),
   note: z.string().nullable(),

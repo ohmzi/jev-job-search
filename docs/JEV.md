@@ -26,8 +26,8 @@ Why it fits this project: an application form is a long list of small
 decisions (which value goes here, which option is right, is this page the
 success page) and a job list is a long list of small judgements (is this
 software, is it paid, does the stack match). Each is a typed question.
-Claude is reserved for the two or three sentences per application that
-need writing.
+The writer, also DeepSeek, is reserved for the two or three sentences per application that
+need writing, in a separate call that asks for free text.
 
 ## The API
 
@@ -99,7 +99,7 @@ follows (`FORM` in `src/config.ts`):
 |---|---|
 | ≥ 0.9 | Apply the mapping silently |
 | 0.5 to 0.9 | Apply it, note the confidence in the plan |
-| < 0.5 | Do not act; Claude reads the field and decides |
+| < 0.5 | Do not act; the writer reads the field and decides |
 
 Noul has no confidence field. The tool treats values near 0 or 1 as
 decisive and the middle (0.3 to 0.7) as "unsure", exactly as a distribution
@@ -185,7 +185,7 @@ State: `{ url, text }` with the page's visible text capped at 8,000 characters.
 
 ## What JEV is not used for
 
-- Writing anything. Free-text answers come from Claude, from the profile's
+- Writing anything. Free-text answers come from the writer, from the profile's
   facts and `data/voice.md`.
 - Reading screenshots. Pages are serialized to text or to a field list first.
 - Final authority on truth. Work authorization and GPA are resolved in code

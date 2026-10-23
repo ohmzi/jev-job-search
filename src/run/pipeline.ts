@@ -224,7 +224,7 @@ export async function waitedAtSignIn(e: QueueEntry, r: FillReport, o: { waitMs?:
 /** A form whose values did not land on its first page is worth one more go: a page that loaded badly is often fine the second time. */
 const worthAnotherGo = (r: FillReport) => r.state === "filled" && r.page === 1 && !r.stuck && r.failed.length > 0;
 
-/** Settles what JEV left open on the page a job's tab shows: from the answer memory, or by Claude. A writer error leaves the form as it was. */
+/** Settles what JEV left open on the page a job's tab shows: from the answer memory, or by the writer. A writer error leaves the form as it was. */
 export async function resolvePage(jev: JevClient, profile: Profile, entry: QueueEntry | null, r: FillReport, fresh: boolean): Promise<FillReport> {
   try {
     return await resolveJob(forJob(profile, entry), entry, r.jobId, { jev, fresh });
@@ -455,7 +455,7 @@ export async function sweep(): Promise<void> {
 
 /**
  * Fills the two sheet cells a person would otherwise write by hand, for every job just applied to.
- * A form Claude resolved already carries its note. The rest are written in one writer call.
+ * A form the writer resolved already carries its note. The rest are written in one writer call.
  */
 export async function noteApplied(ids: string[]): Promise<void> {
   if (!ids.length) return;
@@ -503,7 +503,7 @@ async function walk(jev: JevClient, profile: Profile, e: QueueEntry, first: Fill
     // shows something else), instead of the form being given up. It stops when a round changes nothing.
     const seen = new Set<string>();
     for (let round = 1; round < RUN.resolveRounds && askAgain(r, seen); round++) {
-      if (!o.quiet) console.log(`${e.job.company}: ${r.failed.length} box(es) did not take their value. Asking Claude how to answer them (round ${round + 1}).`);
+      if (!o.quiet) console.log(`${e.job.company}: ${r.failed.length} box(es) did not take their value. Asking the writer how to answer them (round ${round + 1}).`);
       r = await resolvePage(jev, profile, e, r, true);
     }
     if (!shouldAdvance(r)) return r;

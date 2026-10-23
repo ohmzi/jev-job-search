@@ -374,7 +374,7 @@ export async function nextPage(jev: JevClient, profile: Profile, job: Job, opts:
 export const shouldAdvance = (r: FillReport) => r.state === "filled" && !r.stuck && r.hasNext && isClean(r) && (r.resolution?.verdict ?? "ready") === "ready" && !r.sent && r.page < RUN.maxPages;
 
 /**
- * Two retries before anything is handed to Claude.
+ * Two retries before anything is handed to the writer.
  * A dropdown that refused the value JEV named gets its real options gathered, cut to the closest few, and JEV picks among those.
  * A search box whose starter suggestions held nothing for the candidate is asked again as a value to type.
  */
@@ -406,7 +406,7 @@ async function secondLook(page: Page, jev: JevClient, profile: Profile, job: Job
   plan.reviews = [...plan.reviews.filter((r) => !settled.has(r.selector)), ...second.reviews.filter((r) => !plan.reviews.some((x) => x.selector === r.selector))];
   plan.jevCostUsd += second.jevCostUsd;
   trace(`${job.company}: second look at ${again.length} dropdown(s), ${second.fills.length - stillFailed.length} settled`);
-  // A dropdown the second look could not settle either goes to Claude with its closest options attached.
+  // A dropdown the second look could not settle either goes to the writer with its closest options attached.
   for (const f of again) {
     if (settled.has(f.selector) && !stillFailed.some((x) => x.selector === f.selector)) continue;
     if (!plan.reviews.some((r) => r.selector === f.selector)) plan.reviews.push({ id: f.id, selector: f.selector, kind: f.kind, label: f.label, options: f.options.map((o) => o.label), why: "no option matched the profile value" });
@@ -448,7 +448,7 @@ async function readBack(page: Page, d: FieldsDump, plan: FillPlan, failedRaw: Fa
 }
 
 /**
- * Hands every field still open on a filled form to Claude, writes its answers into the page,
+ * Hands every field still open on a filled form to the writer, writes its answers into the page,
  * reads them back, and records whether the form is now ready to submit.
  */
 export async function resolveJob(profile: Profile, entry: QueueEntry | null, jobId: string, opts: { jev?: JevClient; fresh?: boolean } = {}): Promise<FillReport> {
@@ -472,12 +472,12 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
       const o = open.get(x.selector);
       if (o && !o.options.length && x.options.length) o.options = x.options;
     }
-    // A file that did not upload is not something Claude can answer; it stays a failure.
+    // A file that did not upload is not something the writer can answer; it stays a failure.
     for (const x of [...r.failed, ...(r.leftBlank ?? [])]) if (dumped(x.selector)?.kind !== "file") add(x.selector, x.why);
     const before = await shownValues(page, plan.fields.map((f) => f.selector));
     const statesBefore = await controlStates(page, plan.fields.map((f) => f.selector));
     for (const f of emptyRequiredFields(d, plan, before, statesBefore)) add(f.selector, "required and still empty");
-    // An option is shown with its question, so Claude can see which choice a group already holds.
+    // An option is shown with its question, so the writer can see which choice a group already holds.
     const withQuestion = (selector: string, label: string) => {
       const f = dumped(selector);
       return f && (f.kind === "checkbox" || f.kind === "radio") && f.section && f.section !== label ? `${f.section} / ${label}` : label;
@@ -505,7 +505,7 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
         for (const [selector, hit] of recallExact(mem, fingerprint, company, askMemory.filter((f) => !recalled.has(f.selector)))) recalled.set(selector, hit);
         const rest = askMemory.filter((f) => !recalled.has(f.selector));
         if (opts.jev && rest.length) {
-          // A question worded another way: JEV says whether it is the same question. If it cannot be asked, Claude answers as before.
+          // A question worded another way: JEV says whether it is the same question. If it cannot be asked, the writer answers as before.
           const similar = await recallSimilar(opts.jev, mem, fingerprint, company, rest, `same-question:${jobId}`).catch(() => new Map<string, Recalled>());
           for (const [selector, hit] of similar) recalled.set(selector, hit);
         }
@@ -514,7 +514,7 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
       const settled = openFields.filter((f) => recalled.has(f.selector) && f.kind !== "checkbox").map((f) => ({ label: withQuestion(f.selector, f.label), value: recalled.get(f.selector)?.value ?? "" }));
       const fresh = await resolveOpenFields(profile, entry, [...filled, ...settled], rest);
       resolution = { ...fresh, answers: [...[...recalled].map(([selector, hit]) => ({ selector, value: hit.value, reusable: hit.reusable })), ...fresh.answers] };
-      // The sheet note written for this posting last time is kept when Claude is not asked again.
+      // The sheet note written for this posting last time is kept when the writer is not asked again.
       const prior = mem?.forms[memoryKey];
       if (!resolution.note && prior?.fingerprint === fingerprint && prior.resolution.note) resolution.note = prior.resolution.note;
     }
@@ -538,7 +538,7 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
     // path ("Job Board > Other"): the read-back, the memory and the check before Submit then all read the box the same way.
     for (const f of fills) if (f.picked && !f.picked.toLowerCase().includes(f.value.toLowerCase())) f.value = `${f.value} > ${f.picked}`;
     resolution = { ...resolution, answers: resolution.answers.map((x) => ({ ...x, value: fills.find((f) => f.selector === x.selector)?.value ?? x.value })) };
-    // An answer Claude gave may have brought up a further question. JEV fills what it can of those; what it cannot is open on the next look.
+    // An answer the writer gave may have brought up a further question. JEV fills what it can of those; what it cannot is open on the next look.
     if (opts.jev && entry) {
       const fieldsBefore = plan.fields.length;
       failedRaw = await followUp(page, opts.jev, profile, entry.job as unknown as Job, d, plan, failedRaw);
@@ -562,7 +562,7 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
       plan,
       [
         ...failedRaw,
-        // Anything the plan or Claude wanted in the form that the page does not show.
+        // Anything the plan or the writer wanted in the form that the page does not show.
         ...plan.fields.filter((f, i) => (f.action === "fill" || f.action === "upload" || fills.some((x) => x.selector === f.selector)) && !fields[i]?.shown && states[i] !== "off" && !failedRaw.some((x) => x.selector === f.selector)).map((f) => ({ selector: f.selector, why: "the value is not confirmed on the page" })),
         // And anything that shows some other value than the one it was given, whatever happened on the way.
         ...showsAnother(plan.fields, fills, fields.map((f) => f.shown), states).filter((x) => !failedRaw.some((y) => y.selector === x.selector)),
@@ -573,9 +573,9 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
     const next: Omit<FillReport, "ready"> = {
       ...r,
       fields,
-      // An open question Claude chose to leave blank is settled too, unless it is required and still empty.
+      // An open question the writer chose to leave blank is settled too, unless it is required and still empty.
       drafts: plan.drafts.filter((x) => stillRequired.has(x.selector)),
-      // An open field Claude chose to leave blank is settled, unless it is still a required field with nothing in it.
+      // An open field the writer chose to leave blank is settled, unless it is still a required field with nothing in it.
       reviews: plan.reviews.filter((x) => stillRequired.has(x.selector)),
       failed: holds.map((f) => ({ ...f, label: labelOf(f.selector) })),
       leftBlank: leftBlank.map((f) => ({ ...f, label: labelOf(f.selector) })),
@@ -592,7 +592,7 @@ export async function resolveJob(profile: Profile, entry: QueueEntry | null, job
   }
 }
 
-/** Writes extra values (Claude's drafts and review decisions) into a form that fill already opened. */
+/** Writes extra values (the writer's drafts and review decisions) into a form that fill already opened. */
 export async function setValues(profile: Profile, jobId: string, fills: Fill[]): Promise<{ failed: { selector: string; why: string }[]; shown: Record<string, string> }> {
   const page = await pageFor(jobId);
   try {

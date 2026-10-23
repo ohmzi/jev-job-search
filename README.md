@@ -12,7 +12,7 @@ An open-source job application tool built on [Claude Code](https://claude.com/cl
 |---|---|
 | **Who it is for** | Students and new graduates applying to software roles in Canada, the United States or remotely, who are comfortable opening a terminal once. It writes in English. |
 | **What you need** | A Mac with Google Chrome, [Node.js](https://nodejs.org) 22, and [Claude Code](https://claude.com/claude-code) with a Claude Pro or Max subscription. |
-| **What it costs** | Your Claude subscription, plus a few dollars of [DeepSeek](https://platform.deepseek.com/api_keys) credit for the rating model: roughly 30 to 60 cents per search, and a few cents per application. Nothing else. |
+| **What it costs** | Your Claude subscription for the slash commands, plus a few dollars of [DeepSeek](https://platform.deepseek.com/api_keys) credit. DeepSeek rates the jobs, picks the options and writes the sentences: roughly 30 to 60 cents per search, and a few cents per application. Nothing else. |
 | **How to start** | Clone it, run `npm install`, open `claude` in the folder and type `/setup`. About 20 minutes, most of it your answers. It ends with one application filled and waiting for your yes. |
 | **What it checks** | Your right to work, education and dates are taken from your profile and never changed to fit a form. Every answer is read back from the page before a form is sent. A human check is left to you. It can only be as truthful as the profile you give it. |
 | **What it is not** | A download-and-open app: there is no installer yet. And it is a beta: forms on boards it has not met will hold, and it says so. |
@@ -25,7 +25,7 @@ It is how I run my own search. I sent 100 applications in less than 10 minutes a
 
 ## What this is
 
-A command-line tool, a set of Claude Code skills that run it with you in the loop, and a dashboard on your own machine. Two models share the thinking: [DeepSeek](https://www.deepseek.com) makes every decision that has a fixed set of answers (which of your details goes in this box, which option, how good a fit this job is), and Claude, on your own subscription, writes the sentences. The code does the rest: finds the jobs, drives Chrome, checks every answer on the page, and keeps your records.
+A command-line tool, a set of Claude Code skills that run it with you in the loop, and a dashboard on your own machine. [DeepSeek](https://www.deepseek.com) does the thinking and the writing: it makes every decision that has a fixed set of answers (which of your details goes in this box, which option, how good a fit this job is), and it writes the sentences, with the same key. Claude Code is how you run the skills; it writes nothing on a form. The code does the rest: finds the jobs, drives Chrome, checks every answer on the page, and keeps your records.
 
 ```
 /setup              /discover              /apply
@@ -33,7 +33,7 @@ A command-line tool, a set of Claude Code skills that run it with you in the loo
   v                    v                      v
 Your resume        Read public job        Fill each form in Chrome
 and a short        lists and company      JEV picks every option
-interview          boards                 Claude writes the sentences
+interview          boards                 DeepSeek writes the sentences
   |                    |                      |
   v                    v                      v
 Profile files      Ranked queue with      Read every answer back
@@ -50,7 +50,7 @@ Four checks are built into the code. Your right to work, your education and your
 
 - A Mac with Google Chrome. The tool opens its own Chrome window with its own profile; your everyday browser is not touched.
 - [Node.js](https://nodejs.org) 22 or newer.
-- [Claude Code](https://claude.com/claude-code), signed in. Claude Code has no free tier: you need a Claude Pro or Max subscription, or a Claude API key in `.env` (then the commands work and the skills do not; see [Claude Code or the Claude API](#claude-code-or-the-claude-api)).
+- [Claude Code](https://claude.com/claude-code), signed in, to run the slash commands. It has no free tier: you need a Claude Pro or Max subscription. Without it the commands still work from a terminal; see [Claude Code and DeepSeek](#claude-code-and-deepseek). A [DeepSeek key](https://platform.deepseek.com/api_keys) is required either way.
 - A [DeepSeek](https://platform.deepseek.com/api_keys) account and key with a few dollars of credit. That pays for every typed decision, the only separate bill: a search that rates 350 to 460 postings costs roughly $0.40 to $0.60, and applications cost a few cents each. See [What it costs](#what-it-costs).
 
 ## Quick start
@@ -90,7 +90,7 @@ Reads the public lists and the company boards, drops the jobs you could not or w
 /apply
 ```
 
-Fills the best queued forms, one Chrome tab each, answers what JEV left open with Claude, reads every value back from the page, and sends each form the moment it is ready once you say so. Every result is printed as it happens. Your records appear in `applications/`.
+Fills the best queued forms, one Chrome tab each, answers what JEV left open with the DeepSeek writer, reads every value back from the page, and sends each form the moment it is ready once you say so. Every result is printed as it happens. Your records appear in `applications/`.
 
 ### 5. Apply to one posting you found yourself
 
@@ -207,7 +207,7 @@ jev-job-search/
 │   ├── run/                   # the apply loop
 │   ├── browser/               # Chrome over the DevTools protocol, no browser library
 │   ├── forms/                 # reading and filling pages; three scripts that run in the page
-│   ├── answers/               # the writer (Claude), the answer memory, drafts, voice
+│   ├── answers/               # the writer (DeepSeek), the answer memory, drafts, voice
 │   ├── documents/             # tailored resumes and cover letters
 │   ├── jobs/, sources/        # finding and rating
 │   ├── knowledge/, log/, jev/ # site notes; the CSV records; the JEV client
@@ -223,7 +223,7 @@ Each job goes through the same loop on its own, and its result is printed the mo
 1. **Open** the form in its own Chrome tab and read every control on the page: labels, options, which are required, which file box wants which file.
 2. **Map** the page with one JEV call: which of your details goes in each box, which option is true for you, which boxes stay empty. A form that has not changed keeps its mapping.
 3. **Fill** with real input events, one control at a time on boards that save as you type. Dropdowns are opened and clicked; calendars are turned to the month and the day is clicked; the resume goes in the resume box and nowhere else.
-4. **Write** what is left. Open questions, and the few fields JEV was unsure of, go to Claude with your facts, your drafts and your voice guide. Answers are remembered, so a form you rehearsed is not written twice.
+4. **Write** what is left. Open questions, and the few fields JEV was unsure of, go to the DeepSeek writer with your facts, your drafts and your voice guide. Answers are remembered, so a form you rehearsed is not written twice.
 5. **Read back** every value from the page. A box that shows something other than what it was given fails the fill and holds the form; an optional box the site refused is reported as left blank.
 6. **Walk** to the next page when the form has one, and repeat.
 7. **Send**, only when every wanted value is on the page and no required box is empty, and only when you asked. The page after the click must be a confirmation before the application counts.
@@ -231,7 +231,7 @@ Each job goes through the same loop on its own, and its result is printed the mo
 
 ### What makes this workflow different
 
-- **Decisions and sentences are split.** JEV, a model built for typed judgements, makes every fixed-answer choice and returns probabilities, not text, in about half a second for a fraction of a cent. Claude writes only the sentences. A form with no open question never calls Claude at all.
+- **Decisions and sentences are split.** JEV, a model built for typed judgements, makes every fixed-answer choice and returns probabilities, not text, in about half a second for a fraction of a cent. The writer, also DeepSeek, writes only the sentences. A form with no open question never calls the writer at all.
 - **Nothing is trusted until it is read back.** Every value is read from the page after it is written. A wrong dropdown pick, a date a masked box mangled, or a value a site quietly dropped is caught before Submit, not after.
 - **What goes on a form comes from your profile.** Work authorization is worked out in code, per country, from what your profile says; dates and education are copied from it; a written answer that names a number, a tool or a company your profile does not is refused. A signature, an NDA and a human check stop the form for you. The profile is the one place the truth can go wrong, and it is yours.
 - **It learns per site.** How each board's controls take values, which sites want a sign-in, which email codes, is recorded after every form and read before the next, and shared through the repo.
@@ -280,11 +280,11 @@ Everything about you is in data files, not in the code. `/profile` changes any o
 
 | File | What to change |
 |---|---|
-| `data/profile.json` | Your details, education, experience, projects, skills, work authorization, and `answers`: how recurring questions are answered (relocation, text messages, notice period, pay, agreements). JEV and Claude both follow this list |
+| `data/profile.json` | Your details, education, experience, projects, skills, work authorization, and `answers`: how recurring questions are answered (relocation, text messages, notice period, pay, agreements). JEV and the writer both follow this list |
 | `data/bank.json` | Your starting draft for each common open question ("Why this company?", "Tell us about a project") |
 | `data/voice.local.md` | How you write, so the answers read as yours |
 | `documents/resume.pdf` | The resume the tool sends when you do not tailor one |
-| `src/config.ts` | Every setting in one place: the job lists, the scoring and where ranks highest, how many forms run at once, how fast the tool works on each site, which Claude model writes, the resume and cover letter page limits |
+| `src/config.ts` | Every setting in one place: the job lists, the scoring and where ranks highest, how many forms run at once, how fast the tool works on each site, which DeepSeek model writes, the resume and cover letter page limits |
 
 ### Where the jobs come from, and adding a board
 
@@ -377,18 +377,15 @@ Delete `data/profile.json`, `data/bank.json` and `data/voice.local.md` and run `
 
 ## What it costs
 
-Two services do the thinking.
+One service does the thinking and the writing: **DeepSeek**, through your
+DeepSeek key. **This is the only separate bill.** It makes two kinds of call.
 
-- **DeepSeek** answers the questions that have a fixed set of answers, such as
-  "which of my details goes in this box?" and "how good a fit is this
-  job?" You pay for it through your DeepSeek key. **This is the only
-  separate bill.**
-- **Claude** writes the answers that need sentences, such as "Why do you
-  want to work here?" It runs on the Sonnet 5.5 model at low effort,
-  through Claude Code on your own Claude subscription, so there is no
-  separate bill for it. If you would rather use a Claude API key, you can,
-  and then those calls are billed to that key. See
-  [Claude Code or the Claude API](#claude-code-or-the-claude-api).
+- **Typed questions** have a fixed set of answers, such as "which of my
+  details goes in this box?" and "how good a fit is this job?"
+- **The writer** answers what needs sentences, such as "Why do you want to
+  work here?" It is asked for a JSON object and reads only your facts, your
+  drafts and your voice guide. It uses the model in `WRITER_MODEL`, or the
+  one in `DEEPSEEK_MODEL`. See [Claude Code and DeepSeek](#claude-code-and-deepseek).
 
 ### What JEV costs
 
@@ -424,21 +421,21 @@ What changes these numbers:
 - **A rehearsal costs the same as a real fill**, except the "read the page
   after Submit" step, which only a real application reaches. Sending a
   form you rehearsed does not map it again.
-- **Claude calls count toward your subscription's usage allowance.** On
-  an API key, `cost` shows what they cost instead.
+- **The writer is billed to the same key.** `cost` lists its calls apart
+  from the typed questions.
 
 To see what you have spent, run `node bin/jev.js cost`. Every run that
 fills forms also prints its own cost at the end.
 
 ### How the tool keeps the cost down
 
-- **It remembers answers.** Every answer Claude writes is kept on your
+- **It remembers answers.** Every answer the writer gives is kept on your
   computer. When you rehearse a form and then send it, the tool reuses the
-  answers you read in the rehearsal and does not ask Claude again. We ran
-  the same 10 forms a second time: Claude was asked about 1 form instead of
+  answers you read in the rehearsal and does not ask the writer again. We ran
+  the same 10 forms a second time: the writer was asked about 1 form instead of
   6.
 - **It reuses an answer on another company's form only when that is safe.**
-  Claude marks an answer as reusable only if it would be true for any
+  The writer marks an answer as reusable only if it would be true for any
   company. JEV then checks that the new question asks for the same thing.
   Most open questions name the company, so expect this to save a little,
   not a lot: in our test, 1 answer in 8 was reusable.
@@ -449,33 +446,33 @@ fills forms also prints its own cost at the end.
   changed keeps its rating from the last search, and a form that has not
   changed keeps its field mapping. A second search on the same day costs
   close to nothing.
-- **It sends Claude only what Claude needs.** Your profile is sent once per
-  run and reused from a cache for the following forms.
+- **It sends the writer only what it needs.** Your profile comes first in
+  every call, so DeepSeek's prefix cache serves it at a tenth of the price
+  after the first form.
 - **JEV does everything it can.** On a typical form JEV settles all but one
   or two fields, for about a tenth of a cent.
 
 To see or clear what the tool remembers, run `node bin/jev.js memory`.
 
-## Claude Code or the Claude API
+## Claude Code and DeepSeek
 
-The tool reaches Claude in one of two ways. Both run the same model and
-the same prompts, and everything else works the same.
+The two have separate jobs.
 
-| | Claude Code (the default) | The Claude API |
+| | Claude Code | DeepSeek |
 |---|---|---|
-| What you need | Claude Code installed and signed in | A Claude API key in `.env` as `ANTHROPIC_API_KEY` |
-| What it costs | Your Claude subscription's allowance. No separate bill. | Billed to your key at API prices. `cost` shows the amount. |
-| The skills `/setup`, `/apply`, `/discover`, `/profile` | Work | Need Claude Code too. Without it, run the commands yourself. |
+| What it does | Runs the slash commands (`/setup`, `/discover`, `/apply`, `/profile` and the rest) with you in the loop | Rates jobs, picks options, and writes every sentence on a form, a tailored resume or a cover letter |
+| What you need | Claude Code installed and signed in, for the skills only | `DEEPSEEK_API_KEY` in `.env` |
+| What it costs | Your Claude subscription's allowance | Billed to your DeepSeek key. `cost` shows the amount |
 
-With a key in `.env`, the tool uses the API. To keep using Claude Code
-while a key is present, add `WRITER_BACKEND=claude-code` to `.env`. Run
-`node bin/jev.js doctor --online` to prove either one works.
+Without Claude Code the commands still work: run them yourself with
+`node bin/jev.js`. The scheduled hourly and daily runs never start Claude Code.
+Run `node bin/jev.js doctor --online` to prove the key works.
 
 ## Tips for better results
 
 ### Profile depth matters
 
-The writer may use only what your profile says. A bullet with a number in it ("cut page load by 44%") gives Claude something to tie to a posting; a vague one gives it nothing. Run `/profile` after each internship, project or course and add the facts. The tailored resume and the cover letter are only as specific as the profile is.
+The writer may use only what your profile says. A bullet with a number in it ("cut page load by 44%") gives the writer something to tie to a posting; a vague one gives it nothing. Run `/profile` after each internship, project or course and add the facts. The tailored resume and the cover letter are only as specific as the profile is.
 
 ### Standing answers save you from repeating yourself
 

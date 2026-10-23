@@ -20,8 +20,8 @@ At any point, this command lists what is in place and names the next step:
 node bin/jev.js doctor
 ```
 
-Add `--online` to also make one tiny JEV call and one tiny Claude call,
-which proves the key and the sign-in work.
+Add `--online` to also make one tiny JEV call and one tiny writer call,
+which proves the key works.
 
 The rest of this page is the same setup done by hand.
 
@@ -29,8 +29,8 @@ The rest of this page is the same setup done by hand.
 
 - **Node 22 or newer**: `node --version`. Install from nodejs.org or `brew install node`.
 - **Google Chrome**. The runner starts its own window with its own profile; your everyday Chrome is not touched.
-- **Claude**, one of two ways. Either **Claude Code** installed and signed in with `/login`: the tool runs it headless (`claude -p`) on Sonnet 5.5 at low effort, on your subscription. Or a **Claude API key** in `.env` as `ANTHROPIC_API_KEY`: the tool calls the Claude API directly, billed to the key. The skills need Claude Code; the commands work either way.
-- A **DeepSeek** account and key from https://platform.deepseek.com/api_keys. Put a few dollars of credit on it; a full run costs a fraction of a dollar.
+- **Claude Code**, installed and signed in with `/login`, to run the slash commands. The commands work from a terminal without it. The tool never starts it to write anything.
+- A **DeepSeek** account and key from https://platform.deepseek.com/api_keys. It rates jobs, maps forms and writes every sentence. Put a few dollars of credit on it; a full run costs a fraction of a dollar.
 
 ## 2. Clone and install
 
@@ -67,7 +67,7 @@ important choices:
 - `demographics`: answer as you want them answered, including "Prefer not
   to say".
 - `preferences.salaryExpectation`: leave empty to never volunteer a number.
-- `facts`: the only claims Claude may make in a written answer. Keep every
+- `facts`: the only claims the writer may make in a written answer. Keep every
   number exact.
 - `summary`: three or four sentences; this is the candidate side of every
   fit rating, so say what you want, where, and when.
@@ -89,11 +89,11 @@ cp data/bank.example.json data/bank.json
   until a sample answer sounds like you.
 - `data/bank.json` holds your starting draft for each common question (why
   this company, a project you are proud of, how you use AI tools). Text in
-  braces is left for Claude to write from the posting.
+  braces is left for the writer to write from the posting.
 - `answers` in the profile are your standing answers to questions that
   recur: which area of engineering, relocation, notice period, text-message
   consent, what to do when a posting wants another graduation date. JEV and
-  Claude both follow them.
+  the writer both follow them.
 
 All three are git-ignored. Run `/profile` inside Claude Code to do this
 interactively.
@@ -138,8 +138,8 @@ sent; the same list is `applications/applied.csv`, and
 Claude Code, `/apply` runs the same loop and deals with what needs a second
 look.
 
-A rehearsal is not wasted work. The tool remembers the answers Claude wrote
-(`data/memory.json`), so the real run reuses them and does not ask Claude
+A rehearsal is not wasted work. The tool remembers the answers the writer wrote
+(`data/memory.json`), so the real run reuses them and does not ask the writer
 again. Changing your profile, drafts or voice guide makes it start over.
 `node bin/jev.js memory` shows what is remembered.
 
@@ -180,7 +180,7 @@ Your `data/` files are untouched by updates.
 | An answer is stale after you changed something on the form by hand | `node bin/jev.js apply --fresh <id>`, or `memory --forget <company>` |
 | `No profile at data/profile.json` | Step 4 |
 | `Chrome did not start on port 9333` | Install Google Chrome, or set `BROWSER.chromePath` in `src/config.ts` |
-| `could not run claude` | Install Claude Code and run `claude` once to log in, or put `ANTHROPIC_API_KEY` in `.env` |
+| `DEEPSEEK_API_KEY is not set` | Copy `.env.example` to `.env` and paste your DeepSeek key after `DEEPSEEK_API_KEY=` |
 | A form comes back `blocked: no form found` | The page was a login, a closed posting, or a board the runner does not walk yet. The reason is in the CSV |
 | A form comes back `filled, not ready` | The reason names the field. Add a standing answer to the profile, or finish it by hand in the window and `submit <id> --force` |
 | Forms on one site start failing with `refused` | The site is rate-limiting. Wait a few minutes; add its host to `RUN.gentleHosts` |

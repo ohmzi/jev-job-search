@@ -40,7 +40,7 @@ cp data/policy.example.json data/policy.json
 | `boards` | Job boards by name: `greenhouse`, `lever`, `ashby`, `workday` and so on | every board the tool fills |
 | `excludeEmployers` | Employers the daily run never applies to. A name matches any company that contains it | none |
 | `documents` | `tailor`: a resume written for each job. `cover`: a cover letter where a form has a box for one | your profile's own resume |
-| `jevBudgetUsd` | The most **JEV** may cost in a day. The run stops there. Claude is not counted: it runs on your subscription, or on your own API key, which this number does not limit | 0.50 |
+| `jevBudgetUsd` | The most **DeepSeek** may cost in a day, the typed questions and the writer together. The run stops there | 0.50 |
 
 Every job is checked against this file in code before its form is opened.
 A run reads the file once, when it starts. A change you make while a run
@@ -139,8 +139,7 @@ Things to know:
 - The Mac must be on and you must be signed in at that time. A Mac that
   was asleep runs the job when it wakes.
 - The tool's Chrome window opens on your screen while it works.
-- Claude Code must be signed in, or `ANTHROPIC_API_KEY` set, as for
-  `/apply`.
+- `DEEPSEEK_API_KEY` must be in `.env`, as for `/apply`. Claude Code is not started.
 - The schedule holds no key and no password. It only starts the command.
 
 ### With Claude Desktop instead

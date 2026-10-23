@@ -547,7 +547,7 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
       return { ...base, action: f.required ? "review" : "skip", key, value: null, confidence: a.confidence, note: f.required ? "required but the profile has no value" : null };
     }
     if (f.kind === "calendar") {
-      // A calendar takes a day. A value that names only a month is its first day; anything that is not a date goes to Claude.
+      // A calendar takes a day. A value that names only a month is its first day; anything that is not a date goes to the writer.
       const day = toYmd(value);
       if (!day) return { ...base, action: "review", key, value: null, confidence: a.confidence, note: "the calendar needs a date, and the profile's value is not one" };
       return { ...base, action: "fill", key, value: isoOf(day), confidence: a.confidence, note };

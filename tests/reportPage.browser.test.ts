@@ -130,7 +130,7 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
     expect(text).not.toMatch(/and continue/);
     // A run that is working can be asked to stop, apart from pausing the schedule.
     expect(auto).toMatch(/A run is working now/);
-    expect(auto).toMatch(/JEV only/);
+    expect(auto).toMatch(/JEV and the writer/);
     await page.evaluate("document.querySelector('#autoStop').click()");
     for (let i = 0; i < 30 && posts.length < 3; i++) await sleep(100);
     expect(posts[2]).toMatchObject({ path: "/api/stop", token: TOKEN });

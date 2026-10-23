@@ -196,7 +196,7 @@ are `submitGapByHost`, `perEmployerPerRun` and `employerGapMs` in
 | Text messages, marketing, keeping your details for later | Your standing answers |
 | Pay | Left empty. If the box is required, the words you chose, such as "Negotiable" |
 | GPA | Left empty unless the form cannot be sent without it, or you chose to always give it |
-| "Why do you want to work here?", "Describe a project", "Which AI tools do you use?" and other open questions | Claude writes them from your facts, your drafts and the job text |
+| "Why do you want to work here?", "Describe a project", "Which AI tools do you use?" and other open questions | The writer (DeepSeek) writes them from your facts, your drafts and the job text |
 
 ### What it leaves to you
 
@@ -319,7 +319,7 @@ it acts. There are three kinds.
 | What it keeps | Where | What it is for |
 |---|---|---|
 | **Site notes** | `knowledge/sites.json` in the repository, and `data/knowledge.json` on your computer | How each site's forms behave |
-| **Answer memory** | `data/memory.json` | Answers Claude wrote for you, so the same question is not paid for twice |
+| **Answer memory** | `data/memory.json` | Answers the writer wrote for you, so the same question is not paid for twice |
 | **JEV's earlier answers** | `data/cache/` | Ratings of postings and field mappings of forms that have not changed |
 
 ### Site notes
@@ -370,9 +370,8 @@ does this makes the tool better on the sites they applied to, for everyone.
   them, so you cannot commit them by accident.
 - The job text and the facts in your profile go to DeepSeek when the rating
   model rates a job or maps a form.
-- The job text, your facts and the open questions go to Anthropic, through
-  your own Claude Code sign-in or your own Claude API key, when a form has
-  questions for Claude.
+- The job text, your facts and the open questions go to DeepSeek again, to the
+  writer, when a form has questions it must answer.
 - Your answers go to the employer's job board.
 - What the tool learns about sites stays on your computer unless you choose
   to share it. See [How the tool learns](#how-the-tool-learns).
@@ -400,9 +399,6 @@ None of this is built yet.
 - **Download and open.** Today the tool is a repository you clone, with
   Node and Claude Code installed first. A packaged desktop app, with the
   dashboard as its window, would remove that. The command line would stay.
-- **One connection for both models.** Setup asks for Claude and for a
-  DeepSeek key. Writing through DeepSeek as well would make that one key,
-  billed there and not to a Claude subscription. Not built or tested.
 - **A shared Google sign-in for verification emails**, so nobody needs a
   Google Cloud project of their own. That takes Google's review of the
   app, which this project has not done.

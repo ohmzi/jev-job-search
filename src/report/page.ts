@@ -162,7 +162,7 @@ ${embedded}
       '<div class="item"><h4>Your daily rules</h4>' + (auto.policyError ? '<p class="warn">' + esc(auto.policyError) + "</p>" : "") +
       '<div class="grid2">' +
       '<div><label>Applications a day (at most ' + L.maxTarget + ')</label><input type="number" id="pTarget" min="1" max="' + L.maxTarget + '" value="' + esc(p.target) + '"></div>' +
-      '<div><label>Most DeepSeek may cost in a day, in dollars (JEV only: Claude is on your subscription or your own key, and is not counted)</label><input type="number" id="pBudget" min="0" step="0.05" value="' + esc(p.jevBudgetUsd) + '"></div>' +
+      '<div><label>Most DeepSeek may cost in a day, in dollars (JEV and the writer, both DeepSeek)</label><input type="number" id="pBudget" min="0" step="0.05" value="' + esc(p.jevBudgetUsd) + '"></div>' +
       '<div><label>Lowest fit score, 0 to 1</label><input type="number" id="pScore" min="0" max="1" step="0.05" value="' + esc(p.minScore) + '"></div>' +
       '<div><label>Where: vancouver, canada, remote, us, international (empty: anywhere)</label><input type="text" id="pWhere" value="' + esc(list(p.where)) + '"></div>' +
       '<div><label>Kinds: internship, new_grad (empty: both)</label><input type="text" id="pLevels" value="' + esc(list(p.levels)) + '"></div>' +

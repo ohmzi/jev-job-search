@@ -43,8 +43,8 @@ question at a time:
 - A resume written for each job, and a cover letter where a form has a
   box for one? This takes longer per job.
 - How much may JEV cost in a day? 50 cents is the default; a normal day
-  is a few cents. Say that this limits JEV only: Claude is on their
-  subscription, or on their own API key, and is not counted.
+  is a few cents. Say that this limits DeepSeek, the typed questions and the writer
+  together, which is the only bill.
 
 Write `data/policy.json` in the shape of `data/policy.example.json`, show
 it to them, and save it only after a yes. Then offer `/daily dry`.

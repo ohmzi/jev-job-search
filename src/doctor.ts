@@ -1,13 +1,12 @@
 /**
  * `doctor`: checks everything a run needs and names the one thing to do next.
  * The setup skill runs it after every step, so a person never has to work out
- * what is missing. With `online` it also makes one tiny DeepSeek call and one tiny
- * Claude Code call to prove the key and the sign-in work.
+ * what is missing. With `online` it also makes one tiny DeepSeek typed call and one tiny
+ * DeepSeek writer call to prove the key works.
  */
-import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import path from "node:path";
-import { BROWSER, childEnv, DOCTOR, GMAIL, PATHS, ROOT, WRITER, writerBackend } from "./config.js";
+import { BROWSER, DOCTOR, GMAIL, PATHS, ROOT, WRITER } from "./config.js";
 import { loadAccounts } from "./accounts/config.js";
 import { defaultStore, type SecretStore } from "./accounts/secrets.js";
 import { loadGmail } from "./mail/gmail.js";
@@ -37,16 +36,6 @@ export function checkNode(version = process.versions.node): Check {
 
 export function checkChrome(file: string = BROWSER.chromePath): Check {
   return { name: "Google Chrome", ok: existsSync(file), detail: existsSync(file) ? "installed" : `not found at ${file}`, fix: "Install Google Chrome from https://www.google.com/chrome, or set BROWSER.chromePath in src/config.ts" };
-}
-
-/** How Claude is reached: Claude Code on the person's subscription, or the Claude API on their own key. */
-export function checkClaude(): Check {
-  if (writerBackend() === "api") {
-    return { name: "Claude", ok: true, detail: `the Claude API, billed to ANTHROPIC_API_KEY in .env (${WRITER.model})`, fix: "" };
-  }
-  const r = spawnSync(WRITER.command, ["--version"], { encoding: "utf8", env: childEnv() });
-  const ok = r.status === 0;
-  return { name: "Claude", ok, detail: ok ? `Claude Code ${r.stdout.trim()} on your subscription` : "the claude command was not found", fix: "Install Claude Code from https://code.claude.com and run `claude` once to sign in, or put ANTHROPIC_API_KEY in .env to use the Claude API instead" };
 }
 
 export function checkKey(key = process.env.DEEPSEEK_API_KEY ?? ""): Check {
@@ -132,35 +121,24 @@ export async function checkKeyOnline(): Promise<Check> {
   }
 }
 
-/** One tiny Claude call: proves the sign-in or the key works and the writer's model is available. */
-export async function checkClaudeOnline(): Promise<Check> {
-  if (writerBackend() === "api") {
-    try {
-      const text = await askWriter("ok?", "Reply with the single word ok.");
-      return { name: "Claude answers", ok: /ok/i.test(text), detail: `the Claude API, ${WRITER.model}`, fix: "Check ANTHROPIC_API_KEY in .env at https://console.anthropic.com" };
-    } catch (err) {
-      return { name: "Claude answers", ok: false, detail: (err instanceof Error ? err.message : String(err)).slice(0, 200), fix: "Check ANTHROPIC_API_KEY in .env at https://console.anthropic.com" };
-    }
-  }
-  const fix = "Run `claude` once in a terminal and sign in";
-  const r = spawnSync(WRITER.command, ["-p", "--model", WRITER.model, "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--system-prompt", "Reply with the single word ok."], { input: "ok?", encoding: "utf8", timeout: DOCTOR.claudeTimeoutMs, env: childEnv(WRITER.env) });
+/** One tiny writer call: proves the writer's model answers with a JSON object, as every writer prompt asks. */
+export async function checkWriterOnline(): Promise<Check> {
+  const fix = "Check DEEPSEEK_API_KEY and WRITER_MODEL in .env, and that the DeepSeek account has credit";
   try {
-    const envelope = JSON.parse(r.stdout) as { is_error?: boolean; result?: string };
-    const ok = r.status === 0 && !envelope.is_error;
-    return { name: "Claude answers", ok, detail: ok ? `Claude Code signed in, ${WRITER.model} at ${WRITER.effort} effort` : String(envelope.result).slice(0, 200), fix };
-  } catch {
-    return { name: "Claude answers", ok: false, detail: (r.stderr || "no answer").slice(0, 200), fix };
+    const text = await askWriter("ok?", 'Reply with the JSON object {"ok": true} and nothing else.');
+    return { name: "Writer answers", ok: /"ok"\s*:\s*true/.test(text), detail: `DeepSeek, ${WRITER.model}`, fix };
+  } catch (err) {
+    return { name: "Writer answers", ok: false, detail: (err instanceof Error ? err.message : String(err)).slice(0, 200), fix };
   }
 }
 
 export async function runChecks(online: boolean): Promise<Check[]> {
   const { check: profileCheck, profile } = checkProfile();
-  const claude = checkClaude();
   const key = checkKey();
-  const checks = [checkNode(), checkChrome(), claude, key, profileCheck, checkResume(profile), ...checkOwnWords(), checkQueue(), checkAccounts()];
+  const checks = [checkNode(), checkChrome(), key, profileCheck, checkResume(profile), ...checkOwnWords(), checkQueue(), checkAccounts()];
   if (online) {
     if (key.ok) checks.push(await checkKeyOnline());
-    if (claude.ok) checks.push(await checkClaudeOnline());
+    if (key.ok) checks.push(await checkWriterOnline());
   }
   return checks;
 }

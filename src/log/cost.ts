@@ -1,11 +1,11 @@
 /**
  * What the tool spends. Two usage logs feed it: data/runs/jev-usage.jsonl
  * (every DeepSeek call, written by JevClient) and data/runs/writer-usage.jsonl
- * (every headless Claude Code call, written by the writer). The summary is
+ * (every DeepSeek writer call, written by the writer). The summary is
  * pure, so the same numbers can be printed after a run or over all time.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { PATHS, writerBackend } from "../config.js";
+import { PATHS } from "../config.js";
 
 export type JevLine = { at: string; label: string; input_tokens?: number; output_tokens?: number; cost?: number };
 export type WriterLine = { at: string; purpose: string; jobId: string; inputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; outputTokens: number; costUsd: number };
@@ -14,12 +14,12 @@ export type Bucket = { calls: number; inputTokens: number; outputTokens: number;
 export type CostSummary = {
   /** DeepSeek calls by purpose: rate (discovery), map-form (filling), page-state (reading a page). */
   jev: Record<string, Bucket>;
-  /** Claude calls by purpose: resolve (open fields), log (the two sheet cells after a submission). */
-  claude: Record<string, Bucket>;
+  /** Writer calls by purpose: resolve (open fields), log (the two sheet cells after a submission), tailor (resumes and cover letters). */
+  writer: Record<string, Bucket>;
   /** Forms that were mapped in the period. */
   forms: number;
   /** Everything except discovery, divided by the number of forms. */
-  perForm: { jevUsd: number; claudeUsd: number; totalUsd: number };
+  perForm: { jevUsd: number; writerUsd: number; totalUsd: number };
   discoveryUsd: number;
   totalUsd: number;
 };
@@ -35,7 +35,7 @@ const add = (into: Record<string, Bucket>, key: string, input: number, output: n
 
 export function summarizeCost(jevLines: JevLine[], writerLines: WriterLine[], since = ""): CostSummary {
   const jev: Record<string, Bucket> = {};
-  const claude: Record<string, Bucket> = {};
+  const writer: Record<string, Bucket> = {};
   const forms = new Set<string>();
   for (const l of jevLines) {
     if (since && l.at < since) continue;
@@ -45,21 +45,21 @@ export function summarizeCost(jevLines: JevLine[], writerLines: WriterLine[], si
   }
   for (const l of writerLines) {
     if (since && l.at < since) continue;
-    add(claude, l.purpose, l.inputTokens + l.cacheWriteTokens + l.cacheReadTokens, l.outputTokens, l.costUsd);
+    add(writer, l.purpose, l.inputTokens + l.cacheWriteTokens + l.cacheReadTokens, l.outputTokens, l.costUsd);
     if (l.purpose === "resolve" && l.jobId) forms.add(l.jobId);
   }
   const sum = (buckets: Record<string, Bucket>, skip = "") => Object.entries(buckets).reduce((t, [k, b]) => (k === skip ? t : t + b.costUsd), 0);
   const discoveryUsd = jev.rate?.costUsd ?? 0;
   const jevForms = sum(jev, "rate");
-  const claudeForms = sum(claude);
+  const writerForms = sum(writer);
   const n = Math.max(1, forms.size);
   return {
     jev,
-    claude,
+    writer,
     forms: forms.size,
-    perForm: { jevUsd: jevForms / n, claudeUsd: claudeForms / n, totalUsd: (jevForms + claudeForms) / n },
+    perForm: { jevUsd: jevForms / n, writerUsd: writerForms / n, totalUsd: (jevForms + writerForms) / n },
     discoveryUsd,
-    totalUsd: discoveryUsd + jevForms + claudeForms,
+    totalUsd: discoveryUsd + jevForms + writerForms,
   };
 }
 
@@ -85,23 +85,16 @@ const usd = (n: number) => `$${n.toFixed(n < 0.01 ? 5 : n < 1 ? 4 : 2)}`;
 
 export function formatCost(c: CostSummary): string {
   const row = (name: string, b: Bucket) => `  ${name.padEnd(12)} ${String(b.calls).padStart(5)} calls  ${String(b.inputTokens).padStart(9)} in  ${String(b.outputTokens).padStart(8)} out  ${usd(b.costUsd)}`;
-  const api = writerBackend() === "api";
-  const lines = ["DeepSeek (billed to your DeepSeek key)"];
+  const lines = ["DeepSeek, typed questions (billed to your DeepSeek key)"];
   for (const [k, b] of Object.entries(c.jev)) lines.push(row(k, b));
-  const claudeCalls = Object.values(c.claude).reduce((n, b) => n + b.calls, 0);
-  if (api) {
-    lines.push("Claude (the Claude API, billed to your key)");
-    for (const [k, b] of Object.entries(c.claude)) lines.push(row(k, b));
-    if (!claudeCalls) lines.push("  no calls recorded");
-  } else {
-    lines.push(`Claude: ${claudeCalls} call(s) through Claude Code on your subscription, no separate bill`);
-  }
+  lines.push("DeepSeek, the writer (same key)");
+  for (const [k, b] of Object.entries(c.writer)) lines.push(row(k, b));
+  if (!Object.keys(c.writer).length) lines.push("  no calls recorded");
   lines.push(`Forms: ${c.forms}`);
   if (c.forms) {
-    lines.push(api ? `Per form: DeepSeek ${usd(c.perForm.jevUsd)} + Claude ${usd(c.perForm.claudeUsd)} = ${usd(c.perForm.totalUsd)}` : `Per form: DeepSeek ${usd(c.perForm.jevUsd)}`);
-    lines.push(api ? `Per 10 forms: DeepSeek ${usd(c.perForm.jevUsd * 10)} + Claude ${usd(c.perForm.claudeUsd * 10)} = ${usd(c.perForm.totalUsd * 10)}` : `Per 10 forms: DeepSeek ${usd(c.perForm.jevUsd * 10)}`);
+    lines.push(`Per form: typed ${usd(c.perForm.jevUsd)} + writer ${usd(c.perForm.writerUsd)} = ${usd(c.perForm.totalUsd)}`);
+    lines.push(`Per 10 forms: typed ${usd(c.perForm.jevUsd * 10)} + writer ${usd(c.perForm.writerUsd * 10)} = ${usd(c.perForm.totalUsd * 10)}`);
   }
-  const jevTotal = c.discoveryUsd + Object.entries(c.jev).reduce((t, [k, b]) => (k === "rate" ? t : t + b.costUsd), 0);
-  lines.push(api ? `Discovery (rating): ${usd(c.discoveryUsd)}   Total: ${usd(c.totalUsd)}` : `Discovery (rating): ${usd(c.discoveryUsd)}   Total billed (DeepSeek): ${usd(jevTotal)}`);
+  lines.push(`Discovery (rating): ${usd(c.discoveryUsd)}   Total: ${usd(c.totalUsd)}`);
   return lines.join("\n");
 }

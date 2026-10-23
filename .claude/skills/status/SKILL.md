@@ -26,7 +26,7 @@ Say, in this order and only what applies:
 4. **Queue**: how many jobs are ready to apply to, and how old the search
    is. Offer `/discover` when it is more than a day old.
 5. **Accounts and the daily run**: one line each, only if set up.
-6. **Cost**: what JEV has cost. Claude runs on their subscription.
+6. **Cost**: what DeepSeek has cost, the typed questions and the writer apart.
 7. **Next step**: the one thing `doctor` names, as a slash command where
    there is one (`/setup`, `/discover`, `/apply`, `/accounts`, `/daily`,
    `/resume`, `/report`).

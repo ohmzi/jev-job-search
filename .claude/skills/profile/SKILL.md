@@ -30,7 +30,7 @@ If `data/profile.json` does not exist, this is a first run: use the
 Things to know:
 
 - Any change to the profile, the drafts or the voice guide makes the tool
-  forget its remembered answers, so the next run asks Claude again with the
+  forget its remembered answers, so the next run asks the writer again with the
   corrected facts. That is on purpose.
 - Anything not in `facts`, `experience`, `projects` or `answers` will never
   appear in an application.

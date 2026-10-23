@@ -12,9 +12,15 @@ changed for a person using the tool and what changed for a contributor.
 ## [Unreleased]
 
 ### Changed
-- A run takes at most three roles from one employer, never two in a row, and
-  waits eight minutes between two applications to the same employer.
-  Submissions to Greenhouse are spaced 90 seconds apart.
+- All writing goes to DeepSeek. Free-text answers, the fields JEV was unsure
+  of, the sheet notes, tailored resumes and cover letters are one chat call
+  with the same `DEEPSEEK_API_KEY`, on `WRITER_MODEL` (default: the JEV model).
+  The CLI no longer starts Claude Code or calls the Claude API, and
+  `ANTHROPIC_API_KEY`, `WRITER_BACKEND` and `WRITER_COMMAND` are gone. Claude
+  Code is still how the slash commands run. `cost` lists the writer's calls
+  apart from the typed questions, and the daily budget counts both. For a
+  contributor: the rule in `CLAUDE.md` now reads "DeepSeek decides and writes,
+  code acts", and `writerBackend()` and `apiCostUsd()` were removed.
 
 ### Fixed
 

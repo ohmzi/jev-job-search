@@ -1,13 +1,11 @@
 /**
- * What JEV leaves open goes to Claude: questions that need writing, fields it
- * was unsure of, and values the page refused. Claude Code runs headless with
- * no tools, reads the candidate's facts and the open fields, and returns one
- * JSON object. It may also say the job should not be applied to, with a reason.
+ * What JEV leaves open goes to the writer, which is DeepSeek asked for free text: questions that
+ * need writing, fields it was unsure of, and values the page refused. It has no tools, reads the
+ * candidate's facts and the open fields, and returns one JSON object. It may also say the job should not be applied to, with a reason.
  */
-import { spawn } from "node:child_process";
 import { appendFileSync, mkdirSync } from "node:fs";
 import { z } from "zod";
-import { childEnv, DOCUMENTS, PATHS, WRITER, writerBackend } from "../config.js";
+import { DEEPSEEK, PATHS, WRITER } from "../config.js";
 import type { QueueEntry } from "../jobs/queue.js";
 import type { Profile } from "../profile/schema.js";
 import { BANK_DRAFTS, BANK_INTENTS } from "./bank.js";
@@ -126,27 +124,36 @@ export async function logNotes(profile: Profile, entries: QueueEntry[]): Promise
 
 export type WriterCall = { at: string; purpose: "resolve" | "log" | "tailor"; jobId: string; model: string; inputTokens: number; cacheWriteTokens: number; cacheReadTokens: number; outputTokens: number; costUsd: number; ms: number };
 
-/** What the writer has used in this process. costUsd is what the calls would cost at API prices; on a Claude subscription they draw on the plan instead. */
+/** What the writer has used in this process. costUsd is what the calls cost at DeepSeek's list prices. */
 export const writerUsage = { calls: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
 
-type Usage = { input_tokens?: number | undefined; cache_creation_input_tokens?: number | undefined; cache_read_input_tokens?: number | undefined; output_tokens?: number | undefined };
-type Envelope = { result?: string; is_error?: boolean; total_cost_usd?: number; duration_ms?: number; usage?: Usage | undefined };
+type WriterMeta = { purpose: WriterCall["purpose"]; jobId: string };
+type Usage = { prompt_tokens?: number | undefined; completion_tokens?: number | undefined; prompt_cache_hit_tokens?: number | undefined; prompt_cache_miss_tokens?: number | undefined };
 
-function recordWriterCall(envelope: Envelope, meta: { purpose: WriterCall["purpose"]; jobId: string }): void {
-  const u = envelope.usage ?? {};
+/** What one DeepSeek call cost, from its token counts and the list prices in DEEPSEEK. */
+export function writerCostUsd(u: Usage): number {
+  const input = u.prompt_tokens ?? 0;
+  const cached = u.prompt_cache_hit_tokens ?? 0;
+  const miss = u.prompt_cache_miss_tokens ?? Math.max(0, input - cached);
+  return (miss * DEEPSEEK.pricePerMillionInputUsd + cached * DEEPSEEK.pricePerMillionCachedInputUsd + (u.completion_tokens ?? 0) * DEEPSEEK.pricePerMillionOutputUsd) / 1_000_000;
+}
+
+function recordWriterCall(u: Usage, meta: WriterMeta, ms: number): void {
+  const input = u.prompt_tokens ?? 0;
+  const cached = u.prompt_cache_hit_tokens ?? 0;
   const call: WriterCall = {
     at: new Date().toISOString(),
     ...meta,
     model: WRITER.model,
-    inputTokens: u.input_tokens ?? 0,
-    cacheWriteTokens: u.cache_creation_input_tokens ?? 0,
-    cacheReadTokens: u.cache_read_input_tokens ?? 0,
-    outputTokens: u.output_tokens ?? 0,
-    costUsd: envelope.total_cost_usd ?? 0,
-    ms: envelope.duration_ms ?? 0,
+    inputTokens: u.prompt_cache_miss_tokens ?? Math.max(0, input - cached),
+    cacheWriteTokens: 0,
+    cacheReadTokens: cached,
+    outputTokens: u.completion_tokens ?? 0,
+    costUsd: writerCostUsd(u),
+    ms,
   };
   writerUsage.calls += 1;
-  writerUsage.inputTokens += call.inputTokens + call.cacheWriteTokens + call.cacheReadTokens;
+  writerUsage.inputTokens += input;
   writerUsage.outputTokens += call.outputTokens;
   writerUsage.costUsd += call.costUsd;
   if (process.env.NODE_ENV === "test") return; // a test's fake call is not spend
@@ -159,11 +166,11 @@ function recordWriterCall(envelope: Envelope, meta: { purpose: WriterCall["purpo
 }
 
 /**
- * The first call of a process stores the system prompt in the provider's cache. Calls that start
- * while it is still running would each pay to store it again, so they wait for it and then read it.
+ * The first call of a process stores the system prompt in DeepSeek's prefix cache. Calls that start
+ * while it is still running would each pay full price for it, so they wait for it and then read it.
  */
 let warming: Promise<unknown> | null = null;
-export async function runWriter(prompt: string, system: string, meta: { purpose: WriterCall["purpose"]; jobId: string }): Promise<string> {
+export async function runWriter(prompt: string, system: string, meta: WriterMeta): Promise<string> {
   if (meta.purpose !== "resolve") return callWriter(prompt, system, meta);
   if (warming) {
     await warming;
@@ -174,84 +181,79 @@ export async function runWriter(prompt: string, system: string, meta: { purpose:
   return first;
 }
 
-/** Finishing a form field is quick work; writing a resume is not. */
-const effortFor = (purpose: WriterCall["purpose"]): string => (purpose === "tailor" ? DOCUMENTS.effort : WRITER.effort);
-
-/** The shape of a Claude API reply, as far as the writer reads it. */
-const ApiReply = z.object({
-  content: z.array(z.object({ type: z.string(), text: z.string().optional() })),
-  usage: z.object({ input_tokens: z.number().optional(), cache_creation_input_tokens: z.number().optional(), cache_read_input_tokens: z.number().optional(), output_tokens: z.number().optional() }).optional(),
+const WriterReply = z.object({
+  choices: z.array(z.object({ message: z.object({ content: z.string().nullable() }), finish_reason: z.string().nullish() })).min(1),
+  usage: z
+    .object({
+      prompt_tokens: z.number().optional(),
+      completion_tokens: z.number().optional(),
+      prompt_cache_hit_tokens: z.number().optional(),
+      prompt_cache_miss_tokens: z.number().optional(),
+    })
+    .optional(),
 });
 
-/** What one API call cost, from its token counts and the prices in WRITER. */
-export function apiCostUsd(u: Usage): number {
-  const p = WRITER.apiPricesPerMillion;
-  return ((u.input_tokens ?? 0) * p.input + (u.cache_creation_input_tokens ?? 0) * p.cacheWrite + (u.cache_read_input_tokens ?? 0) * p.cacheRead + (u.output_tokens ?? 0) * p.output) / 1_000_000;
-}
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** The Claude API, billed to ANTHROPIC_API_KEY. The system prompt is cached by the provider, as with Claude Code. */
-async function callApi(prompt: string, system: string, meta: { purpose: WriterCall["purpose"]; jobId: string }): Promise<string> {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("ANTHROPIC_API_KEY is not set. Add it to .env, or remove WRITER_BACKEND=api to use Claude Code.");
-  const started = Date.now();
-  const res = await fetch(WRITER.apiUrl, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": WRITER.apiVersion },
-    body: JSON.stringify({
-      model: WRITER.model,
-      max_tokens: WRITER.maxOutputTokens,
-      system: [{ type: "text", text: system, cache_control: { type: "ephemeral" } }],
-      messages: [{ role: "user", content: prompt }],
-    }),
-    signal: AbortSignal.timeout(WRITER.timeoutMs),
-  });
-  const body: unknown = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    // The error body never carries the key; the message is enough and nothing else is shown.
-    const message = typeof body === "object" && body && "error" in body ? String((body as { error?: { message?: string } }).error?.message ?? "") : "";
-    throw new Error(`the Claude API answered ${res.status}${message ? `: ${message.slice(0, 200)}` : ""}`);
-  }
-  const reply = ApiReply.parse(body);
-  const text = reply.content.filter((c) => c.type === "text").map((c) => c.text ?? "").join("");
-  recordWriterCall({ result: text, usage: reply.usage, total_cost_usd: apiCostUsd(reply.usage ?? {}), duration_ms: Date.now() - started }, meta);
-  return text;
-}
-
-function callWriter(prompt: string, system: string, meta: { purpose: WriterCall["purpose"]; jobId: string }): Promise<string> {
-  if (writerBackend() === "api") return callApi(prompt, system, meta);
-  return new Promise((resolve, reject) => {
-    mkdirSync(WRITER.cwd, { recursive: true });
-    const child = spawn(
-      WRITER.command,
-      ["-p", "--model", WRITER.model, "--effort", effortFor(meta.purpose), "--output-format", "json", "--tools", "", "--no-session-persistence", "--strict-mcp-config", "--system-prompt", system],
-      { stdio: ["pipe", "pipe", "pipe"], cwd: WRITER.cwd, env: childEnv(WRITER.env) },
-    );
-    let out = "";
-    let err = "";
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new Error(`the writer did not answer in ${WRITER.timeoutMs / 1000}s`));
-    }, WRITER.timeoutMs);
-    child.stdout.on("data", (d: Buffer) => (out += d.toString()));
-    child.stderr.on("data", (d: Buffer) => (err += d.toString()));
-    child.on("error", (e) => {
-      clearTimeout(timer);
-      reject(new Error(`could not run ${WRITER.command}: ${e.message}. Claude Code must be installed and logged in.`));
-    });
-    child.on("close", (code) => {
-      clearTimeout(timer);
-      if (code !== 0) return reject(new Error(`the writer exited with ${code}: ${err.slice(0, 300)}`));
-      try {
-        const envelope = JSON.parse(out) as Envelope;
-        recordWriterCall(envelope, meta);
-        if (envelope.is_error || typeof envelope.result !== "string") return reject(new Error(`the writer failed: ${String(envelope.result).slice(0, 300)}`));
-        resolve(envelope.result);
-      } catch {
-        reject(new Error("the writer's output was not JSON"));
+/**
+ * One free-text call to DeepSeek. The system prompt comes first and is identical for every form, so
+ * the provider's prefix cache serves it from the second call on. The reply is a JSON object, which
+ * is what every prompt the writer is given asks for. A 429, a 5xx and a dropped connection are
+ * retried with a growing pause; any other refusal is final. The key is never part of an error.
+ */
+async function callWriter(prompt: string, system: string, meta: WriterMeta): Promise<string> {
+  const key = process.env.DEEPSEEK_API_KEY;
+  if (!key) throw new Error("DEEPSEEK_API_KEY is not set. Copy .env.example to .env and add your key.");
+  let last: Error | undefined;
+  for (let attempt = 0; attempt <= WRITER.maxRetries; attempt++) {
+    if (attempt > 0) await pause(WRITER.retryBaseMs * 2 ** (attempt - 1));
+    const started = Date.now();
+    try {
+      const res = await fetch(DEEPSEEK.endpoint, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: WRITER.model,
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: prompt },
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: WRITER.maxOutputTokens,
+          stream: false,
+        }),
+        signal: AbortSignal.timeout(WRITER.timeoutMs),
+      });
+      const text = await res.text();
+      if (res.status === 429 || res.status >= 500) {
+        last = new Error(`DeepSeek answered ${res.status} for the writer`);
+        continue;
       }
-    });
-    child.stdin.end(prompt);
-  });
+      if (!res.ok) {
+        let message = "";
+        try {
+          message = String((JSON.parse(text) as { error?: { message?: string } }).error?.message ?? "");
+        } catch {
+          /* the body was not JSON */
+        }
+        throw new Error(`DeepSeek answered ${res.status}${message ? `: ${message.slice(0, 200)}` : ""}`);
+      }
+      const reply = WriterReply.parse(JSON.parse(text));
+      const first = reply.choices[0];
+      const content = first?.message.content ?? "";
+      recordWriterCall(reply.usage ?? {}, meta, Date.now() - started);
+      if (!content.trim()) {
+        last = new Error(`DeepSeek returned an empty reply for the writer${first?.finish_reason ? ` (${first.finish_reason})` : ""}`);
+        continue;
+      }
+      return content;
+    } catch (err) {
+      const name = (err as { name?: string }).name;
+      if (name !== "TimeoutError" && name !== "AbortError" && name !== "TypeError") throw err;
+      last = new Error(`the writer ${name === "TypeError" ? "could not reach DeepSeek" : `did not answer in ${WRITER.timeoutMs / 1000}s`}`);
+    }
+  }
+  throw last ?? new Error("the writer failed");
 }
 
 /** One plain writer call with a system prompt, for checks. Recorded like any other call. */

@@ -1,6 +1,6 @@
 /**
  * One DeepSeek call that tells the apply loop what it is looking at after a
- * navigation or a click. Keeps Claude from reading whole pages itself.
+ * navigation or a click. Keeps the writer from reading whole pages itself.
  */
 import { DEEPSEEK } from "../config.js";
 import type { JevClient } from "../jev/client.js";

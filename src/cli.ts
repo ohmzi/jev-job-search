@@ -65,7 +65,7 @@ process.stdout.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EPIPE") process.exit(0);
 });
 const program = new Command();
-program.name("jev-job-search").description("Find and rate software jobs with DeepSeek, fill and check each application form in Chrome, and let Claude write what needs writing.").version("1.6.0");
+program.name("jev-job-search").description("Find and rate software jobs with DeepSeek, fill and check each application form in Chrome, and let DeepSeek write what needs writing.").version("1.6.0");
 
 const int = (v: string) => parseInt(v, 10);
 const whereTheRecordIs = () => `Applications you sent: ${PATHS.applied}\nJobs left for you to do by hand: ${PATHS.manual}\nTake-home assignments to do: ${PATHS.takehome}\nEvery job considered: ${PATHS.applications}`;
@@ -159,7 +159,7 @@ program
   .option("--count <n>", "with no ids: take this many jobs from the top of the queue", int, 1)
   .option("--submit", "send each form the moment it is ready. Without it, ready forms are left open in the window")
   .option("--dry", "a rehearsal: record nothing, send nothing, close the tabs")
-  .option("--fresh", "ignore the answer memory and ask Claude again")
+  .option("--fresh", "ignore the answer memory and ask the writer again")
   .option("--tailor", "write a resume for each job from your profile and attach that one instead of your file")
   .option("--cover", "also write a cover letter for a form that has a box for one, as a file or as text")
   .option("--plain", "the profile's own resume and no cover letter, whatever the profile says")
@@ -217,7 +217,10 @@ program
     const dry = !!o.dry;
     documentsFromOptions({ tailor: policy.documents.tailor, cover: policy.documents.cover });
     const midnight = new Date(new Date().setHours(0, 0, 0, 0)).toISOString();
-    const jevSpentToday = () => Object.values(loadCost(midnight).jev).reduce((n, b) => n + b.costUsd, 0);
+    const jevSpentToday = () => {
+      const c = loadCost(midnight);
+      return [...Object.values(c.jev), ...Object.values(c.writer)].reduce((n, b) => n + b.costUsd, 0);
+    };
     const sent: string[] = [];
     const run = async (id: string): Promise<Outcome> => {
       const entries = takeJobs([id], { count: 1, dry });
@@ -297,7 +300,7 @@ program
 
 program
   .command("fill [ids...]")
-  .description("Fill the first page of each form with DeepSeek and stop. Nothing is answered by Claude and nothing is sent")
+  .description("Fill the first page of each form with DeepSeek and stop. Nothing is written by the writer and nothing is sent")
   .option("--count <n>", "with no ids: take this many jobs from the top of the queue", int, 1)
   .option("--dry", "a rehearsal: leave the queue untouched and close each tab once it is filled")
   .option("--tailor", "write a resume for each job from your profile and attach that one instead of your file")
@@ -399,8 +402,8 @@ program
 
 program
   .command("resolve <ids...>")
-  .description("Answer what is still open on filled forms: from the answer memory, or by Claude. The answers are written in and read back")
-  .option("--fresh", "ignore the answer memory and ask Claude again")
+  .description("Answer what is still open on filled forms: from the answer memory, or by the writer. The answers are written in and read back")
+  .option("--fresh", "ignore the answer memory and ask the writer again")
   .action(async (ids: string[], o: { fresh?: boolean }) => {
     const profile = loadProfile();
     const jev = new JevClient();
@@ -868,7 +871,7 @@ program
 
 program
   .command("cost")
-  .description("What the tool has spent on DeepSeek and on Claude, by purpose, and per form")
+  .description("What the tool has spent on DeepSeek, by purpose, and per form")
   .option("--since <iso>", "count only calls at or after this time, for example 2026-10-02T16:00:00Z")
   .option("--json")
   .action((o: { since?: string; json?: boolean }) => {
@@ -904,7 +907,7 @@ program
 program
   .command("doctor")
   .description("Check that everything a run needs is in place, and say what to do next")
-  .option("--online", "also make one tiny DeepSeek call and one tiny Claude call to prove the key and the sign-in work")
+  .option("--online", "also make one tiny DeepSeek call and one tiny writer call to prove the key works")
   .option("--json")
   .action(async (o: { online?: boolean; json?: boolean }) => {
     const checks = await runChecks(!!o.online);
@@ -940,7 +943,7 @@ program
 
 program
   .command("memory")
-  .description("The answer memory: answers Claude gave before, reused so the same question is not paid for twice")
+  .description("The answer memory: answers the writer gave before, reused so the same question is not paid for twice")
   .option("--forget <text>", "forget every remembered answer whose question or company contains this text")
   .option("--clear", "forget everything")
   .option("--json")

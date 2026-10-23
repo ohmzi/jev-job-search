@@ -14,32 +14,28 @@ const writer: WriterLine[] = [
 ];
 
 describe("summarizeCost", () => {
-  it("splits DeepSeek and Claude by purpose and keeps discovery apart from the forms", () => {
+  it("splits the typed questions and the writer by purpose and keeps discovery apart from the forms", () => {
     const c = summarizeCost(jev, writer);
     expect(c.jev.rate).toMatchObject({ calls: 1, costUsd: 0.0002 });
     expect(c.jev["map-form"]).toMatchObject({ calls: 3, inputTokens: 42000 });
-    expect(c.claude.resolve).toMatchObject({ calls: 1, inputTokens: 7900, outputTokens: 600 });
+    expect(c.writer.resolve).toMatchObject({ calls: 1, inputTokens: 7900, outputTokens: 600 });
     expect(c.forms).toBe(2);
     expect(c.discoveryUsd).toBeCloseTo(0.0002);
     expect(c.perForm.jevUsd).toBeCloseTo((0.001 + 0.0002 + 0.00005 + 0.0009) / 2);
-    expect(c.perForm.claudeUsd).toBeCloseTo(0.03);
+    expect(c.perForm.writerUsd).toBeCloseTo(0.03);
     expect(c.totalUsd).toBeCloseTo(0.0002 + 0.00215 + 0.06);
   });
   it("counts only calls at or after a given time", () => {
     const c = summarizeCost(jev, writer, "2026-10-02T11:01:30Z");
     expect(c.forms).toBe(1);
     expect(c.jev.rate).toBeUndefined();
-    expect(c.claude.resolve).toBeUndefined();
+    expect(c.writer.resolve).toBeUndefined();
   });
-  it("prints a per-form and a per-ten figure, with Claude priced only when the Claude API is used", () => {
-    process.env.WRITER_BACKEND = "api";
-    expect(formatCost(summarizeCost(jev, writer))).toMatch(/Per 10 forms: DeepSeek \$0\.0\d+ \+ Claude \$0\.3000 = \$0\.3\d+/);
-    expect(formatCost(summarizeCost([], []))).toContain("no calls recorded");
-    process.env.WRITER_BACKEND = "claude-code";
+  it("prints a per-form and a per-ten figure, all billed to DeepSeek", () => {
     const text = formatCost(summarizeCost(jev, writer));
-    expect(text).toContain("on your subscription, no separate bill");
-    expect(text).not.toContain("+ Claude");
-    expect(text).toContain("Total billed (DeepSeek)");
-    delete process.env.WRITER_BACKEND;
+    expect(text).toMatch(/Per 10 forms: typed \$0\.0\d+ \+ writer \$0\.3000 = \$0\.3\d+/);
+    expect(text).toContain("DeepSeek, the writer (same key)");
+    expect(text).not.toMatch(/Claude|subscription/);
+    expect(formatCost(summarizeCost([], []))).toContain("no calls recorded");
   });
 });

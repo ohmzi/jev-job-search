@@ -38,9 +38,9 @@ export type FillReport = {
   missingRequired: string[];
   /** True when nothing is left open: every wanted value is on the page and no required field is empty. Only a ready form may be submitted. */
   ready: boolean;
-  /** What Claude decided about the fields JEV left open, once resolve has run. */
+  /** What the writer decided about the fields JEV left open, once resolve has run. */
   resolution?: Resolution;
-  /** How many of those answers came from the answer memory, and whether Claude had to be asked at all. */
+  /** How many of those answers came from the answer memory, and whether the writer had to be asked at all. */
   recalled?: number;
   writerCalled?: boolean;
   /** How many times this page's Next was pressed and the form stayed where it was. */

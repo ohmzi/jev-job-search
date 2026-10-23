@@ -68,7 +68,7 @@ takes it back. The second way keeps the password in your Keychain:
 
 A window opens on your Mac. You type that employer's password there,
 twice, hidden. It goes into your Mac's Keychain under that employer's
-name and is never shown, written to a file, or sent to Claude or JEV. Do
+name and is never shown, written to a file, or sent to DeepSeek. Do
 not paste a password into a chat.
 
 Each employer has its own password in the Keychain. If you use one
@@ -280,7 +280,7 @@ the sender's domain and the link's host (not the link itself) is what
 lets the rules be widened to what Workday really sends.
 
 The email's content goes to a small parser in `src/mail/verification.ts`
-and nowhere else. It is never sent to Claude or JEV, never logged, and
+and nowhere else. It is never sent to DeepSeek, never logged, and
 never written to a file.
 
 ## Where things are kept

@@ -21,9 +21,8 @@ stops halfway and comes back, start from what `doctor` says.
 2. Run `node bin/jev.js doctor`. Fix what it names, in order:
    - Node.js older than 22, Google Chrome missing, or Claude Code missing:
      tell the user what to install and wait. You cannot install these.
-     (You are running inside Claude Code, so it is present; a user who
-     prefers a Claude API key can add `ANTHROPIC_API_KEY` to `.env` and the
-     commands use the API instead.)
+     (You are running inside Claude Code, so it is present. It runs the
+     skills only. Every sentence on a form is written by DeepSeek.)
    - Everything else is covered by the steps below.
 
 ## 2. The resume, and anything else in documents/
@@ -95,8 +94,8 @@ cents; applications cost a few cents each. Five dollars lasts months.
 2. Run `cp .env.example .env`, then open `.env` in a text editor.
 3. Ask them to paste the key after `DEEPSEEK_API_KEY=`, save, and tell you
    when it is done.
-4. Run `node bin/jev.js doctor --online`. It makes one tiny DeepSeek call and
-   one tiny Claude call to prove both work.
+4. Run `node bin/jev.js doctor --online`. It makes one tiny DeepSeek typed call and
+   one tiny writer call to prove the key works.
 
 Never ask the user to paste the key into the chat, and never print it. If
 they paste it into the chat anyway, tell them to delete that key at

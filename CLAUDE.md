@@ -75,7 +75,7 @@ doctor` says what is in place and what to do next.
 - **Secrets live in the Keychain and travel as `Secret`.** Passwords and
   the Gmail tokens are in the macOS Keychain (`src/accounts/secrets.ts`),
   never in a file, never in a command's arguments, never in a prompt to
-  Claude or DeepSeek, a report, a plan, a trace or a record. Password boxes and
+  DeepSeek, a report, a plan, a trace or a record. Password boxes and
   one-time-code boxes are never dumped.
 - **A CAPTCHA is the person's to pass.** That includes a robot check after
   Submit: `src/run/assist.ts` notifies the person, brings the tab in front,
@@ -108,15 +108,17 @@ doctor` says what is in place and what to do next.
   `scrub` (`src/util/redact.ts`), links are kept as `safeUrl`, and every
   child process is started with `childEnv()`, an allow-list that holds no
   key. A test fails on a spawn without it. Keep it that way.
-- **DeepSeek decides, code acts, Claude writes.** Anything that is a typed
+- **DeepSeek decides and writes, code acts.** Anything that is a typed
   question (which field, which option, which page, how good a fit) goes
-  through DeepSeek with criteria written as definitions. Free text and the fields
-  DeepSeek was unsure of are Claude's job, only from the facts in the profile.
-  When the CLI needs Claude it runs Claude Code headless on the person's
-  subscription, or, with `ANTHROPIC_API_KEY` in `.env`, calls the Claude
-  Messages API directly (`src/answers/resolve.ts`), on the model and effort
-  in `WRITER` in `src/config.ts`, with no tools. Those are the only two
-  ways; no other model API is called for writing.
+  through DeepSeek with criteria written as definitions. Free text and the
+  fields DeepSeek was unsure of go to the writer, which is also DeepSeek: one
+  JSON-object call to its chat endpoint with the same key, on the model in
+  `WRITER` in `src/config.ts`, with no tools, only from the facts in the
+  profile (`src/answers/resolve.ts`). That is the only way a model is
+  called for writing. Claude Code is how a person runs the skills in
+  `.claude/skills/` and is never started by the CLI. The truth rules above do
+  not depend on the model: `unsupportedClaims`, the profile-only facts and
+  the "needs_review, not answered" rule are checked in code and in the prompt.
 - **Nothing about one candidate in source.** Years, cities, drafts and
   phrasing come from the profile, `data/bank.json` and
   `data/voice.local.md`.

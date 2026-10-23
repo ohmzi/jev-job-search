@@ -3,7 +3,6 @@
  * Nothing else in the codebase hardcodes a number that changes behaviour.
  */
 import { existsSync, readFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -189,7 +188,7 @@ export const RECENCY_FLOOR = 0.7;
 export const FORM = {
   /** JEV confidence at or above which a mapping is applied without note. */
   autoConfidence: 0.9,
-  /** Below this, Claude decides the field by hand. */
+  /** Below this, the writer decides the field by hand. */
   reviewConfidence: 0.5,
   /**
    * Stricter rules for the answers that must be true. A checkbox is ticked at or above `tick` and
@@ -269,55 +268,30 @@ export const BROWSER = {
 } as const;
 
 /**
- * The writer for what JEV cannot type: open questions, and fields it was unsure of.
- * By default it is Claude Code itself, run headless, so it uses the person's own subscription and
- * no API key. With ANTHROPIC_API_KEY in .env the Claude API is called directly instead.
+ * The writer for what JEV cannot type: open questions, fields it was unsure of, the two sheet notes,
+ * and tailored resumes and cover letters. It is DeepSeek, reached with the same key as JEV, asked for
+ * free text in a JSON object. No other model is called for writing.
  */
 export const WRITER = {
-  /**
-   * The command that runs the writer headless. `WRITER_COMMAND=deepseek` sends the same flags
-   * through a local Claude Code wrapper that routes to another provider.
-   */
-  get command(): string {
-    return process.env.WRITER_COMMAND?.trim() || "claude";
-  },
-  /** The model the writer asks for. WRITER_MODEL overrides it, for a wrapper that routes elsewhere. */
+  /** The model the writer asks for. WRITER_MODEL overrides it; otherwise it follows DEEPSEEK_MODEL, then DEEPSEEK.model. */
   get model(): string {
-    return process.env.WRITER_MODEL?.trim() || "claude-sonnet-5-5";
+    return process.env.WRITER_MODEL?.trim() || process.env.DEEPSEEK_MODEL?.trim() || DEEPSEEK.model;
   },
-  effort: "low",
+  /** Free text is slower to produce than a typed answer. */
   timeoutMs: 180_000,
+  /** Longest reply the writer may give. A tailored resume is the longest thing it writes. */
+  maxOutputTokens: 8_192,
+  /** Tries per call when DeepSeek answers 429 or 5xx, or the network drops. */
+  maxRetries: 3,
+  retryBaseMs: 1_000,
   /** Job description characters handed to the writer. The posting is most of what each call costs. */
   maxDescriptionChars: 4_000,
   /** Posting characters per job when writing the two sheet notes, where the opening paragraph is enough. */
   maxNoteChars: 1_500,
-  /**
-   * Where the headless call runs. Claude Code adds the CLAUDE.md of the folder it starts in to every
-   * prompt, and this project's CLAUDE.md is about changing the code, not about writing answers.
-   * An empty folder outside the project keeps those 1,300 tokens out of every call.
-   */
-  cwd: path.join(os.tmpdir(), "jev-job-search-writer"),
-  /**
-   * The candidate's context is cached by the provider. A run reads it again within seconds, so the
-   * five-minute cache is enough, and writing to it costs 1.25 times the input price where the
-   * one-hour cache costs 2 times.
-   */
-  env: { FORCE_PROMPT_CACHING_5M: "1" },
-  /** The Claude API, used instead of Claude Code when ANTHROPIC_API_KEY is in .env. */
-  apiUrl: "https://api.anthropic.com/v1/messages",
-  apiVersion: "2023-06-01",
-  maxOutputTokens: 4_096,
-  /**
-   * Claude API prices per million tokens for the model above, only to report what API calls cost.
-   * Check them against https://www.anthropic.com/pricing when the model changes.
-   */
-  apiPricesPerMillion: { input: 3, cacheWrite: 3.75, cacheRead: 0.3, output: 15 },
 } as const;
 
 /** Tailored resumes and cover letters, written per job from the profile and rendered to PDF by the runner's Chrome. */
 export const DOCUMENTS = {
-  /** Writing a resume deserves more thought than finishing a form field. */
-  effort: "high",
   /** A second writer pass that reads the first draft as a reviewer and tightens it. Twice the writer calls per job. */
   review: true,
   /** The most skills the tailored resume lists. */
@@ -530,19 +504,6 @@ export function reportPublicOrigins(): string[] {
     .filter(Boolean);
 }
 
-export type WriterBackend = "claude-code" | "api";
-
-/**
- * How Claude is reached. Claude Code runs headless on the person's own subscription and is the
- * default. With ANTHROPIC_API_KEY in .env the Claude API is called directly and billed to that key.
- * WRITER_BACKEND=claude-code in .env keeps Claude Code even when a key is present.
- */
-export function writerBackend(): WriterBackend {
-  const asked = (process.env.WRITER_BACKEND ?? "").trim();
-  if (asked === "claude-code" || asked === "api") return asked;
-  return process.env.ANTHROPIC_API_KEY ? "api" : "claude-code";
-}
-
 /** The answer memory: what the writer already answered, reused instead of asked again. */
 export const MEMORY = {
   enabled: true,
@@ -561,7 +522,6 @@ export const DOCTOR = {
   maxResumeBytes: 5_000_000,
   /** A queue older than this is worth refreshing before a run: postings close. */
   staleQueueHours: 24,
-  claudeTimeoutMs: 60_000,
 } as const;
 
 export const RUN = {

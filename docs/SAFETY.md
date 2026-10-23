@@ -14,7 +14,7 @@ check before you publish a fork.*
 | Typing a password anywhere but a password box an adapter names, on an origin the account allows. | `enter` in `src/accounts/auth.ts` |
 | Accepting terms the person did not approve, or ticking a marketing box. | `ensureSignedIn`; the adapter names the one terms box |
 | Using a verification email that does not fit: wrong sender, sender not verified by the mail server, wrong recipient, older than the request, used before, more than one, or a link off the employer's own site. | `whyNot`, `usable` in `src/mail/verification.ts`; `follow` in `src/accounts/authPage.ts` stops a redirect off-site |
-| Sending a password, a token or an email's content to Claude or JEV, or writing one to a file or a log. A code a board mailed is passed to `code` on standard input and is never printed or recorded. | `Secret` and `scrub` in `src/util/redact.ts`, `src/accounts/secrets.ts`, `src/run/code.ts` |
+| Sending a password, a token or an email's content to DeepSeek, or writing one to a file or a log. A code a board mailed is passed to `code` on standard input and is never printed or recorded. | `Secret` and `scrub` in `src/util/redact.ts`, `src/accounts/secrets.ts`, `src/run/code.ts` |
 | Passing a human check. This covers CAPTCHAs and robot checks: the filled form stays open, the person is notified, and `resume` records the application once they finish. A code a board emails to confirm an application is separate: with the person's consent it is read from their mailbox and given to `node bin/jev.js code <id>`, which writes it into the one box the form has for it, reads it back, and submits only with `--submit` and only records the application on a confirmation. | `submitJob` reports the page as it is; `submitAndRecord` in `src/run/pipeline.ts` records `awaiting_user_action` and calls `assist`; `src/run/code.ts` handles the emailed code |
 | Sending an application twice. From the click on, a job is `submission_unknown` until a confirmation is read; it is never filled or sent again before that. A job already applied to is refused without `--resubmit`. | `submitAndRecord`, `reconcile` and `pickJobs` in `src/run/pipeline.ts` |
 | Signing in on a site with no adapter. A page with a password box is closed, the job is listed in `applications/manual.csv`, and the site is skipped from then on. | `fillJob` in `src/browser/formRunner.ts`, `outcomeOf` in `src/run/outcome.ts` |
@@ -39,15 +39,15 @@ profile. The tool makes that the only way.
 - The profile, resume, queue, both CSV files, the answer memory, HTTP cache
   and run logs are git-ignored (`.gitignore`). `data/profile.example.json`
   is fictional.
-- The answer memory (`data/memory.json`) holds answers Claude wrote for you
+- The answer memory (`data/memory.json`) holds answers the writer wrote for you
   and the questions they answered. It never leaves the machine.
   `node bin/jev.js memory --clear` empties it.
 - The DeepSeek key is read from `.env` only. Error bodies are redacted
   before they are printed (`src/jev/client.ts`).
 - What leaves the machine: job text and the profile's facts go to
-  DeepSeek on every rating and form-mapping call; the facts, the
-  posting and the open questions go to Anthropic through your own Claude Code
-  login when a form has fields left for Claude; the form values go to the
+  DeepSeek on every rating and form-mapping call, and the facts, the
+  posting and the open questions go to DeepSeek again when a form has fields
+  left for the writer; the form values go to the
   employer's ATS; nothing goes anywhere else. There is no telemetry.
 - Some boards save each field to their server as it is typed, before
   anything is submitted. Ashby does. A rehearsal (`--dry`) on such a board
@@ -68,7 +68,7 @@ profile. The tool makes that the only way.
   the same time without losing each other's writes. Two browser runs at
   once are refused.
 - Everything the tool prints passes a filter that replaces keys, tokens and
-  anything registered as secret. Child processes (Claude Code, Chrome) get
+  anything registered as secret. Child processes (Chrome, JobSpy) get
   an environment with no keys in it.
 - JEV usage is appended to `data/runs/jev-usage.jsonl` (ids, token counts,
   cost; no content).

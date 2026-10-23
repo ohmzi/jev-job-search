@@ -9,10 +9,10 @@
 | **Code** (`src/`) | Which sources to read, deterministic filters (ATS, age, flags, title words), location tier from strings, work authorization per country, the score formula, what the CSV says | Judge meaning |
 | **JEV** | Every typed judgement: fit questions per job, which key fills a field, which option, whether a checkbox applies, what kind of page this is | Write text, see pixels, hold state |
 | **The runner** (`src/browser/`) | Opens the form, reads it, writes values with real input events, attaches the resume, reads every value back, clicks Submit on a ready form | Decide what a value should be |
-| **Claude** (the headless writer, through Claude Code or the Claude API; and the skills, through Claude Code) | Free-text answers, the fields JEV was unsure about, whether a required field can be answered truthfully at all | Invent facts, override authorization, create accounts, touch the browser |
+| **The writer** (DeepSeek, asked for free text in a JSON object; the skills run in Claude Code, which writes nothing on a form) | Free-text answers, the fields JEV was unsure about, whether a required field can be answered truthfully at all | Invent facts, override authorization, create accounts, touch the browser |
 
 The rule of thumb: if a question has a finite set of answers, it is JEV's.
-If it needs a sentence, it is Claude's. If it is a rule, it is code.
+If it needs a sentence, it is the writer's (also DeepSeek, a different call). If it is a rule, it is code.
 
 ## Discover pipeline (`src/discover.ts`)
 
@@ -68,7 +68,7 @@ Timing on 2026-10-02: 4,748 unique postings, 478 rated, 61 seconds, $0.075.
 | `src/browser/submit.ts` | Sending a form and reading what the page became |
 | `src/forms/*.js` | The three scripts that run inside the page |
 | `src/forms/mapForm.ts` | Asking JEV what goes in each field |
-| `src/answers/` | The writer (headless Claude Code, or the Claude API on a key), the answer memory, drafts and voice |
+| `src/answers/` | The writer (DeepSeek), the answer memory, drafts and voice |
 | `src/documents/` | Tailored resumes and cover letters: the writer's draft, the truth gate (`unsupportedClaims`), HTML rendered to PDF through Chrome (`printPdf`) |
 | `src/accounts/` | Boards that want an account: what the person allowed (`config.ts`), the Keychain (`secrets.ts`), the sign-in itself (`auth.ts`), one adapter per board (`workday.ts`), whether a job may be taken (`capability.ts`) |
 | `src/mail/` | Gmail, read-only (`gmail.ts`), and finding the one verification email an account asked for (`verification.ts`) |
@@ -101,7 +101,7 @@ fillJob (page 1)
      │         followUp ─→ read the page again: follow controls that moved, map and fill controls that appeared
      │         readBack ─→ data/runs/<id>.report.json: every field, what the page shows, clean or not
 walk, once per page
-  resolveJob ─→ open fields → answer memory, then Claude (headless, no tools) → applyFills → read back
+  resolveJob ─→ open fields → answer memory, then the writer (DeepSeek, no tools) → applyFills → read back
   nextPage ─→ only if the page is clean and has a Next: click it once, wait for other controls, fillPage again
 outcomeOf ─→ send | left for the person, with the reason | skipped
 submitJob ─→ refuse unless ready ─→ re-read required fields ─→ click ─→ JEV reads the page ─→ record
@@ -170,7 +170,7 @@ Clicks and keys need the tab in front, so tabs take turns for them
 ### Questions that appear later
 
 Some questions exist only once another is answered. `followUp` reads the
-page again after a fill (and after Claude's answers are written), up to
+page again after a fill (and after the writer's answers are written), up to
 `FORM.followUpRounds` times. `comparePages` tells controls apart by what
 they are (kind, label, name, in order), not by selector: a new question
 pushes the controls below it down, so a selector made of positions may now
@@ -413,7 +413,7 @@ nothing about the person.
 ### The answer memory (`src/answers/memory.ts`)
 
 `data/memory.json` keeps what the writer decided, so a question is paid for
-once. `resolveJob` looks there before it calls Claude, in this order:
+once. `resolveJob` looks there before it calls the writer, in this order:
 
 1. **The same page of the same form, the same open fields.** The whole
    resolution (verdict, reason, answers, sheet note) is reused. This is the
@@ -453,18 +453,16 @@ prints it for any period. What keeps the writer cheap:
 
 - The answer memory and the caches, above.
 - The candidate's context is the system prompt, identical for every form,
-  so the provider caches it. The first call of a process stores it; calls
-  that start meanwhile wait for it and then read it at a tenth of the price.
-- The cache is the five-minute one (`WRITER.env`).
-- The headless call runs in an empty folder outside the project
-  (`WRITER.cwd`), so this project's `CLAUDE.md` is not added to every prompt.
+  so DeepSeek's prefix cache serves it. The first call of a process fills it;
+  calls that start meanwhile wait for it and then read it at a tenth of the price.
+- The writer is a plain chat call with no tools and no project files, so no
+  `CLAUDE.md` is added to any prompt.
 - A form with nothing left open makes no writer call at all.
 - The writer returns the two sheet notes with its answers. Jobs it was not
   asked about get their notes in one call for the whole run.
 
 Measured on three real batches on 2 October 2026: JEV 1 to 1.5 cents per
-10 forms, plus $0.06 to $0.09 per search. Claude ran on a subscription
-through Claude Code. The README has the table.
+10 forms, plus $0.06 to $0.09 per search. Those figures leave out the writer, which ran on Claude then and now runs on DeepSeek; `cost` prices its calls at DeepSeek's list price. The README has the table.
 
 ## Speed
 
@@ -475,7 +473,7 @@ through Claude Code. The README has the table.
 | JEV mapping | about 0.5 s, $0.001. Nothing when the form was mapped before |
 | Fill and read back | 0.2 s on Greenhouse, 3 to 6 s on Ashby (per-field saves) |
 | A further page of a form | 1 to 3 s |
-| Claude, when a form has open fields | 10 to 25 s, three forms at a time |
+| The writer, when a form has open fields | 10 to 25 s, three forms at a time |
 
 Job boards answer bursts with errors or a human check, so the pacing is
 part of correctness.
@@ -496,7 +494,7 @@ part of correctness.
 | `data/cache/ratings.json`, `data/cache/plans.json` | JEV's answers by question hash | discover, `mapForm` | the same |
 | `data/cache/http/` | cached GET bodies keyed by URL hash | `getText` | `getText` |
 | `data/runs/jev-usage.jsonl` | one JSON object per JEV call: label, tokens, cost | `JevClient` | `cost` |
-| `data/runs/writer-usage.jsonl` | one JSON object per Claude call: purpose, job, tokens, cost | the writer | `cost` |
+| `data/runs/writer-usage.jsonl` | one JSON object per writer call: purpose, job, tokens, cost | the writer | `cost` |
 | `data/runs/<id>.plan.json`, `<id>.report.json` | the dump and plan of the current page, and the verified result | the apply loop | `resolve`, `inspect`, `submit`, `survey` |
 | `data/runs/browser-session.json` | which tab holds which job | `fill` | every later step |
 | `data/policy.json` | `Policy` v1: the standing instructions for `daily` | the person, `/daily` | `daily`, `schedule install` |
@@ -510,10 +508,10 @@ part of correctness.
 
 ## Setup and `doctor` (`src/doctor.ts`)
 
-`doctor` runs a list of checks (Node, Chrome, Claude, the key, the
+`doctor` runs a list of checks (Node, Chrome, the key, the
 profile, the resume, the voice guide, the drafts, the queue) and names the
 first thing that blocks a run. `--online` adds one tiny JEV call and one
-tiny Claude call. The `/setup` skill runs it after every step. The
+tiny writer call. The `/setup` skill runs it after every step. The
 questions the skill asks, and the profile field each answer fills, are in
 `.claude/skills/setup/questions.md`.
 

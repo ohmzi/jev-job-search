@@ -1,6 +1,6 @@
 ---
 name: apply
-description: Apply to the queued jobs. Use when the user says /apply, "start applying", "run the applier", or asks to submit applications from the queue. Fills each form in the runner's own Chrome window with JEV, page by page, hands what is left to Claude, verifies, and submits only forms that are ready.
+description: Apply to the queued jobs. Use when the user says /apply, "start applying", "run the applier", or asks to submit applications from the queue. Fills each form in the runner's own Chrome window with JEV, page by page, hands what is left to the DeepSeek writer, verifies, and submits only forms that are ready.
 model: claude-sonnet-5-5
 effort: high
 ---
@@ -58,7 +58,7 @@ updated to match.
 | `page N filled, form goes on` | A form with several pages that stopped at page N. The reason says why. | The same. |
 | `blocked` | No form could be opened: a sign-in page, an error page. | Nothing. A sign-in site is noted and skipped by later searches. |
 | `blocked`, then `left open for you: ...` | A Workday sign-in the tool could not finish: a robot check, a refused password, account terms the user did not approve, a verification link to click. The page stays open and the user got a notification. | Tell the user what the page asks for. They finish it in the tool's window and run `resume --submit` themselves. |
-| `Claude: skip` | The form needs a cover letter or references. | Nothing. It is recorded as skipped. |
+| `Writer: skip` | The form needs a cover letter or references. | Nothing. It is recorded as skipped. |
 | `not submitted: ...` | The page rejected the submission. | Read the reason. `inspect <id>` shows the page's own errors. |
 
 ## What you never do
@@ -75,9 +75,9 @@ Change the profile, not the form: a fact in `facts`, or a standing answer in
 `answers`. Then `apply --dry <id>` to see it. Changing the profile makes the
 answer memory start over, on purpose.
 
-- `memory` lists the answers Claude wrote that are being reused.
+- `memory` lists the answers the writer wrote that are being reused.
 - `memory --forget <text>` drops the entries for a company or a question.
-- `apply --fresh <id>` asks Claude again for that form.
+- `apply --fresh <id>` asks the writer again for that form.
 
 ## When done
 
