@@ -27,6 +27,8 @@ import { readInbox } from "./mail/status.js";
 import { gmailClient } from "./mail/gmail.js";
 import { hourlyScheduleStatus, installHourlySchedule, installSchedule, removeHourlySchedule, removeSchedule, scheduleStatus } from "./run/schedule.js";
 import { runHourly } from "./run/hourly.js";
+import { applyFresh, type HourlyApplySummary } from "./run/hourlyApply.js";
+import { acquireGlobalRun, recordSharedApplied, sharedAppliedKeys } from "./run/shared.js";
 import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule, useBrowserPassword } from "./accounts/commands.js";
 import { adapterFor } from "./accounts/capability.js";
 import { signedInNow, signInFor } from "./accounts/gate.js";
@@ -108,13 +110,18 @@ type ApplyOptions = { count: number; dry?: boolean; submit?: boolean; fresh?: bo
 
 /** Takes the browser for a command that drives it, tidies what an interrupted run left, and gives the lock back when the work ends. */
 async function inRun<T>(command: string, work: () => Promise<T>): Promise<T> {
-  const release = acquireRun(command);
+  // The four portals share one Chrome. Only one of them may drive it at a time.
+  const releaseGlobal = acquireGlobalRun(command);
+  if (!releaseGlobal) throw new Error("another portal is using the browser right now. Wait for it to finish, or run this from the portal that is working.");
+  let release: (() => void) | null = null;
   try {
+    release = acquireRun(command);
     await ensureBrowser();
     await sweep();
     return await work();
   } finally {
-    release();
+    release?.();
+    releaseGlobal();
   }
 }
 
@@ -147,6 +154,17 @@ async function idsFromLinks(given: string[]): Promise<string[]> {
 }
 
 /** What this run does about documents: a tailored resume only on request (--tailor), a cover letter on request or when the profile says when_asked. A cover letter never swaps in a tailored resume. */
+/**
+ * Records confirmed applications in the registry the four portals share, so the same job found
+ * in another portal is not sent a second time.
+ */
+function noteShared(ids: string[]): void {
+  if (!ids.length) return;
+  const entries = loadQueue().entries.filter((e) => ids.includes(e.job.id));
+  const portal = loadProfile().search?.portal ?? "portal";
+  recordSharedApplied(entries.map((e) => ({ ...e.job, appliedAt: e.appliedAt })), portal);
+}
+
 const documentsFromOptions = (o: { tailor?: boolean; cover?: boolean; plain?: boolean }) => {
   if (o.plain) return setDocumentPolicy({ resume: false, cover: false });
   const cover = !!o.cover || loadProfile().preferences.coverLetter === "when_asked";
@@ -171,12 +189,13 @@ program
     await inRun(`apply${o.submit ? " --submit" : ""}${o.dry ? " --dry" : ""}`, async () => {
       const ids = await idsFromLinks(given);
       if (given.length && !ids.length) return;
-      const entries = takeJobs(ids, { count: o.count, dry: !!o.dry, resubmit: !!o.resubmit });
+      const entries = takeJobs(ids, { count: o.count, dry: !!o.dry, resubmit: !!o.resubmit, shared: sharedAppliedKeys() });
       if (given.length && !entries.length) return;
       const { reports, sent } = await pipeline(entries, { submit: !!o.submit, dry: !!o.dry, fresh: !!o.fresh, quiet: !!o.json, waitAtSignIn: given.length > 0 });
       if (o.json) console.log(JSON.stringify(reports, null, 2));
       if (!o.dry) {
         await noteApplied(sent);
+        noteShared(sent);
         const done = new Map(loadQueue().entries.map((e) => [e.job.id, e]));
         const count = (...statuses: string[]) => reports.filter((r) => statuses.includes(done.get(r.jobId)?.status ?? "")).length;
         console.log(`\n${count("applied")} applied, ${count("needs_review", "blocked", "login_required")} left for you, ${count("skipped", "failed")} skipped, ${count("in_progress")} filled and waiting for submit`);
@@ -223,7 +242,7 @@ program
     };
     const sent: string[] = [];
     const run = async (id: string): Promise<Outcome> => {
-      const entries = takeJobs([id], { count: 1, dry });
+      const entries = takeJobs([id], { count: 1, dry, shared: sharedAppliedKeys() });
       const { reports, sent: now } = entries.length ? await pipeline(entries, { submit: !dry, dry, fresh: false, quiet: true }) : { reports: [], sent: [] };
       sent.push(...now);
       const e = loadQueue().entries.find((x) => x.job.id === id);
@@ -242,6 +261,7 @@ program
     if (!dry) {
       saveDaily(summary);
       await noteApplied(sent);
+      noteShared(sent);
     }
     console.log(o.json ? JSON.stringify(summary, null, 2) : `\n${formatDaily(summary)}`);
     if (!dry && !o.json) console.log(whereTheRecordIs());
@@ -251,12 +271,47 @@ program
 program
   .command("hourly")
   .description("Find jobs posted recently, queue them, and move held jobs to Needs you after twelve hours. Read-only: no browser, no sign-in, no sending")
-  .option("--dry", "search and show what would be added, without writing")
+  .option("--dry", "search and show what would be added, without writing or applying")
   .option("--json")
   .action(async (o: { dry?: boolean; json?: boolean }) => {
-    const summary = await runHourly(loadProfile(), { dry: !!o.dry, log: (line) => { if (!o.json) console.error(line); } });
-    if (o.json) return console.log(JSON.stringify(summary, null, 2));
+    const say = (line: string) => { if (!o.json) console.error(line); };
+    const profile = loadProfile();
+    const summary = await runHourly(profile, { dry: !!o.dry, log: say });
+    let applied: HourlyApplySummary | null = null;
+    if (profile.search?.apply) {
+      const policy = loadPolicy();
+      if (!policy) {
+        say("[hourly] no data/policy.json, so the fresh jobs were queued but not applied to");
+      } else {
+        documentsFromOptions({ tailor: policy.documents.tailor, cover: policy.documents.cover });
+        if (o.dry) {
+          applied = await applyFresh(profile, policy, { dry: true, log: say });
+        } else {
+          // Do not open Chrome for a pass that has nothing to take.
+          const preview = await applyFresh(profile, policy, { dry: true, log: say });
+          if (!preview.picked.length) {
+            applied = preview;
+            say(`[hourly] ${preview.reason ?? "no fresh job to apply to"}`);
+          } else {
+            try {
+              applied = await inRun("hourly --apply", () => applyFresh(profile, policy, { log: say }));
+            } catch (err) {
+              say(`[hourly] the apply pass was skipped: ${err instanceof Error ? err.message : String(err)}`);
+            }
+          }
+        }
+      }
+    }
+    if (o.json) return console.log(JSON.stringify({ ...summary, apply: applied }, null, 2));
     console.log(`\n${summary.found} matching postings. ${summary.added} new (${summary.held} held for you), ${summary.updated} refreshed, ${summary.skipped} skipped, ${summary.aged} aged out. ${summary.calls} board call(s)${summary.failures.length ? `, ${summary.failures.length} failed` : ""}.`);
+    if (applied) {
+      if (applied.picked.length) {
+        console.log(`${applied.picked.length} fresh job(s) taken, ${applied.applied.length} applied, ${applied.left.length} left for you${applied.synced ? `, ${applied.synced} already applied in another portal` : ""}.`);
+        for (const l of applied.left) console.log(`  left: ${l.company} | ${l.title}: ${l.reason}`);
+      } else {
+        console.log(`No job was taken: ${applied.reason ?? "no fresh job to apply to"}.`);
+      }
+    }
     console.log(o.dry ? "Nothing was written (--dry)." : "Open /report for the Last 12 hours page. To run this every hour: node bin/jev.js schedule install --hourly");
   });
 
@@ -308,7 +363,7 @@ program
   .option("--json")
   .action(async (ids: string[], o: ApplyOptions) => {
     documentsFromOptions(o);
-    const { reports } = await inRun("fill", () => pipeline(takeJobs(ids, { count: o.count, dry: !!o.dry }), { submit: false, dry: !!o.dry, fresh: false, quiet: !!o.json, fillOnly: true }));
+    const { reports } = await inRun("fill", () => pipeline(takeJobs(ids, { count: o.count, dry: !!o.dry, shared: sharedAppliedKeys() }), { submit: false, dry: !!o.dry, fresh: false, quiet: !!o.json, fillOnly: true }));
     if (o.json) console.log(JSON.stringify(reports, null, 2));
     endIfAbandoned();
   });
@@ -428,6 +483,7 @@ program
       }
     });
     await noteApplied(sent);
+    noteShared(sent);
   });
 
 program
@@ -455,11 +511,12 @@ program
       if (process.stdin.isTTY) process.stdin.pause();
       if (signedIn.length) {
         documentsFromOptions({});
-        const { sent: now } = await pipeline(takeJobs(signedIn, { count: signedIn.length, dry: false }), { submit: !!o.submit, dry: false, fresh: false, quiet: false });
+        const { sent: now } = await pipeline(takeJobs(signedIn, { count: signedIn.length, dry: false, shared: sharedAppliedKeys() }), { submit: !!o.submit, dry: false, fresh: false, quiet: false });
         sent.push(...now);
       }
     });
     await noteApplied(sent);
+    noteShared(sent);
   });
 
 program
@@ -478,6 +535,7 @@ program
       }
     });
     await noteApplied(sent);
+    noteShared(sent);
   });
 
 /**
@@ -530,6 +588,7 @@ program
       if (await submitAndRecord(jev, id, false)) sent.push(id);
     });
     await noteApplied(sent);
+    noteShared(sent);
   });
 
 program
@@ -746,6 +805,7 @@ program
       }
     }
     await noteApplied(sent);
+    noteShared(sent);
     console.log(`${sent.length} of ${ids.length} recorded as applied`);
   });
 

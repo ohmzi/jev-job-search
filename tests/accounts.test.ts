@@ -612,11 +612,11 @@ describe("a job the person named, stopped at a sign-in", () => {
     expect(await waitedAtSignIn(entry, atSignIn, { waitMs: 0, seen: async () => false })).toBe(false);
   });
 
-  it("does not wait at anything but a sign-in the person can do: a robot check, a verification email, a form that is simply blocked", async () => {
+  it("waits only at a sign-in the person can do: not a robot check, a verification email, or a form that is simply blocked", async () => {
     const never = { waitMs: 60_000, seen: async () => true };
     expect(await waitedAtSignIn(entry, { ...atSignIn, auth: { status: "awaiting_user_action", waitingFor: "robot_check" } }, never)).toBe(false);
     expect(await waitedAtSignIn(entry, { ...atSignIn, auth: { status: "awaiting_email_verification", waitingFor: "email_link" } }, never)).toBe(false);
-    expect(await waitedAtSignIn(entry, { ...atSignIn, auth: { status: "login_required", waitingFor: "login" } }, never)).toBe(false);
+    expect(await waitedAtSignIn(entry, { ...atSignIn, auth: { status: "login_required", waitingFor: "login" } }, never)).toBe(true);
     expect(await waitedAtSignIn(entry, blockedReport(job, "no form found"), never)).toBe(false);
   });
 });

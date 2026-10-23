@@ -185,6 +185,14 @@ describe("putting hourly finds in the queue", () => {
     expect(held?.applyable).toBe(false);
     expect(held?.holdUntil).toBeTruthy();
   });
+  it("holds a board the tool has not read instead of skipping it", () => {
+    const icims = job({ id: "icims", url: "https://acme.icims.com/jobs/123", ats: "icims" });
+    const r = mergeHourly([], [icims], profile(), NOW);
+    expect(r.skipped).toBe(0);
+    expect(r.held).toBe(1);
+    expect(r.entries[0]?.status).toBe("queued");
+    expect(r.entries[0]?.applyable).toBe(false);
+  });
   it("hands an old board-only listing to the person at once", () => {
     const old = job({ id: "old", url: "https://www.linkedin.com/jobs/view/2", ats: "linkedin", postedAt: "2026-10-20" });
     const r = mergeHourly([], [old], profile(), NOW);
@@ -244,12 +252,12 @@ describe("the Last 12 hours rows", () => {
 });
 
 describe("apply order", () => {
-  it("takes recent jobs first and never takes a board-only listing", () => {
+  it("takes recent jobs first, and a board-only listing is tried rather than skipped", () => {
     const oldHigh = entry({ job: { ...job(), id: "old-high" } as QueueEntry["job"], fit: { score: 0.9, decision: "apply", skipReason: null, reasons: [], components: {}, locationTier: "us", answers: {} }, discoveredAt: "2026-10-20T00:00:00Z" });
     const newLow = entry({ job: { ...job(), id: "new-low" } as QueueEntry["job"], fit: { score: 0.2, decision: "apply", skipReason: null, reasons: [], components: {}, locationTier: "us", answers: {} } });
     const held = entry({ job: { ...job(), id: "held" } as QueueEntry["job"], applyable: false });
     const picked = pickJobs([oldHigh, newLow, held], [], { count: 2, dry: true, now: NOW });
-    expect(picked.picked.map((e) => e.job.id)).toEqual(["new-low", "old-high"]);
+    expect(picked.picked.map((e) => e.job.id)).toEqual(["new-low", "held"]);
   });
 });
 

@@ -7,7 +7,7 @@ import { createHash } from "node:crypto";
 
 export type Ats =
   | "greenhouse" | "lever" | "ashby" | "workday" | "icims" | "smartrecruiters" | "jobvite"
-  | "rippling" | "bamboohr" | "taleo" | "oracle" | "successfactors" | "linkedin" | "amazon" | "other";
+  | "rippling" | "bamboohr" | "workable" | "jazzhr" | "taleo" | "oracle" | "successfactors" | "linkedin" | "amazon" | "other";
 
 export type Sponsorship = "offers" | "none" | "citizenship" | "unknown";
 
@@ -100,6 +100,8 @@ export function atsFromUrl(url: string): Ats {
   if (on("jobvite.com")) return "jobvite";
   if (on("rippling.com")) return "rippling";
   if (on("bamboohr.com")) return "bamboohr";
+  if (on("workable.com")) return "workable";
+  if (on("jazzhr.com", "applytojob.com")) return "jazzhr";
   if (on("taleo.net")) return "taleo";
   if (on("oraclecloud.com")) return "oracle";
   if (on("successfactors.com", "jobs.sap.com") || /[?&]ats=successfactors\b/.test(u)) return "successfactors";

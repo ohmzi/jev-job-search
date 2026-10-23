@@ -68,9 +68,44 @@ and ages out twelve hours after first seen.
 | Refused by a code filter | `skipped` with the reason | Yes, with the reason | Leaves the page |
 | Already applied to | Its existing status | No | Never comes back |
 
-A board-only listing is one the apply loop cannot fill. The hourly run holds it
-instead of putting it in the way of an apply run. `/apply` never picks it, and
-`/apply <id>` refuses it with a note to open the link yourself.
+A board-only listing is one whose MCP gave no employer link. The hourly pass asks again
+when the job's turn comes, and if there is still none it opens the page in Chrome and
+follows its Apply button (`openForm`), which is the Chromium fallback. If it wants a sign-in, the tool brings the window to the front, notifies
+the person and waits; they sign in, and the form is filled. If the page has no
+form or the wait runs out, the tab is left open for them. The job is not
+skipped. `/apply` tries the same page the same way.
+
+## Applying fresh jobs
+
+The hourly run can send a fresh job right after finding it, when the posting resolves to a form
+the tool can fill. Turn it on with `search.apply: true` in the portal's profile (it is on in these
+four portals) and a `data/policy.json`. Without a policy the search still runs, but nothing is
+sent.
+
+- Fillable links go first: Greenhouse, Lever, Ashby, Jobvite, Rippling, BambooHR, Workable,
+  JazzHR, and Workday where the person has an account. A board-only page is tried too. If it wants
+  a sign-in, the tool brings the window to the front, notifies the person and waits up to ten
+  minutes (`HOURLY.signInWaitMs`). If they sign in, it fills and continues; if not, the tab stays
+  open and the job waits in Needs you. It never types a password, makes an account or passes a
+  robot check.
+- A page the tool could not fill, or one with no form at all, is left open in front instead of
+  being closed, so the person can look at it.
+- Up to two applications per portal per hour, one role per employer, inside the daily limits: the
+  day's target, the per-board and per-employer counts, the employer's open forms, the pauses after
+  a human check, and the gaps between submissions.
+- Fresh jobs bypass the score check (`admitRecent`). Their gate was the portal's role and area
+  filters, not a fit score.
+- One job gets two attempts. After the second it becomes `needs_review`, says "left for you after
+  two attempts", and is never picked again. A code, sign-in, robot check, signature or unconfirmed
+  click is left for the person on the first attempt and is never retried.
+- The four portals share one Chrome, so a global lock lets only one of them apply at a time. The
+  timers are staggered, and a portal that finds the lock held skips its apply pass that hour.
+- A shared registry records every confirmed application by company and title. A job sent from one
+  portal is marked applied in the others and is not sent again. A manual `/apply` checks it too.
+
+Many listings on Indeed and LinkedIn lead to an employer form the MCP can name. The rest are
+opened and tried, not skipped. A sign-in window is left for you, and a page with no form stays open for
+you to take from there.
 
 ## The page
 
@@ -201,9 +236,9 @@ and leaves the queue as it is. The next run tries again.
 
 ## What it never does
 
-- No form is filled, submitted, or recorded as applied.
-- No sign-in, account or verification email.
-- No CAPTCHA or robot check.
+- No form is sent without every value read back and a confirmation page.
+- No password is typed, no account is made, and no verification email is read. A sign-in page is opened and left for the person.
+- No CAPTCHA or robot check is passed.
 - No mail is read.
 - No web page is executed: JobSpy's JSON is parsed and treated as data.
 - No key is passed to the Docker call.

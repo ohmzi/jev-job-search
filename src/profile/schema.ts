@@ -29,6 +29,8 @@ const SearchSchema = z.object({
   sites: z.array(z.enum(["indeed", "linkedin"])).default(["indeed", "linkedin"]),
   /** The Indeed country the searches belong to. */
   countryIndeed: z.string().min(2).max(60).default("USA"),
+  /** Apply to fresh fillable finds right after the search. A policy is still required. */
+  apply: z.boolean().default(false),
   resultsWanted: z.number().int().min(1).max(100).default(50),
   hoursOld: z.number().int().min(1).max(24).default(1),
   /** A run stops asking after this many calls, whatever the terms and places add up to. */

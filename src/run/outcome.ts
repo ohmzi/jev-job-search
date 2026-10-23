@@ -36,7 +36,9 @@ export function outcomeOf(r: FillReport, maxPages: number): Outcome {
     const reason = r.reason ?? "no form found";
     // A sign-in on a board the tool knows: the job waits for what the sign-in said, and the site is not written off.
     if (r.auth) return { action: r.auth.status, reason: r.auth.status === "queued" ? null : reason, rememberSite: false, waitingFor: r.auth.waitingFor };
-    if (reason === SIGN_IN_REASON || /login_required/.test(reason)) return { action: "login_required", reason: SIGN_IN_REASON, rememberSite: true };
+    // A sign-in page is the person's, not a site to write off. The tab stays open, the run waits,
+    // and if they sign in the form is filled.
+    if (reason === SIGN_IN_REASON || /login_required/.test(reason)) return { action: "awaiting_user_action", reason: SIGN_IN_REASON, rememberSite: false, waitingFor: "login" };
     // A posting that has closed is not something the person can do by hand either.
     if (/page looks like: closed/.test(reason)) return { action: "skipped", reason: "the posting has closed", rememberSite: false };
     return { action: "blocked", reason, rememberSite: /page looks like: job_description/.test(reason) };

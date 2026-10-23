@@ -38,10 +38,14 @@ const run = (command: string, args: string[]) => {
   }
 };
 
-/** A notification on the Mac. The words travel as arguments, never as script text. */
+/** A desktop notification. The words travel as arguments, never as script text. */
 export function notify(title: string, body: string): void {
-  if (process.platform !== "darwin" || !ASSIST.notify) return;
-  run("/usr/bin/osascript", ["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title, body]);
+  if (!ASSIST.notify) return;
+  if (process.platform === "darwin") {
+    run("/usr/bin/osascript", ["-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", title, body]);
+  } else if (process.platform === "linux") {
+    run("notify-send", [title, body]);
+  }
 }
 
 /** Tells the person a form waits on them and, for an emailed code, opens their mail at the search for it. */

@@ -17,26 +17,14 @@ import { isWalled } from "../jobs/walled.js";
 import { ageHeldEntries, isRecent } from "../jobs/recency.js";
 import type { Job } from "../jobs/normalize.js";
 import { loadQueue, mutateQueue, type QueueEntry } from "../jobs/queue.js";
+import { appliedKey, hourlyKey } from "../jobs/keys.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import { usStatus, type Profile, type Search } from "../profile/schema.js";
 import { searchJobspy, type JobspyRunner } from "../sources/jobspy.js";
 import { listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
 import { withStore, writeAtomic } from "../util/store.js";
 
-const keyPart = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
-
-/** The same posting from two boards, in the words the person would compare them by. */
-export function hourlyKey(j: Pick<Job, "company" | "title" | "locations">): string {
-  return `${keyPart(j.company)}|${keyPart(j.title)}|${keyPart(j.locations.join(","))}`;
-}
-
-/**
- * The looser key an applied job is remembered by. A board can move the same role to another
- * location or another link; the employer and title are what say it is the job that was sent.
- */
-export function appliedKey(j: Pick<Job, "company" | "title">): string {
-  return `${keyPart(j.company)}|${keyPart(j.title)}`;
-}
+export { appliedKey, hourlyKey };
 
 export type HourlySummary = {
   found: number;
@@ -114,6 +102,9 @@ export function mergeHourly(
 
     const applyable = canFill(job);
     const reason = preFilter(job, now, walled, us, DISCOVER.maxAgeDays, withAccount);
+    // A board the tool has not read is not a reason to throw the job away: the page may open on a
+    // form, and if it wants a sign-in the person gets the window. Only a role or content refusal skips it.
+    const boardReason = !!reason && /^(workday|taleo|oracle|successfactors|icims|amazon|smartrecruiters)\b|careers site needs an account/i.test(reason);
     const draft: QueueEntry = {
       job: job as QueueEntry["job"],
       fit: null,
@@ -132,13 +123,13 @@ export function mergeHourly(
       replies: [],
       response: null,
     };
-    if (reason) {
+    if (reason && !boardReason) {
       skipped++;
     } else if (applyable) {
       draft.status = "queued";
       draft.statusReason = null;
     } else if (isRecent(draft, now)) {
-      // Held for the person. The hourly run hands it over when the window closes.
+      // Held for the person. The hourly run tries the page and hands it over when the window closes.
       draft.status = "queued";
       draft.statusReason = null;
       draft.holdUntil = new Date(now.getTime() + HOURLY.windowHours * 3_600_000).toISOString();
@@ -146,7 +137,7 @@ export function mergeHourly(
     } else {
       // Already too old for the page: it is the person's at once.
       draft.status = "needs_review";
-      draft.statusReason = HOURLY.staleReason;
+      draft.statusReason = reason ?? HOURLY.staleReason;
     }
     entries.push(draft);
     byId.set(job.id, draft);

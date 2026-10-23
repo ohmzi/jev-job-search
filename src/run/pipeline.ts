@@ -18,6 +18,7 @@ import { logNotes } from "../answers/resolve.js";
 import { JevClient } from "../jev/client.js";
 import { applyUrlFor, hostIs, type Job } from "../jobs/normalize.js";
 import { loadQueue, mutateQueue, RUN_OWNED, sortEntries, updateEntry, type QueueEntry } from "../jobs/queue.js";
+import { appliedKey } from "../jobs/keys.js";
 import { recentFirst } from "../jobs/recency.js";
 import { withStore } from "../util/store.js";
 import { rememberWalledHost } from "../jobs/walled.js";
@@ -29,7 +30,19 @@ import { outcomeOf } from "./outcome.js";
 import { documentPolicy, tailorJob } from "../documents/tailor.js";
 import { printFill } from "./print.js";
 
-export type RunOptions = { submit: boolean; dry: boolean; fresh: boolean; quiet: boolean; fillOnly?: boolean; /** The person named these jobs and is there: a sign-in only they can do is waited for. */ waitAtSignIn?: boolean };
+export type RunOptions = {
+  submit: boolean;
+  dry: boolean;
+  fresh: boolean;
+  quiet: boolean;
+  fillOnly?: boolean;
+  /** The person is there: a sign-in only they can do is waited for. */
+  waitAtSignIn?: boolean;
+  /** How long to wait at that sign-in. The default is `RUN.signInWaitMs`. */
+  signInWaitMs?: number;
+  /** Leave a page the tool could not fill open and in front, instead of closing it, so the person can look. */
+  keepOpenOnNeedsReview?: boolean;
+};
 
 const asJob = (e: QueueEntry) => e.job as unknown as Job;
 /** The profile as this one job sees it: with the answers the person gave for this job's own questions. */
@@ -48,7 +61,7 @@ const hostOf = (url: string) => {
  * with no confirmation seen, is refused: `resubmit` lets a sent one through on purpose, and nothing
  * lets an unconfirmed one through until it is settled.
  */
-export function takeJobs(ids: string[], o: { count: number; dry: boolean; resubmit?: boolean }): QueueEntry[] {
+export function takeJobs(ids: string[], o: { count: number; dry: boolean; resubmit?: boolean; shared?: Set<string> }): QueueEntry[] {
   if (o.dry) {
     const { picked, refused } = pickJobs(loadQueue().entries, ids, o, accountGate());
     for (const r of refused) console.log(`${r.id}  not taken: ${r.why}`);
@@ -67,12 +80,12 @@ export function takeJobs(ids: string[], o: { count: number; dry: boolean; resubm
  * rehearsal sends nothing, so it may take any. `gate` speaks for the boards that want an account:
  * a job there is taken only when the tool may sign in today, and never more new accounts than the day allows.
  */
-export function pickJobs(entries: QueueEntry[], ids: string[], o: { count: number; dry: boolean; resubmit?: boolean; now?: Date }, gate: (url: string) => string | null = () => null): { picked: QueueEntry[]; refused: { id: string; why: string }[] } {
+export function pickJobs(entries: QueueEntry[], ids: string[], o: { count: number; dry: boolean; resubmit?: boolean; now?: Date; shared?: Set<string> }, gate: (url: string) => string | null = () => null): { picked: QueueEntry[]; refused: { id: string; why: string }[] } {
   if (!ids.length) {
     const picked: QueueEntry[] = [];
     const perEmployer = new Map<string, number>();
     // The jobs the hourly search found inside its window go first, then the queue's own score order.
-    for (const e of recentFirst(sortEntries(entries.filter((x) => x.status === "queued" && x.applyable !== false)), o.now ?? new Date())) {
+    for (const e of recentFirst(sortEntries(entries.filter((x) => x.status === "queued" && !o.shared?.has(appliedKey(x.job)))), o.now ?? new Date())) {
       if (picked.length >= o.count) break;
       // A job that must wait for another day stays in the queue, untouched.
       if (gate(e.job.url)) continue;
@@ -89,8 +102,8 @@ export function pickJobs(entries: QueueEntry[], ids: string[], o: { count: numbe
   for (const id of ids) {
     const e = entries.find((x) => x.job.id === id);
     if (!e) throw new Error(`No queue entry ${id}`);
-    if (e.applyable === false) {
-      refused.push({ id, why: "this is a board-only listing the tool cannot fill. Open it and apply yourself, or wait for it in Needs you" });
+    if (o.shared?.has(appliedKey(e.job))) {
+      refused.push({ id, why: "already applied to from another portal. It will be marked applied here on the next hourly pass" });
       continue;
     }
     const held = gate(e.job.url);
@@ -196,7 +209,10 @@ async function fillOnce(jev: JevClient, profile: Profile, e: QueueEntry, dry = f
  * are signed in; false when the time ran out, and the job then waits for them as before.
  */
 export async function waitedAtSignIn(e: QueueEntry, r: FillReport, o: { waitMs?: number; seen?: (id: string, url: string) => Promise<boolean> } = {}): Promise<boolean> {
-  if (r.state !== "blocked" || r.auth?.status !== "awaiting_user_action" || r.auth.waitingFor !== "login") return false;
+  // A sign-in page may come from the page reader with an auth report, or as a blocked page whose
+  // reason names the sign-in. Both mean the same thing: put the tab in front and wait.
+  const atSignIn = r.state === "blocked" && (r.auth ? r.auth.waitingFor === "login" : /sign-in|login/i.test(r.reason ?? ""));
+  if (!atSignIn) return false;
   const url = applyUrlFor(asJob(e));
   const seen =
     o.seen ??
@@ -533,7 +549,18 @@ async function settle(jev: JevClient, r: FillReport, o: RunOptions): Promise<boo
   }
   if (outcome.rememberSite) rememberWalledHost(rec.job.url);
   // A form the tool cannot finish is closed in a sending run: it is on the by-hand list with its link.
-  if (outcome.action !== "needs_review" || o.submit) await closeJobTab(r.jobId);
+  // In the hourly pass it is left open in front instead, so the person can look and take it from there.
+  if (outcome.action !== "needs_review" || (o.submit && !o.keepOpenOnNeedsReview)) await closeJobTab(r.jobId);
+  if (outcome.action === "needs_review" && o.keepOpenOnNeedsReview) {
+    if (await hasOpenTab(r.jobId)) {
+      const page = await pageFor(r.jobId).catch(() => null);
+      if (page) {
+        await page.bringToFront().catch(() => undefined);
+        page.close();
+      }
+    }
+    console.log(`  left open for you${outcome.reason ? `: ${outcome.reason}` : ""}. Then run: node bin/jev.js resume`);
+  }
   return outcome.action === "applied";
 }
 
@@ -563,7 +590,7 @@ export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ 
     prefetch(entries.indexOf(e));
     let first = await fillOnce(jev, profile, e, o.dry);
     // Signed in by the person, the form is opened again and filled.
-    if (o.waitAtSignIn && (await waitedAtSignIn(e, first))) first = await fillOnce(jev, profile, e, o.dry);
+    if (o.waitAtSignIn && (await waitedAtSignIn(e, first, o.signInWaitMs ? { waitMs: o.signInWaitMs } : {}))) first = await fillOnce(jev, profile, e, o.dry);
     reports[entries.indexOf(e)] = first;
     const rest = (async () => {
       const r = o.fillOnly ? first : await writer(() => walk(jev, profile, e, first, o));

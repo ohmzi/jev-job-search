@@ -29,7 +29,7 @@ export function boardOf(job: { ats: string; url: string }): string {
     return "other";
   }
 }
-const employerOf = (job: { company: string }) => job.company.trim().toLowerCase();
+export const employerOf = (job: { company: string }) => job.company.trim().toLowerCase();
 
 const Pauses = z.record(z.object({ until: z.string(), why: z.string() }));
 type Pauses = z.infer<typeof Pauses>;

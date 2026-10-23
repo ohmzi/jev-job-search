@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 import { DAILY, DISCOVER, PATHS } from "../config.js";
 import type { QueueEntry } from "../jobs/queue.js";
+import { isRecent } from "../jobs/recency.js";
 
 export const Policy = z.object({
   version: z.literal(1).default(1),
@@ -18,6 +19,11 @@ export const Policy = z.object({
   levels: z.array(z.enum(["internship", "new_grad"])).default([]),
   /** The lowest fit score a job may have. */
   minScore: z.number().min(0).max(1).default(DISCOVER.applyThreshold),
+  /**
+   * A job first seen inside the twelve-hour window is admitted without a score. The hourly search
+   * already filtered it by the portal's roles and area, and those finds are not rated.
+   */
+  admitRecent: z.boolean().default(true),
   /** Which job boards, by the name in the queue: greenhouse, lever, ashby, workday and so on. Empty means every board the tool fills. */
   boards: z.array(z.string()).default([]),
   /** Employers never applied to by the daily run. A name here matches any company whose name contains it. */
@@ -38,15 +44,17 @@ export function loadPolicy(file = PATHS.policy): Policy | null {
 }
 
 /** Why the policy keeps a job out of the daily run, or null when it may go. */
-export function policyRefuses(e: QueueEntry, p: Policy): string | null {
+export function policyRefuses(e: QueueEntry, p: Policy, now = new Date()): string | null {
   const company = e.job.company.toLowerCase();
   const excluded = p.excludeEmployers.find((x) => x.trim() && company.includes(x.trim().toLowerCase()));
   if (excluded) return `you excluded ${excluded}`;
   if (p.boards.length && !p.boards.includes(e.job.ats)) return `${e.job.ats} is not one of your boards`;
-  if ((e.fit?.score ?? 0) < p.minScore) return `its fit score is under ${p.minScore}`;
+  // A fresh find has no score and no rated answers; the portal's role and area filters were its gate.
+  const recent = p.admitRecent && isRecent(e, now);
+  if (!recent && (e.fit?.score ?? 0) < p.minScore) return `its fit score is under ${p.minScore}`;
   const tier = e.fit?.locationTier;
-  if (p.where.length && !(tier && (p.where as string[]).includes(tier))) return `it is not in ${p.where.join(", ")}`;
+  if (!recent && p.where.length && !(tier && (p.where as string[]).includes(tier))) return `it is not in ${p.where.join(", ")}`;
   const level = (e.fit?.answers.level as { choice?: string } | undefined)?.choice;
-  if (p.levels.length && !(level && (p.levels as string[]).includes(level))) return `it is not ${p.levels.join(" or ")}`;
+  if (!recent && p.levels.length && !(level && (p.levels as string[]).includes(level))) return `it is not ${p.levels.join(" or ")}`;
   return null;
 }

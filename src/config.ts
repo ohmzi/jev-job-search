@@ -3,6 +3,7 @@
  * Nothing else in the codebase hardcodes a number that changes behaviour.
  */
 import { existsSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -267,8 +268,11 @@ export const BROWSER = {
   chromePath: "/usr/bin/google-chrome",
   /** Local DevTools port of the runner's own Chrome window. */
   port: 9333,
-  /** Its profile lives with the other run data, so it is git-ignored and keeps cookies between runs. */
-  profileDir: path.join(ROOT, "data", "runs", "chrome-profile"),
+  /**
+   * One Chrome profile for every portal, outside the repositories. A sign-in the person does once
+   * is reused by all four. The profile holds browser sessions, never a password the tool knows.
+   */
+  profileDir: path.join(process.env.JEV_SHARED_DIR?.trim() || path.join(os.homedir(), ".local", "state", "jev"), "chrome-profile"),
   /** Longest wait for a page to load and its form controls to stop changing. */
   settleMs: 15_000,
   /** A form whose labels keep changing is taken as settled once its controls have held still for this many reads. */
@@ -421,6 +425,14 @@ export const HOURLY = {
   maxQueries: 12,
   /** The reason a job held for the person gets when its 12 hours are over. */
   staleReason: "posted more than 12 hours ago; apply on the employer's site yourself",
+  /** How many fresh fillable jobs one portal may apply to in one hourly pass. */
+  applyCount: 2,
+  /** How many times one job may be tried before it is left for the person. */
+  maxAttempts: 2,
+  /** How long an hourly apply pass keeps a sign-in page in front and waits for the person. */
+  signInWaitMs: 10 * 60_000,
+  /** A global apply lock older than this was left by a process that died. */
+  lockStaleMs: 30 * 60_000,
   /** The prefix of the scheduled job's name. The portal id makes it unique among the four clones. */
   labelPrefix: "jev-hourly",
 } as const;

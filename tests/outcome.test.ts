@@ -9,9 +9,9 @@ describe("what becomes of a job", () => {
   it("is sent when its form is ready", () => {
     expect(outcomeOf(filled(), 8)).toEqual({ action: "send", reason: null, rememberSite: false });
   });
-  it("is left for the person, and its site crossed out, when the site wants a sign-in", () => {
-    expect(outcomeOf(blockedReport(job, SIGN_IN_REASON), 8)).toEqual({ action: "login_required", reason: SIGN_IN_REASON, rememberSite: true });
-    expect(outcomeOf(blockedReport(job, "no form found, page looks like: login_required"), 8)).toMatchObject({ action: "login_required", reason: SIGN_IN_REASON, rememberSite: true });
+  it("is left open for the person, with the site kept, when the site wants a sign-in", () => {
+    expect(outcomeOf(blockedReport(job, SIGN_IN_REASON), 8)).toEqual({ action: "awaiting_user_action", reason: SIGN_IN_REASON, rememberSite: false, waitingFor: "login" });
+    expect(outcomeOf(blockedReport(job, "no form found, page looks like: login_required"), 8)).toMatchObject({ action: "awaiting_user_action", reason: SIGN_IN_REASON, rememberSite: false, waitingFor: "login" });
   });
   it("waits for what a sign-in the tool started could not finish, and keeps the site", () => {
     const stopped = (auth: NonNullable<FillReport["auth"]>, reason: string) => outcomeOf({ ...blockedReport(job, reason), auth }, 8);

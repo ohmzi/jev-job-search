@@ -7,7 +7,7 @@ import { capabilityFor } from "../accounts/capability.js";
 import type { Job } from "./normalize.js";
 
 /** The boards whose forms the tool fills. SmartRecruiters is left out: its form cannot be read yet. */
-export const FILLABLE_ATS: readonly string[] = ["greenhouse", "lever", "ashby", "jobvite", "rippling", "bamboohr"];
+export const FILLABLE_ATS: readonly string[] = ["greenhouse", "lever", "ashby", "jobvite", "rippling", "bamboohr", "workable", "jazzhr"];
 
 export function canFill(job: Pick<Job, "url" | "ats">): boolean {
   if (job.ats === "workday") return (capabilityFor(job.url)?.verdict ?? "no") !== "no";

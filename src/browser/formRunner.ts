@@ -26,7 +26,7 @@ import { signInFor } from "../accounts/gate.js";
 import { controlStates, dump, goto, inFront, inTurn, install, loadSession, mutateSession, pageFor, settle, shownValues, trace, type Point } from "./session.js";
 
 /** The text of a button that leads from a posting to its form. */
-const APPLY_BUTTON = "^\\s*(apply|apply now|apply for this job|apply to this job|apply for this position|start application|i'm interested)\\s*[»›→>]*\\s*$";
+const APPLY_BUTTON = "^\\s*(apply|apply now|easy apply|apply for this job|apply to this job|apply for this position|apply on company site|start application|i'm interested)\\s*[»›→>]*\\s*$";
 
 /** Lands on the page that holds the form: the URL itself, an embedded ATS frame, or behind an Apply button. */
 async function openForm(page: Page, job: Job): Promise<FieldsDump> {
