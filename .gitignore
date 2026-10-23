@@ -35,3 +35,6 @@ npm-debug.log*
 
 # test output
 coverage/
+
+# browser session scratch (console logs from the MCP browser)
+.playwright-mcp/
