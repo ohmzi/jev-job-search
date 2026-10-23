@@ -11,6 +11,7 @@ import { sleep, type Page } from "./cdp.js";
 import { emptyRequired, loadPlan, loadReport, pickSubmit, showsPlanned } from "./report.js";
 import type { FillPlan } from "../forms/fields.js";
 import { controlStates, dump, inFront, install, pageFor, shownValues, type Point } from "./session.js";
+import { blockingCaptcha, captchaState } from "./captcha.js";
 
 export type SubmitResult = {
   state: PageState["state"];
@@ -61,6 +62,9 @@ export async function submitJob(jev: JevClient, jobId: string, opts: { force?: b
     const { dump: d, plan } = loadPlan(jobId);
     const pick = pickSubmit(plan.submitSelectors);
     if (!pick) throw new Error("No submit control in the plan.");
+    // A challenge is never clicked past, with or without force. The person passing it is the only way through.
+    const cap = await captchaState(page).catch(() => null);
+    if (cap && captchaStopsSubmit(cap.descriptors, cap.tokens)) throw new Error("a robot check is still on the form");
     if (!force) {
       // A question may have appeared since the page was read, or the tool may never have seen one. The whole page is
       // read afresh, and any required control on it that shows nothing stops the click.
@@ -136,7 +140,10 @@ export async function submitJob(jev: JevClient, jobId: string, opts: { force?: b
     const notSent = state.state !== "submitted";
     const text = withoutBadges(after);
     const stillThere = notSent && (await page.awj<Point>("point", pick.selector).then((p) => p.ok).catch(() => false));
-    return { state: state.state, confidence: state.confidence, url: await page.evaluate<string>("location.href"), errors, needsCode: notSent && SECURITY_CODE.test(text), humanCheck: notSent && !SECURITY_CODE.test(text) && HUMAN_CHECK.test(text), refused: notSent && ALREADY_APPLIED.test(text), formStillOpen: stillThere, excerpt: after.replace(/\s+/g, " ").slice(-400) };
+    // An invisible challenge that blocks the send without saying so in words: the widget is the evidence.
+    const capAfter = await captchaState(page).catch(() => null);
+    const widgetCheck = !!capAfter && stillThere && captchaStopsSubmit(capAfter.descriptors, capAfter.tokens);
+    return { state: state.state, confidence: state.confidence, url: await page.evaluate<string>("location.href"), errors, needsCode: notSent && SECURITY_CODE.test(text), humanCheck: notSent && !SECURITY_CODE.test(text) && (HUMAN_CHECK.test(text) || widgetCheck), refused: notSent && ALREADY_APPLIED.test(text), formStillOpen: stillThere, excerpt: after.replace(/\s+/g, " ").slice(-400) };
   } finally {
     page.close();
   }
@@ -147,6 +154,12 @@ const DECLINE_COOKIES = "^\\s*(necessary only|only necessary|necessary cookies o
 
 /** A board that refuses a second application from the same person for now. The job is skipped, not held. */
 export const ALREADY_APPLIED = /recently applied for another role|unable to accept an additional application|already (applied|submitted an application)/i;
+
+/**
+ * Whether a bot check stops the click. `force` is deliberately not a parameter: forcing a submit
+ * is not the person passing a challenge, and a click behind one would consume the one click allowed.
+ */
+export const captchaStopsSubmit = (descriptors: string[], tokens: string[] = []): boolean => blockingCaptcha(descriptors, tokens);
 
 /**
  * A page that asks the person to prove they are not a robot (BambooHR after Submit). Only the
@@ -206,6 +219,9 @@ export async function watchForConfirmation(jev: JevClient, jobId: string, opts: 
       last = text;
       // The form with its code box or robot check still showing is not worth a judgement.
       if (SECURITY_CODE.test(withoutBadges(text)) || HUMAN_CHECK.test(withoutBadges(text))) continue;
+      // Neither is a page whose challenge widget is still there, whatever its text says.
+      const cap = await captchaState(page).catch(() => null);
+      if (cap && blockingCaptcha(cap.descriptors, cap.tokens)) continue;
       const state = await decidePageState(jev, text, await page.evaluate<string>("location.href"), jobId);
       if (state.state === "submitted") return "submitted";
     }

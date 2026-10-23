@@ -6,7 +6,7 @@ import { showsPlanned } from "../src/browser/report.js";
 import { settleStep } from "../src/browser/session.js";
 import { mailSearchUrl } from "../src/run/assist.js";
 import { fromThisPage } from "../src/report/server.js";
-import { HUMAN_CHECK } from "../src/browser/submit.js";
+import { HUMAN_CHECK, captchaStopsSubmit } from "../src/browser/submit.js";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -104,6 +104,11 @@ describe("help for the person", () => {
     expect(HUMAN_CHECK.test("This site is protected by reCAPTCHA and the Google Privacy Policy apply.")).toBe(false);
     expect(HUMAN_CHECK.test("Almost there! Please confirm you're not a robot to continue.")).toBe(true);
     expect(HUMAN_CHECK.test("Human Check* Please verify.")).toBe(true);
+  });
+  it("a challenge stops the click, and force is not consent to pass it", () => {
+    expect(captchaStopsSubmit(["iframe:recaptcha:normal"], [])).toBe(true);
+    expect(captchaStopsSubmit(["iframe:recaptcha:normal"], ["recaptcha"])).toBe(false);
+    expect(captchaStopsSubmit([], [])).toBe(false);
   });
 });
 
