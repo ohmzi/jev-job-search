@@ -85,9 +85,10 @@ sent.
 
 - Fillable links go first: Greenhouse, Lever, Ashby, Jobvite, Rippling, BambooHR, Workable,
   JazzHR, and Workday where the person has an account. A board-only page is tried too. If it wants
-  a sign-in, the tool brings the window to the front, notifies the person and waits up to ten
-  minutes (`HOURLY.signInWaitMs`). If they sign in, it fills and continues; if not, the tab stays
-  open and the job waits in Needs you. It never types a password, makes an account or passes a
+  a sign-in, the tool brings the window to the front, notifies the person and waits up to two
+  minutes (`HOURLY.signInWaitMs`). If they sign in, it fills and continues; if not, the job is
+  skipped and waits in Needs you with its tab open. A robot check or an emailed code after Submit
+  is kept in front of the person for the same two minutes (`RUN.humanWaitMs`) and then skipped. It never types a password, makes an account or passes a
   robot check.
 - A page the tool could not fill, or one with no form at all, is left open in front instead of
   being closed, so the person can look at it.

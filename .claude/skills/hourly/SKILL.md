@@ -72,9 +72,10 @@ page is opened and tried too.
   job sent from one portal is marked applied in the others and is not sent
   again, including from a manual `/apply`.
 - A board-only page is tried, not skipped. If it wants a sign-in, the tool
-  brings the window to the front, notifies the person and waits up to ten
-  minutes. If they sign in, it fills and continues; if not, the tab stays open
-  in Needs you. A page with no form is left open in front too.
+  brings the window to the front, notifies the person and waits up to two
+  minutes. If they sign in, it fills and continues; if not, the job is skipped,
+  the tab stays open in Needs you and the pass moves on. A robot check or an
+  emailed code after Submit gets the same two minutes (`RUN.humanWaitMs`). A page with no form is left open in front too.
 - Most of what the hourly search finds is board-only, so many passes end with a
   window waiting for the person rather than an application sent.
 

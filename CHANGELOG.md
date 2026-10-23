@@ -12,6 +12,11 @@ changed for a person using the tool and what changed for a contributor.
 ## [Unreleased]
 
 ### Changed
+- A robot check or an emailed code after Submit is kept in front of the person
+  for at most two minutes (`RUN.humanWaitMs`) in `apply`, `submit` and the
+  hourly pass. If the page then confirms the application it is recorded;
+  otherwise the job is skipped and the run goes on. Sign-in waits are capped at
+  the same two minutes. `daily` still does not wait.
 - All writing goes to DeepSeek. Free-text answers, the fields JEV was unsure
   of, the sheet notes, tailored resumes and cover letters are one chat call
   with the same `DEEPSEEK_API_KEY`, on `WRITER_MODEL` (default: the JEV model).

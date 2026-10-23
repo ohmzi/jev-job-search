@@ -29,6 +29,13 @@ If `data/profile.json` does not exist, this is a first run: use the
 
 Things to know:
 
+- The four portals (`jev-fullstack-nj`, `jev-fullstack-tx`, `jev-android-nj`,
+  `jev-android-tx`) each have their own `data/profile.json`, so each has its own
+  `phone.national`: an NJ portal holds the person's 551 number and a Texas portal
+  the 214 number. Ask the user to type the number for this portal, write it as
+  digits only, run `node bin/jev.js doctor`, and never repeat it in a reply. A
+  form that arrives with another number in its phone box is overwritten with this
+  one and read back from the page.
 - Any change to the profile, the drafts or the voice guide makes the tool
   forget its remembered answers, so the next run asks the writer again with the
   corrected facts. That is on purpose.

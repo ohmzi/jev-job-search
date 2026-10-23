@@ -191,7 +191,7 @@ program
       if (given.length && !ids.length) return;
       const entries = takeJobs(ids, { count: o.count, dry: !!o.dry, resubmit: !!o.resubmit, shared: sharedAppliedKeys() });
       if (given.length && !entries.length) return;
-      const { reports, sent } = await pipeline(entries, { submit: !!o.submit, dry: !!o.dry, fresh: !!o.fresh, quiet: !!o.json, waitAtSignIn: given.length > 0 });
+      const { reports, sent } = await pipeline(entries, { submit: !!o.submit, dry: !!o.dry, fresh: !!o.fresh, quiet: !!o.json, waitAtSignIn: given.length > 0, humanWaitMs: RUN.humanWaitMs });
       if (o.json) console.log(JSON.stringify(reports, null, 2));
       if (!o.dry) {
         await noteApplied(sent);
@@ -481,7 +481,7 @@ program
       const unknown = new Set(loadQueue().entries.filter((e) => e.status === "submission_unknown").map((e) => e.job.id));
       for (const id of ids) {
         if (unknown.has(id)) console.log(`${id}  not sent: Submit was clicked on this form before and no confirmation was seen. Settle it first: node bin/jev.js reconcile ${id}`);
-        else if (await submitAndRecord(jev, id, !!o.force, !!o.keepOpen)) sent.push(id);
+        else if (await submitAndRecord(jev, id, !!o.force, !!o.keepOpen, RUN.humanWaitMs)) sent.push(id);
       }
     });
     await noteApplied(sent);

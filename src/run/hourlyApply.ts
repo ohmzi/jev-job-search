@@ -7,7 +7,7 @@
  * not one, and stays a job for the person.
  */
 import { accountGate } from "../accounts/capability.js";
-import { DAILY, HOURLY } from "../config.js";
+import { DAILY, HOURLY, RUN } from "../config.js";
 import { appliedKey } from "../jobs/keys.js";
 import { loadQueue, mutateQueue, sortEntries, type QueueEntry } from "../jobs/queue.js";
 import { recentFirst } from "../jobs/recency.js";
@@ -205,6 +205,7 @@ export async function applyFresh(profile: Profile, policy: Policy, o: HourlyAppl
         quiet: true,
         waitAtSignIn: true,
         signInWaitMs: HOURLY.signInWaitMs,
+        humanWaitMs: RUN.humanWaitMs,
         keepOpenOnNeedsReview: true,
       });
       sent = r.sent;

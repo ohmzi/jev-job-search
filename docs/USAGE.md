@@ -69,9 +69,12 @@ appears in a command argument, a reply or a record.
 ### Robot checks are yours
 
 BambooHR and JazzHR show a "confirm you are not a robot" check, which the
-tool never passes. The filled form stays open in its Chrome window, you get
-a notification, and the run goes on with the next job. When you have passed
-the check and clicked Submit:
+tool never passes. The filled form stays open in its Chrome window in front
+of you and you get a notification. `apply` waits up to two minutes
+(`RUN.humanWaitMs`) for you to pass the check and records the application if
+the page then confirms it. After that the job is skipped and the run goes on
+with the next one, so the forms that need nobody are finished first. When you
+have passed the check later and clicked Submit:
 
 ```bash
 node bin/jev.js resume

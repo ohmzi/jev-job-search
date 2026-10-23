@@ -42,6 +42,8 @@ export type RunOptions = {
   waitAtSignIn?: boolean;
   /** How long to wait at that sign-in. The default is `RUN.signInWaitMs`. */
   signInWaitMs?: number;
+  /** The person is there: a robot check or an emailed code after Submit is kept in front of them this long before the run moves on. Default none. */
+  humanWaitMs?: number;
   /** Leave a page the tool could not fill open and in front, instead of closing it, so the person can look. */
   keepOpenOnNeedsReview?: boolean;
   /** The Indeed and LinkedIn MCP servers, asked for the employer's form behind a board listing. False skips them. */
@@ -304,6 +306,14 @@ const siteOf = (id: string) => {
 };
 
 /**
+ * Keeps a job's tab in front of the person for at most `ms` while they pass a human check or type a code. Nothing is
+ * typed or clicked; True only when the page after it is a confirmation. Zero time means no wait.
+ */
+export async function personPasses(jev: JevClient, id: string, ms: number, watch: typeof watchForConfirmation = watchForConfirmation): Promise<boolean> {
+  return ms > 0 && (await watch(jev, id, { timeoutMs: ms })) === "submitted";
+}
+
+/**
  * Sends one ready form and records what the page became. True when the application went through.
  *
  * From the moment of the click the application may be with the employer, so the job is recorded as
@@ -311,11 +321,11 @@ const siteOf = (id: string) => {
  * sent. If anything fails after the click, it stays unconfirmed with its tab open, and it is never
  * filled or sent again until `reconcile` or the person settles it.
  */
-export function submitAndRecord(jev: JevClient, id: string, force: boolean, keepOpen = false): Promise<boolean> {
-  return perEmployer(employerOf(id), () => submitAndRecordOnSite(jev, id, force, keepOpen));
+export function submitAndRecord(jev: JevClient, id: string, force: boolean, keepOpen = false, humanWaitMs = 0): Promise<boolean> {
+  return perEmployer(employerOf(id), () => submitAndRecordOnSite(jev, id, force, keepOpen, humanWaitMs));
 }
 
-function submitAndRecordOnSite(jev: JevClient, id: string, force: boolean, keepOpen: boolean): Promise<boolean> {
+function submitAndRecordOnSite(jev: JevClient, id: string, force: boolean, keepOpen: boolean, humanWaitMs: number): Promise<boolean> {
   return perSite(siteOf(id), () =>
     oneAtATime(async () => {
       let clicked = false;
@@ -338,12 +348,21 @@ function submitAndRecordOnSite(jev: JevClient, id: string, force: boolean, keepO
           return true;
         }
         if (r.needsCode || r.humanCheck) {
-          // Only the person can pass a human check. The form stays open for them, they are told, and the run moves on.
+          // Only the person can pass a human check. The form stays open for them and they are told.
           const waitingFor = r.needsCode ? "human_code" : "robot_check";
           const e = record(id, "awaiting_user_action", r.needsCode ? CODE_REASON : ROBOT_REASON, {}, waitingFor);
           keepTab(id, "awaiting_user_action");
           if (r.needsCode) learn(r.url, { emailsCode: true });
           assist(e.job, waitingFor, r.url);
+          if (humanWaitMs > 0) {
+            console.log(`  waiting up to ${Math.round(humanWaitMs / 1000)}s for you: ${waitingWords(waitingFor)}`);
+            if (await personPasses(jev, id, humanWaitMs)) {
+              recordApplied(id);
+              await close();
+              return true;
+            }
+            console.log("  not done in time, skipped for now.");
+          }
           console.log(`  left open for you: ${waitingWords(waitingFor)}. Then run: node bin/jev.js resume`);
           return false;
         }
@@ -543,7 +562,7 @@ async function settle(jev: JevClient, r: FillReport, o: RunOptions): Promise<boo
     return false;
   }
   if (o.fillOnly) return false;
-  if (outcome.action === "send") return o.submit ? submitAndRecord(jev, r.jobId, false) : false;
+  if (outcome.action === "send") return o.submit ? submitAndRecord(jev, r.jobId, false, false, o.humanWaitMs ?? 0) : false;
   const rec = record(r.jobId, outcome.action, outcome.reason, {}, outcome.waitingFor ?? null);
   if (outcome.action === "awaiting_user_action" || outcome.action === "awaiting_email_verification") {
     // A sign-in only the person can finish: the page stays open for them, they are told, and the run moves on.

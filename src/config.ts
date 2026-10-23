@@ -430,7 +430,7 @@ export const HOURLY = {
   /** How many times one job may be tried before it is left for the person. */
   maxAttempts: 2,
   /** How long an hourly apply pass keeps a sign-in page in front and waits for the person. */
-  signInWaitMs: 10 * 60_000,
+  signInWaitMs: 2 * 60_000,
   /** A global apply lock older than this was left by a process that died. */
   lockStaleMs: 30 * 60_000,
   /** The prefix of the scheduled job's name. The portal id makes it unique among the four clones. */
@@ -591,8 +591,13 @@ export const RUN = {
   maxPages: 8,
   /** How long `resume` watches one waiting form for the person to finish it. */
   resumeWaitMs: 5 * 60_000,
+  /**
+   * The most a run keeps one page in front of the person while it waits for them (a robot check, an emailed code, a
+   * sign-in). Past this the job stays on the by-hand list and the run goes on, so the forms that need nobody finish first.
+   */
+  humanWaitMs: 2 * 60_000,
   /** How long `apply` on a job the person named waits at a sign-in for them to sign in, before it leaves the page open and moves on. */
-  signInWaitMs: 5 * 60_000,
+  signInWaitMs: 2 * 60_000,
   /** A form kept open for the person is given up after this long: its session has usually expired by then. */
   waitingExpiryHours: 12,
   /** How long an abandoned fill is given to stop before its form is tried again. */
