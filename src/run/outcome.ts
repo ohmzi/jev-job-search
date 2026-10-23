@@ -30,6 +30,9 @@ export function notReady(r: FillReport): string {
   return where + (open.join("; ") || r.reason || "not verified");
 }
 
+/** A page that asks the person to prove they are a person. The tab stays open and they are told. */
+export const CAPTCHA_REASON = "the site asks you to confirm you are not a robot. The page is open in the tool's window";
+
 export function outcomeOf(r: FillReport, maxPages: number): Outcome {
   if (r.sent) return { action: "applied", reason: null, rememberSite: false };
   if (r.state === "blocked") {
@@ -41,6 +44,8 @@ export function outcomeOf(r: FillReport, maxPages: number): Outcome {
     if (reason === SIGN_IN_REASON || /login_required/.test(reason)) return { action: "awaiting_user_action", reason: SIGN_IN_REASON, rememberSite: false, waitingFor: "login" };
     // A posting that has closed is not something the person can do by hand either.
     if (/page looks like: closed/.test(reason)) return { action: "skipped", reason: "the posting has closed", rememberSite: false };
+    // A challenge in front of the form is the person's to pass, not a site to write off.
+    if (/captcha/.test(reason)) return { action: "awaiting_user_action", reason: CAPTCHA_REASON, rememberSite: false, waitingFor: "robot_check" };
     return { action: "blocked", reason, rememberSite: /page looks like: job_description/.test(reason) };
   }
   if (r.resolution?.verdict === "skip") return { action: "skipped", reason: r.resolution.reason, rememberSite: false };

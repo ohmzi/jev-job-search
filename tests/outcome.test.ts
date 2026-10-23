@@ -24,6 +24,17 @@ describe("what becomes of a job", () => {
   it("is skipped, not left for the person, when the posting has closed", () => {
     expect(outcomeOf(blockedReport(job, "no form found, page looks like: closed"), 8)).toEqual({ action: "skipped", reason: "the posting has closed", rememberSite: false });
   });
+  it("hands a captcha page to the person instead of writing the site off", () => {
+    expect(outcomeOf(blockedReport(job, "no form found, page looks like: captcha"), 8)).toEqual({
+      action: "awaiting_user_action",
+      reason: "the site asks you to confirm you are not a robot. The page is open in the tool's window",
+      rememberSite: false,
+      waitingFor: "robot_check",
+    });
+    expect(outcomeOf(blockedReport(job, 'after "Next" the page was: captcha'), 8)).toMatchObject({ action: "awaiting_user_action", waitingFor: "robot_check" });
+    // A job description with no form is still a site to write off.
+    expect(outcomeOf(blockedReport(job, "no form found, page looks like: job_description"), 8).action).toBe("blocked");
+  });
   it("is left for the person when the form asks for a signature or for something the profile does not say", () => {
     const nda = filled({ ready: false, reviews: [{ id: "f1", selector: "#nda", kind: "text", label: "Type your full name to agree to the NDA", options: [], why: "signing an agreement is for the candidate to do" }], missingRequired: ["Type your full name to agree to the NDA"] });
     expect(outcomeOf(nda, 8).action).toBe("needs_review");
