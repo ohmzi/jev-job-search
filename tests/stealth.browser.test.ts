@@ -9,6 +9,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Page, sleep } from "../src/browser/cdp.js";
+import { probeProtections } from "../src/browser/detect.js";
 import { BROWSER, childEnv } from "../src/config.js";
 
 const freePort = () =>
@@ -71,6 +72,22 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("a page in the runner's Chrome"
       expect(seen[5]).toBe("prompt");
       // The bundle's own getter, which is how a page can tell it ran.
       expect(seen[6]).toBe("true");
+    } finally {
+      page.close();
+      await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`).catch(() => undefined);
+    }
+  }, 20_000);
+
+  it("passes the fingerprint report the doctor prints", async () => {
+    const target = (await (await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent("about:blank")}`, { method: "PUT" })).json()) as { id: string; webSocketDebuggerUrl: string; type: string; url: string; title: string };
+    const page = await Page.attach(target);
+    try {
+      const report = await probeProtections(page);
+      // This test's Chrome is headless on purpose, so its user agent is the one finding that stays.
+      expect(report.findings.filter((f) => f.severity === "high" && f.key !== "userAgent")).toEqual([]);
+      expect(report.fingerprint.webdriver).toBe(false);
+      expect(report.fingerprint.chromeObject).toBe(true);
+      expect(report.fingerprint.notificationQuery).toBe("prompt");
     } finally {
       page.close();
       await fetch(`http://127.0.0.1:${port}/json/close/${target.id}`).catch(() => undefined);

@@ -41,6 +41,7 @@ import { connect as connectGmail, disconnect as disconnectGmail, loadGmail } fro
 import { installRedaction } from "./util/redact.js";
 import { discover } from "./discover.js";
 import { formatChecks, isReadyToRun, nextStep, runChecks } from "./doctor.js";
+import { formatProtections, probeRunnerChrome } from "./browser/detect.js";
 import { JevClient } from "./jev/client.js";
 import { loadKnowledge, shareKnowledge } from "./knowledge/sites.js";
 import { loadQueue, mutateQueue, sortEntries, updateEntry, QueueStatus, type QueueEntry } from "./jobs/queue.js";
@@ -970,8 +971,15 @@ program
   .command("doctor")
   .description("Check that everything a run needs is in place, and say what to do next")
   .option("--online", "also make one tiny DeepSeek call and one tiny writer call to prove the key works")
+  .option("--protections", "open a tab in the runner's Chrome and report what a bot check can tell about it")
   .option("--json")
-  .action(async (o: { online?: boolean; json?: boolean }) => {
+  .action(async (o: { online?: boolean; json?: boolean; protections?: boolean }) => {
+    if (o.protections) {
+      const report = await probeRunnerChrome();
+      console.log(o.json ? JSON.stringify(report, null, 2) : formatProtections(report));
+      if (report.findings.some((f) => f.severity === "high")) process.exitCode = 1;
+      return;
+    }
     const checks = await runChecks(!!o.online);
     console.log(o.json ? JSON.stringify({ ready: isReadyToRun(checks), next: nextStep(checks), checks }, null, 2) : formatChecks(checks));
     if (!isReadyToRun(checks)) process.exitCode = 1;
