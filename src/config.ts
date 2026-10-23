@@ -296,6 +296,10 @@ export const BROWSER = {
   /** A page that still looks like the form after that, with no error on it, is given this much longer: some boards take their time to confirm. */
   confirmMs: 20_000,
   pollMs: 150,
+  /** How often a handoff reads the page while the person works on a bot check. */
+  captchaPollMs: 900,
+  /** How long a bot check must stay clear, with its Submit control present, before the tool clicks. */
+  captchaSettleMs: 1_500,
 } as const;
 
 /**

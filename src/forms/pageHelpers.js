@@ -396,6 +396,29 @@
     pageText() {
       return document.body ? document.body.innerText : "";
     },
+    // The same descriptor grammar dumpFields.js reports, read without a full dump while the person
+    // works. Keep the two in step. Only vendor names are returned for responses, never a value.
+    captchaState() {
+      const provider = (s) => /recaptcha/i.test(s) ? "recaptcha" : /hcaptcha/i.test(s) ? "hcaptcha" : /turnstile|challenges\.cloudflare/i.test(s) ? "turnstile" : /arkose|funcaptcha/i.test(s) ? "arkose" : /geetest/i.test(s) ? "geetest" : "unknown";
+      const size = (n) => {
+        const s = `${(n.getAttribute && n.getAttribute("data-size")) || ""} ${n.src || ""}`;
+        return /invisible|\bbadge\b/i.test(s) ? "invisible" : /compact/i.test(s) ? "compact" : s.trim() ? "normal" : "unknown";
+      };
+      const descriptors = [];
+      for (const f of document.querySelectorAll("iframe[src], iframe[title]")) {
+        const tag = `${f.src || ""} ${f.getAttribute("title") || ""}`;
+        if (/recaptcha|hcaptcha|turnstile|arkose|funcaptcha|geetest|challenge/i.test(tag) && visible(f)) descriptors.push(`iframe:${provider(tag)}:${size(f)}`);
+      }
+      for (const n of document.querySelectorAll(".g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]")) {
+        if (visible(n)) descriptors.push(`widget:${provider(`${n.className} ${(n.getAttribute("data-sitekey") && "recaptcha") || ""}`)}:${size(n)}`);
+      }
+      const tokens = [];
+      for (const name of ["g-recaptcha-response", "h-captcha-response", "cf-turnstile-response"]) {
+        const n = document.querySelector(`textarea[name='${name}'], input[name='${name}']`);
+        if (n && (n.value || "").trim()) tokens.push(provider(name));
+      }
+      return { descriptors, tokens, text: document.body ? document.body.innerText : "" };
+    },
     controlCount() {
       return document.readyState !== "loading" ? document.querySelectorAll("input, select, textarea").length : -1;
     },

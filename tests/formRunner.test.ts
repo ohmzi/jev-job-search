@@ -80,6 +80,16 @@ describe("the in-page scripts", () => {
     expect(FieldsDumpSchema.parse({ url: "https://x", fields: [] }).captcha).toEqual([]);
     expect(FieldsDumpSchema.parse({ url: "https://x", fields: [], captcha: ["iframe:recaptcha:normal", "token:turnstile"] }).captcha).toHaveLength(2);
   });
+  it("reads the same captcha grammar in the dump and in the live helper", () => {
+    const dumpSrc = readFileSync(new URL("../src/forms/dumpFields.js", import.meta.url), "utf8");
+    const helperSrc = readFileSync(new URL("../src/forms/pageHelpers.js", import.meta.url), "utf8");
+    for (const src of [dumpSrc, helperSrc]) {
+      expect(src).toContain("g-recaptcha-response");
+      expect(src).toContain("h-captcha-response");
+      expect(src).toContain("cf-turnstile-response");
+    }
+    expect(helperSrc).toContain("captchaState()");
+  });
 });
 
 describe("what holds a form and what does not", () => {
