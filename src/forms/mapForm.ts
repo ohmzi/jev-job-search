@@ -97,6 +97,8 @@ const SPONSOR_Q = new RegExp(`sponsor|${NEEDS_PERMIT_Q.source}`, "i");
 const AGREEMENT_Q = /\b(agree|agreement|acknowledg|consent|terms|privacy|arbitration|attest|certify|accept)/i;
 /** A tick that asks to be marketed to. It is never ticked, however sure the model is. */
 const MARKETING_Q = /\b(marketing|newsletter|job alerts?|alerts? (?:about|for) (?:jobs|roles)|promotional|product updates|text messages?|sms|subscribe|mailing list|future (?:roles|opportunities|positions)|talent (?:pool|community)|may we contact)\b/i;
+/** Talk about the application itself is transactional, not marketing. */
+const APPLICATION_CONTACT = /\b(?:your|this|the) application\b|application (?:status|process|updates?)\b/i;
 /** A tick that only states the applicant is a person. It is a form field, not a CAPTCHA, which is a widget in a frame. */
 const HUMAN_CONFIRM_Q = /\b(i am (?:a )?human|i'm (?:a )?human|not a robot|human verification|confirm (?:that )?(?:you are|you're) (?:a )?human)\b/i;
 /**
@@ -460,6 +462,12 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
   }
   if (SIGNATURE_LABEL.test(f.label)) return { ...base, action: "review", key: "signature", value: null, confidence: 1, note: "signing an agreement is for the candidate to do" };
   if (isSlotChoice(f)) return { ...base, action: "review", key: "schedule", value: null, confidence: 1, note: "choosing a date or a time slot is for the candidate to do" };
+  // A marketing opt-in and a plain human-confirmation are settled by their words, not by the model:
+  // neither waits for an answer, so both are decided before a missing answer sends the box to review.
+  if (f.kind === "checkbox" && MARKETING_Q.test(`${f.label} ${f.section ?? ""}`) && !APPLICATION_CONTACT.test(f.label)) {
+    return { ...base, action: "skip", key: "unchecked", value: null, confidence: 1, note: "a marketing or alert opt-in is never ticked" };
+  }
+  if (f.kind === "checkbox" && HUMAN_CONFIRM_Q.test(f.label)) return { ...base, action: "fill", key: "checked", value: "true", confidence: 1, note: "confirming the applicant is a person" };
   if (!answer) return { ...base, action: "review", key: "unknown", value: null, confidence: 0, note: "no answer" };
 
   if (f.kind === "checkbox") {
@@ -471,10 +479,6 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
         : { ...base, action: "skip", key: "unchecked", value: null, confidence: 1, note: "the profile gives no other name" };
     }
     const p = (answer as NoulAnswer).noul;
-    // A marketing box is never ticked, whatever the model answered; one that also states a fact is still a marketing box.
-    if (MARKETING_Q.test(`${f.label} ${f.section ?? ""}`)) return { ...base, action: "skip", key: "unchecked", value: null, confidence: 1, note: "a marketing or alert opt-in is never ticked" };
-    // A plain box that only says the applicant is a person is a form field like any other.
-    if (HUMAN_CONFIRM_Q.test(f.label)) return { ...base, action: "fill", key: "checked", value: "true", confidence: 1, note: "confirming the applicant is a person" };
     if (p >= FORM.gates.tick) return { ...base, action: "fill", key: "checked", value: "true", confidence: p, note: null };
     if (p <= FORM.gates.leave) return { ...base, action: "skip", key: "unchecked", value: null, confidence: 1 - p, note: "left unchecked" };
     return { ...base, action: "review", key: "unknown", value: null, confidence: Math.max(p, 1 - p), note: "unsure whether to check" };

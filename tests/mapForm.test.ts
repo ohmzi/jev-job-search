@@ -148,6 +148,15 @@ describe("planField", () => {
     // A box that says both is a marketing box: it is left alone.
     expect(planField(field({ kind: "checkbox", label: "I am a human. Send me job alerts" }), sure, profile, j)).toMatchObject({ action: "skip" });
   });
+  it("decides a plain human box and a marketing box with no answer from the model", () => {
+    // A box the model did not answer is still decided in code when its words settle it.
+    expect(planField(field({ kind: "checkbox", label: "I am a human" }), undefined, profile, j)).toMatchObject({ action: "fill", value: "true" });
+    expect(planField(field({ kind: "checkbox", label: "Subscribe to our newsletter" }), undefined, profile, j)).toMatchObject({ action: "skip" });
+  });
+  it("ticks a box about the application itself, which is not marketing", () => {
+    const sure = { type: "noul", noul: 0.95, confidence: 0.95 } as never;
+    expect(planField(field({ kind: "checkbox", label: "We may contact you about your application status" }), sure, profile, j)).toMatchObject({ action: "fill" });
+  });
   it("still sets a signature aside", () => {
     const sure = { type: "noul", noul: 0.95, confidence: 0.95 } as never;
     expect(planField(field({ kind: "checkbox", label: "Type your full legal name to sign this NDA" }), sure, profile, j).action).toBe("review");
