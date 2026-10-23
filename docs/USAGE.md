@@ -225,7 +225,10 @@ A sign-in the tool started and could not finish is different: the page
 stays **open** in the tool's window, you get a notification, and the run
 goes on to the next job. That happens for a robot check, a phone code, a
 passkey, single sign-on, account terms you did not approve, a password the
-board refused, and a verification email the tool could not use. Finish it
+board refused, and a verification email the tool could not use. A robot
+check on the filled form is the one the run waits for: pass it in the
+window and the tool sends the application once the check clears. The
+notification says so. Finish it
 there, then run `node bin/jev.js resume --submit`.
 
 ## Find your applications

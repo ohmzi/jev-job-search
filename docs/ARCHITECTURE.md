@@ -224,7 +224,11 @@ cannot answer, a form with more pages than `RUN.maxPages`, a form that would
 not move to its next page. In a sending run the tab is closed and the job
 goes into `applications/manual.csv`. A form that stops at a human check is the
 exception: it stays open in `awaiting_user_action`, `assist` tells the person,
-and `resume` records the application when they finish.
+and `resume` records the application when they finish. A challenge on the
+filled form is found before Submit: the run hands the tab to the person, waits,
+reads the form again and sends it once. A page that is only a challenge, with
+no form on it, is left in the same `awaiting_user_action` state instead of
+being written off.
 
 ### Statuses (`src/jobs/queue.ts`)
 
