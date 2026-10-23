@@ -10,7 +10,8 @@ import { accountGate, adapterFor, capabilityFor } from "../accounts/capability.j
 import { signedInNow } from "../accounts/gate.js";
 import { ensureBrowser, sleep } from "../browser/cdp.js";
 import { fillJob, nextPage, resolveJob, shouldAdvance } from "../browser/formRunner.js";
-import { blockedReport, loadReport, saveReport, type FillReport } from "../browser/report.js";
+import { blockedReport, loadPlan, loadReport, pickSubmit, saveReport, type FillReport } from "../browser/report.js";
+import { blockingCaptcha, captchaState, waitForCaptcha } from "../browser/captcha.js";
 import { closeJobTab, hasOpenTab, loadSession, mutateSession, pageFor } from "../browser/session.js";
 import { checkJob, submitJob, watchForConfirmation } from "../browser/submit.js";
 import { assist, notify, waitingWords } from "./assist.js";
@@ -313,6 +314,61 @@ export async function personPasses(jev: JevClient, id: string, ms: number, watch
   return ms > 0 && (await watch(jev, id, { timeoutMs: ms })) === "submitted";
 }
 
+/** A challenge on a job's form, and how to watch it while the person works. */
+export type CaptchaWait = { blocking: boolean; wait: (ms: number) => Promise<"cleared" | "submitted" | "timeout"> };
+
+/** Reads a job's tab for a challenge. Null when there is no tab, or nothing could be read. */
+async function readCaptcha(jev: JevClient, id: string): Promise<CaptchaWait | null> {
+  if (!(await hasOpenTab(id))) return null;
+  const page = await pageFor(id).catch(() => null);
+  if (!page) return null;
+  try {
+    const pick = pickSubmit(loadPlan(id).plan.submitSelectors);
+    const reading = await captchaState(page);
+    if (!pick || !blockingCaptcha(reading.descriptors, reading.tokens)) {
+      page.close();
+      return { blocking: false, wait: async () => "cleared" };
+    }
+    return {
+      blocking: true,
+      wait: async (ms) => {
+        try {
+          return await waitForCaptcha(jev, page, id, { timeoutMs: ms, submitSelector: pick.selector });
+        } finally {
+          page.close();
+        }
+      },
+    };
+  } catch {
+    page.close();
+    return null;
+  }
+}
+
+/**
+ * Finds a challenge on a job's form before it is sent, tells the person, and waits while they
+ * pass it. Nothing is solved here. "go" means the form may be sent now; "left" means it waits
+ * for the person; "applied" means the page confirmed by itself.
+ */
+export async function waitAtCaptcha(jev: JevClient, id: string, ms: number, onHandOff: () => void, read: (id: string) => Promise<CaptchaWait | null> = (jobId) => readCaptcha(jev, jobId)): Promise<"go" | "applied" | "left"> {
+  const c = await read(id).catch(() => null);
+  if (!c || !c.blocking) return "go";
+  onHandOff();
+  if (ms <= 0) return "left";
+  const w = await c.wait(ms);
+  if (w === "cleared") return "go";
+  return w === "submitted" ? "applied" : "left";
+}
+
+/** Brings a job's tab to the front, or does nothing when it has none. */
+async function focusTab(id: string): Promise<void> {
+  if (!(await hasOpenTab(id))) return;
+  const page = await pageFor(id).catch(() => null);
+  if (!page) return;
+  await page.bringToFront().catch(() => undefined);
+  page.close();
+}
+
 /**
  * Sends one ready form and records what the page became. True when the application went through.
  *
@@ -333,6 +389,23 @@ function submitAndRecordOnSite(jev: JevClient, id: string, force: boolean, keepO
         if (!keepOpen) await closeJobTab(id);
       };
       try {
+        // A challenge on the filled form is the person's. They are told, the tab comes to the front,
+        // and the run waits while they pass it. Nothing is clicked here.
+        const gate = await waitAtCaptcha(jev, id, humanWaitMs, () => {
+          const e = record(id, "awaiting_user_action", ROBOT_REASON, {}, "robot_check");
+          keepTab(id, "awaiting_user_action");
+          assist(e.job, "robot_check", loadReport(id).url);
+          void focusTab(id);
+        });
+        if (gate === "applied") {
+          recordApplied(id);
+          await close();
+          return true;
+        }
+        if (gate === "left") {
+          console.log(`  left open for you: ${waitingWords("robot_check")}. Then run: node bin/jev.js resume`);
+          return false;
+        }
         const r = await submitJob(jev, id, {
           force,
           onClick: () => {
@@ -386,6 +459,15 @@ function submitAndRecordOnSite(jev: JevClient, id: string, force: boolean, keepO
         console.log(`  not confirmed. The tab stays open. To settle it: node bin/jev.js reconcile ${id}`);
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        if (!clicked && /robot check is still on the form/.test(message)) {
+          // A challenge appeared between the handoff and the click. Nothing was sent.
+          const e = record(id, "awaiting_user_action", ROBOT_REASON, {}, "robot_check");
+          keepTab(id, "awaiting_user_action");
+          assist(e.job, "robot_check", loadReport(id).url);
+          void focusTab(id);
+          console.log(`  left open for you: ${waitingWords("robot_check")}. Then run: node bin/jev.js resume`);
+          return false;
+        }
         if (clicked) {
           console.log(`${id}  not confirmed: ${message}. The tab stays open. To settle it: node bin/jev.js reconcile ${id}`);
         } else {
@@ -568,6 +650,7 @@ async function settle(jev: JevClient, r: FillReport, o: RunOptions): Promise<boo
     // A sign-in only the person can finish: the page stays open for them, they are told, and the run moves on.
     const waitingFor = outcome.waitingFor ?? (outcome.action === "awaiting_email_verification" ? "email_link" : "unknown");
     keepTab(r.jobId, outcome.action);
+    await focusTab(r.jobId);
     assist(rec.job, waitingFor, r.url);
     console.log(`  left open for you: ${waitingWords(waitingFor)}. Then run: node bin/jev.js resume`);
     return false;

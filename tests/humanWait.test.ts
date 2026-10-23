@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { HOURLY, RUN } from "../src/config.js";
-import { personPasses } from "../src/run/pipeline.js";
+import { personPasses, waitAtCaptcha } from "../src/run/pipeline.js";
 import { showsValue } from "../src/util/dates.js";
 import type { JevClient } from "../src/jev/client.js";
 
@@ -32,6 +32,30 @@ describe("waiting for a person at a human check", () => {
     };
     expect(await personPasses(jev, "a", 0, watch)).toBe(false);
     expect(called).toBe(false);
+  });
+});
+
+describe("a challenge before Submit", () => {
+  const jev = {} as JevClient;
+  it("is left for the person at once when no wait was asked for (the daily run)", async () => {
+    let told = false;
+    const r = await waitAtCaptcha(jev, "a", 0, () => { told = true; }, async () => ({ blocking: true, wait: async () => "cleared" }));
+    expect(r).toBe("left");
+    expect(told).toBe(true); // the person is told before the wait is skipped
+  });
+  it("goes on to send when the person clears it", async () => {
+    const r = await waitAtCaptcha(jev, "a", RUN.humanWaitMs, () => {}, async () => ({ blocking: true, wait: async () => "cleared" }));
+    expect(r).toBe("go");
+  });
+  it("records the application when the page confirmed by itself", async () => {
+    const r = await waitAtCaptcha(jev, "a", RUN.humanWaitMs, () => {}, async () => ({ blocking: true, wait: async () => "submitted" }));
+    expect(r).toBe("applied");
+  });
+  it("goes straight on when the form shows no challenge", async () => {
+    let told = false;
+    const r = await waitAtCaptcha(jev, "a", RUN.humanWaitMs, () => { told = true; }, async () => ({ blocking: false, wait: async () => "cleared" }));
+    expect(r).toBe("go");
+    expect(told).toBe(false);
   });
 });
 
