@@ -13,6 +13,8 @@ import type { Profile } from "../src/profile/schema.js";
 import type { Job } from "../src/jobs/normalize.js";
 
 const NOW = new Date("2026-10-22T12:00:00");
+/** No site is known to be walled: this keeps the test off the machine's learned site notes. */
+const noWalls = () => false;
 
 const job = (over: Partial<Job> = {}): Job => ({
   id: "job-1",
@@ -173,7 +175,7 @@ describe("jobspy records", () => {
 describe("putting hourly finds in the queue", () => {
   it("queues a job the tool can fill and holds one it cannot", () => {
     const linkedin = job({ id: "li", company: "Beta", url: "https://www.linkedin.com/jobs/view/1", ats: "linkedin" });
-    const r = mergeHourly([], [job(), linkedin], profile(), NOW);
+    const r = mergeHourly([], [job(), linkedin], profile(), NOW, noWalls);
     expect(r.added).toBe(2);
     expect(r.held).toBe(1);
     const fresh = r.entries.find((e) => e.job.id === job().id);
@@ -187,7 +189,7 @@ describe("putting hourly finds in the queue", () => {
   });
   it("holds a board the tool has not read instead of skipping it", () => {
     const icims = job({ id: "icims", url: "https://acme.icims.com/jobs/123", ats: "icims" });
-    const r = mergeHourly([], [icims], profile(), NOW);
+    const r = mergeHourly([], [icims], profile(), NOW, noWalls);
     expect(r.skipped).toBe(0);
     expect(r.held).toBe(1);
     expect(r.entries[0]?.status).toBe("queued");
@@ -195,13 +197,13 @@ describe("putting hourly finds in the queue", () => {
   });
   it("hands an old board-only listing to the person at once", () => {
     const old = job({ id: "old", url: "https://www.linkedin.com/jobs/view/2", ats: "linkedin", postedAt: "2026-10-20" });
-    const r = mergeHourly([], [old], profile(), NOW);
+    const r = mergeHourly([], [old], profile(), NOW, noWalls);
     expect(r.entries[0]?.status).toBe("needs_review");
     expect(r.entries[0]?.statusReason).toMatch(/12 hours/);
   });
   it("keeps an existing job's status and first-seen time", () => {
     const before = entry({ status: "needs_review", discoveredAt: "2026-10-22T11:00:00Z" });
-    const r = mergeHourly([before], [job({ company: "Acme Renamed" })], profile(), NOW);
+    const r = mergeHourly([before], [job({ company: "Acme Renamed" })], profile(), NOW, noWalls);
     expect(r.added).toBe(0);
     expect(r.updated).toBe(1);
     expect(r.entries[0]?.status).toBe("needs_review");
@@ -211,7 +213,7 @@ describe("putting hourly finds in the queue", () => {
   it("does not queue a job that was already sent under another location", () => {
     const sent = entry({ job: { ...job(), locations: ["Newark, NJ"] } as QueueEntry["job"], status: "applied" });
     const found = job({ id: "other", url: "https://www.linkedin.com/jobs/view/8", ats: "linkedin", locations: ["Jersey City, NJ"] });
-    const r = mergeHourly([sent], [found], profile(), NOW);
+    const r = mergeHourly([sent], [found], profile(), NOW, noWalls);
     expect(r.added).toBe(0);
     expect(r.updated).toBe(1);
     expect(r.entries[0]?.status).toBe("applied");
@@ -219,7 +221,7 @@ describe("putting hourly finds in the queue", () => {
   it("never moves a sent application to a different link", () => {
     const sent = entry({ status: "applied", appliedAt: "2026-10-22T10:00:00Z" });
     const other = job({ id: "other", url: "https://www.linkedin.com/jobs/view/9", ats: "linkedin" });
-    const r = mergeHourly([sent], [other], profile(), NOW);
+    const r = mergeHourly([sent], [other], profile(), NOW, noWalls);
     expect(r.entries[0]?.job.url).toBe(sent.job.url);
     expect(r.entries[0]?.status).toBe("applied");
   });
