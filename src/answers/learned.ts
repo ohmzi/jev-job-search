@@ -12,6 +12,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 import { PATHS } from "../config.js";
+import { categoryOf } from "../forms/mapForm.js";
 import { ProfileSchema } from "../profile/schema.js";
 import { withStore, writeAtomic } from "../util/store.js";
 
@@ -82,6 +83,12 @@ export function confirmLearned(id: string, answer: string, files: { pending?: st
     const row = pending.find((p) => p.id === id);
     if (!row) throw new Error(`No learned answer with id ${id}`);
     if (!row.question.trim()) throw new Error("a learned answer needs a question before it can be confirmed");
+    // The right to work is one answer per country, held in the profile. It is never confirmed here,
+    // for the same reason the dashboard refuses to save one job by job.
+    const category = categoryOf({ label: row.question, section: "", hint: "", kind: "text" });
+    if (category === "authorization" || category === "sponsorship") {
+      throw new Error(`"${row.question.slice(0, 80)}" is a question about the right to work; that answer comes from your profile, per country, and is never confirmed here`);
+    }
     const final = { question: row.question, answer: answer.trim() };
     if (!final.answer) throw new Error("a learned answer needs an answer before it can be confirmed");
 

@@ -118,6 +118,28 @@ describe("the pending learned answers", () => {
     expect(loadLearned(f.pending).pending.map((p) => p.id)).toEqual([id]);
   });
 
+  it("refuses an authorization question and writes nothing", () => {
+    const f = files();
+    addLearned([row({ question: "Are you authorized to work in the United States?" })], f.pending);
+    const id = loadLearned(f.pending).pending[0]!.id;
+    const before = readFileSync(f.profile, "utf8");
+
+    expect(() => confirmLearned(id, "Yes.", f)).toThrow(/right to work/);
+    expect(readFileSync(f.profile, "utf8")).toBe(before);
+    expect(loadLearned(f.pending).pending.map((p) => p.id)).toEqual([id]);
+  });
+
+  it("refuses a sponsorship question and writes nothing", () => {
+    const f = files();
+    addLearned([row({ question: "Will you require sponsorship to work in the United States?" })], f.pending);
+    const id = loadLearned(f.pending).pending[0]!.id;
+    const before = readFileSync(f.profile, "utf8");
+
+    expect(() => confirmLearned(id, "No.", f)).toThrow(/right to work/);
+    expect(readFileSync(f.profile, "utf8")).toBe(before);
+    expect(loadLearned(f.pending).pending.map((p) => p.id)).toEqual([id]);
+  });
+
   it("does not write a profile that does not validate, and keeps the entry", () => {
     const f = files();
     addLearned([row()], f.pending);
