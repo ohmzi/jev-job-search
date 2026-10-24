@@ -150,9 +150,7 @@ again. Changing your profile, drafts or voice guide makes it start over.
   sent. They are listed in `applications/manual.csv`,
   each with the reason and the link. `node bin/jev.js log --manual`
   prints the list.
-- When a board emails you a code after you send, or shows a robot check,
-  the filled form stays open in the tool's window and you get a
-  notification. Type the code or pass the check, click Submit, and run
+- When a board emails you a code after you send, or shows a robot check the tool's own one attempt could not pass, the filled form stays open in the tool's window and you get a notification. Type the code or finish the check, click Submit, and run
   `node bin/jev.js resume`: the tool records the application. It does not read or
   type the code.
 

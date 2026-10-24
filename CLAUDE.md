@@ -59,7 +59,7 @@ doctor` says what is in place and what to do next.
   bounded (`ACCOUNTS` in `src/config.ts`), and what the sign-in cannot do
   with certainty waits for the person. Any other page with a password box
   is blocked as before: the job goes on the by-hand list and the site is
-  noted. The tool solves no CAPTCHAs.
+  noted. A bot check at an account sign-up is left to the person.
 - **You never touch a password or a token.** When you work in this repo you
   never ask for, read, type or repeat a password or a token, and never
   read the Keychain. The password is typed by the person into a window of
@@ -77,13 +77,23 @@ doctor` says what is in place and what to do next.
   never in a file, never in a command's arguments, never in a prompt to
   DeepSeek, a report, a plan, a trace or a record. Password boxes and
   one-time-code boxes are never dumped.
-- **A CAPTCHA is the person's to pass, and the tool waits for them.** The
-  tool never solves or clicks a CAPTCHA, reCAPTCHA, hCaptcha or Turnstile
-  widget. It finds the challenge before the form is sent
-  (`src/browser/captcha.ts`), tells the person, brings the tab in front,
-  waits at most `RUN.humanWaitMs`, then reads the form again and sends it
-  once (`waitAtCaptcha` in `src/run/pipeline.ts`). The `daily` run does not
-  wait: the job is left for the person and the board is left alone. A
+- **A bot check gets one attempt, then it is the person's.** The tool reads
+  the wall before the form is sent (`protectionSignal` in
+  `src/browser/protection.ts`) and gives the provider's own adapter one
+  attempt (`passProtections`). It presses a reCAPTCHA v2 or Turnstile
+  checkbox once and reads the provider's response back from the page; it
+  waits for a managed Cloudflare wall to clear, and gives DataDome's and
+  Akamai's passive sensor their moment. A pass means the form goes on.
+  Anything else, a picture grid, an audio challenge, a puzzle, a wall that
+  took the click and answered nothing, or a sign-in page, is the person's:
+  the tool tells them, brings the tab in front, waits at most
+  `RUN.humanWaitMs`, then reads the form again and sends it once
+  (`waitAtCaptcha` in `src/run/pipeline.ts`). It never solves a picture or
+  a puzzle, never forges or reuses a response token, never presses a widget
+  twice, and never retries a wall that refused it. The `daily` run does not
+  wait for a person, but it does make the one attempt; what it cannot pass
+  is left for the person and the board is left alone. A challenge that
+  stands where the form should be is reported and the job is set aside. A
   plain checkbox that only states the applicant is a person, or accepts a
   privacy notice or agreement, is a form field like any other and is
   ticked from the model's answer; a marketing or newsletter box is never

@@ -66,15 +66,19 @@ With Claude Code, the `/apply` and `/resume` skills find the code in your
 mailbox over the Gmail MCP and run that command for you. The code never
 appears in a command argument, a reply or a record.
 
-### Robot checks are yours
+### Robot checks: the tool tries once
 
-BambooHR and JazzHR show a "confirm you are not a robot" check, which the
-tool never passes. The filled form stays open in its Chrome window in front
-of you and you get a notification. `apply` waits up to two minutes
-(`RUN.humanWaitMs`) for you to pass the check and records the application if
-the page then confirms it. After that the job is skipped and the run goes on
-with the next one, so the forms that need nobody are finished first. When you
-have passed the check later and clicked Submit:
+BambooHR and JazzHR show a "confirm you are not a robot" check. The tool
+presses a reCAPTCHA or Turnstile checkbox once and reads the provider's
+response back, waits for a managed Cloudflare wall to clear, and gives
+DataDome and Akamai their moment. A picture grid, a puzzle, an audio
+challenge, or a widget that answers nothing is yours. The filled form stays
+open in its Chrome window in front of you and you get a notification.
+`apply` waits up to two minutes (`RUN.humanWaitMs`) for you to finish the
+check and records the application if the page then confirms it. After that
+the job is skipped and the run goes on with the next one, so the forms that
+need nobody are finished first. When you have passed the check later and
+clicked Submit:
 
 ```bash
 node bin/jev.js resume

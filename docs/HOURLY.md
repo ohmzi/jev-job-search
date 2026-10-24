@@ -87,11 +87,12 @@ sent.
   JazzHR, and Workday where the person has an account. A board-only page is tried too. If it wants
   a sign-in, the tool brings the window to the front, notifies the person and waits up to two
   minutes (`HOURLY.signInWaitMs`). If they sign in, it fills and continues; if not, the job is
-  skipped and waits in Needs you with its tab open. A robot check or an emailed code after Submit
-  is kept in front of the person for the same two minutes (`RUN.humanWaitMs`); a robot check the
-  person passes is read again and sent once, and the application is recorded only when the page
-  confirms. It never types a password, makes an account or passes a
-  robot check.
+  skipped and waits in Needs you with its tab open. A bot check or an emailed code after Submit
+  gets the tool's own one attempt first: a provider checkbox pressed once, a managed wall waited
+  out, a passive sensor given its moment. What is left is kept in front of the person for the
+  same two minutes (`RUN.humanWaitMs`); a check the person finishes is read again and sent once,
+  and the application is recorded only when the page confirms. It never types a password, makes
+  an account, solves a picture or puzzle, or presses a widget twice.
 - A page the tool could not fill, or one with no form at all, is left open in front instead of
   being closed, so the person can look at it.
 - Up to two applications per portal per hour, one role per employer, inside the daily limits: the
@@ -242,7 +243,7 @@ and leaves the queue as it is. The next run tries again.
 
 - No form is sent without every value read back and a confirmation page.
 - No password is typed, no account is made, and no verification email is read. A sign-in page is opened and left for the person.
-- No CAPTCHA or robot check is passed.
+- No picture, audio or puzzle challenge is solved, no token is forged or reused, and no widget is pressed twice. A provider's own checkbox is pressed once; what it cannot pass is left for the person.
 - No mail is read.
 - No web page is executed: JobSpy's JSON is parsed and treated as data.
 - No key is passed to the Docker call.

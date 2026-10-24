@@ -66,6 +66,9 @@ Timing on 2026-10-02: 4,748 unique postings, 478 rated, 61 seconds, $0.075.
 | `src/browser/fill.ts`, `dropdowns.ts`, `calendar.ts` | Writing values: plain controls, dropdowns, calendars |
 | `src/browser/report.ts` | The fill report and the rules for when a form may be sent |
 | `src/browser/submit.ts` | Sending a form and reading what the page became |
+| `src/browser/protection.ts`, `protections.ts` | What a wall is, the tool's one attempt at it, and the pass or hand-off result |
+| `src/browser/recaptcha.ts`, `turnstile.ts`, `datadome.ts`, `akamai.ts` | One adapter per provider: detect the wall, attempt its own control, verify the response |
+| `src/browser/stealth.ts`, `detect.ts` | The window a page sees, and the report `doctor --protections` prints |
 | `src/forms/*.js` | The three scripts that run inside the page |
 | `src/forms/mapForm.ts` | Asking JEV what goes in each field |
 | `src/answers/` | The writer (DeepSeek), the answer memory, drafts and voice |

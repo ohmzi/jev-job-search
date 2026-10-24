@@ -1,4 +1,16 @@
-# Plan: bot-challenge handling for jev-job-search
+# Bot-challenge handling for jev-job-search
+
+> **Implemented.** The shipped pieces are the stealth bundle and its injection (Phase 1),
+> the fingerprint probe and `doctor --protections` (Phase 0), the four adapters and the
+> `passProtections` chain (Phase 2), the wiring in `formRunner.ts`, `submit.ts` and
+> `waitAtCaptcha` (Phase 3), and the fixtures and tests (Phase 4). Two parts of the plan
+> below were not built: `jev status` has no per-protection line, and a wall in front of
+> the fill is reported and the job set aside rather than held open for a two-minute wait.
+>
+> **Terms-of-service risk.** Pressing a provider's checkbox and presenting an ordinary
+> browser fingerprint may breach a site's terms. This stays a single-user tool driving
+> the person's own applications, one at a time, on their own machine and identity. Read
+> the terms of the sites you use.
 
 Goal: detect and pass through Cloudflare Turnstile, reCAPTCHA v2/v3, DataDome, and Akamai on the protected job-application forms this tool already fills.
 

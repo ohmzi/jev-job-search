@@ -1,8 +1,7 @@
 /**
- * Bot checks on a form. The tool never passes one: it finds the widget, tells the
- * person, waits while they do it, and only then lets the submit guard run again.
- * A widget that has given a response counts as solved, because the frame stays on
- * the page after the person ticks it.
+ * Bot checks on a form: what counts as a wall, and the wait while a person finishes one the
+ * tool could not pass. The tool's own one attempt at a provider's checkbox lives in
+ * protections.ts and is made before this wait begins. Nothing here clicks anything.
  */
 import { BROWSER } from "../config.js";
 import type { PageState } from "../forms/pageState.js";

@@ -154,7 +154,7 @@ open the posting's application
 The tool stops, keeps the page open in its window, sends you a
 notification, and moves on to the next job, when it meets:
 
-- a CAPTCHA or any "prove you are human" check
+- a CAPTCHA or any "prove you are human" check at sign-up, which the tool makes no attempt on
 - a code sent to your phone, a passkey, or single sign-on
 - account terms you did not approve
 - a password the employer refuses, or an account it has locked

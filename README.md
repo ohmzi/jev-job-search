@@ -304,7 +304,7 @@ Every employer on Workday keeps its own accounts, and that is a large share of a
 2. **It signs in for you.** `/accounts password acme` opens a window on your Mac for that employer's password. It goes into your Keychain, and the tool signs in when the session has ended. A password an employer refuses is never tried twice.
 3. **It makes accounts (experimental).** `/accounts add workday` asks whether the tool may make an account where you have none, accept the account terms, and read the verification email, and shows what that allows before it saves. Each new account gets its own random password in your Keychain. A rehearsal never makes one.
 
-A robot check, a phone code, a passkey and single sign-on stop the job with the page left open for you; `/resume` carries on once you are through. `/accounts off` stops every sign-in, and `/accounts forget all` removes the stored passwords and sessions from your Mac. Neither deletes an account at an employer. [docs/ACCOUNTS.md](docs/ACCOUNTS.md) has every step, the Gmail connection, and what has and has not been tested.
+A robot check the tool cannot pass, a phone code, a passkey and single sign-on stop the job with the page left open for you; `/resume` carries on once you are through. `/accounts off` stops every sign-in, and `/accounts forget all` removes the stored passwords and sessions from your Mac. Neither deletes an account at an employer. [docs/ACCOUNTS.md](docs/ACCOUNTS.md) has every step, the Gmail connection, and what has and has not been tested.
 
 ### Which jobs it keeps
 
@@ -484,7 +484,7 @@ Every recurring question you answer by hand once (pay, relocation, start date, a
 
 ### Stay near your computer the first few runs
 
-Boards sometimes email a code or show a "not a robot" check after Submit. A code goes into the form with `node bin/jev.js code <id> --submit`, which reads it on standard input, writes it, reads it back, and sends only when the page confirms; `/apply` and `/resume` find it over the Gmail MCP for you. The tool never passes a robot check. In `apply`, `submit` and the hourly pass it brings that form to the front, notifies you, waits up to two minutes while you pass the check, then reads the form again and sends it once, recording the application only when the page confirms. `daily` does not wait: the job is left for you and the run moves on. Pass the check in the tool's Chrome window, or run `node bin/jev.js resume` afterwards.
+Boards sometimes email a code or show a "not a robot" check after Submit. A code goes into the form with `node bin/jev.js code <id> --submit`, which reads it on standard input, writes it, reads it back, and sends only when the page confirms; `/apply` and `/resume` find it over the Gmail MCP for you. A robot check gets one attempt from the tool: a reCAPTCHA or Turnstile checkbox pressed once, a managed Cloudflare wall waited out, a DataDome or Akamai sensor given its moment. What it cannot pass is yours. In `apply`, `submit` and the hourly pass the form is brought to the front with a notification, and the run waits up to two minutes while you finish the check, then reads the form again and sends it once, recording the application only when the page confirms. `daily` makes the one attempt but does not wait: the job is left for you and the run moves on. Finish the check in the tool's Chrome window, or run `node bin/jev.js resume` afterwards.
 
 ## Contributing
 
