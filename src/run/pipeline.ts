@@ -12,7 +12,7 @@ import { ensureBrowser, sleep } from "../browser/cdp.js";
 import { fillJob, nextPage, resolveJob, shouldAdvance } from "../browser/formRunner.js";
 import { blockedReport, loadPlan, loadReport, pickSubmit, saveReport, type FillReport } from "../browser/report.js";
 import { waitForCaptcha } from "../browser/captcha.js";
-import { passProtections, protectionSignal, readProtection, type ProtectionResult } from "../browser/protections.js";
+import { passProtections, protectionSignal, challengeBlocking, readProtection, type ProtectionResult } from "../browser/protections.js";
 import { closeJobTab, hasOpenTab, loadSession, mutateSession, pageFor } from "../browser/session.js";
 import { checkJob, submitJob, watchForConfirmation } from "../browser/submit.js";
 import { assist, captchaWords, notify, waitingWords } from "./assist.js";
@@ -326,19 +326,22 @@ async function readCaptcha(jev: JevClient, id: string): Promise<CaptchaWait | nu
   try {
     const pick = pickSubmit(loadPlan(id).plan.submitSelectors);
     const reading = await readProtection(page);
-    if (!pick || !protectionSignal(reading).blocking) {
+    const signal = protectionSignal(reading);
+    // A widget no adapter owns (hCaptcha, Arkose, GeeTest, an unnamed one) is still a wall: it is
+    // never clicked, and the person is asked for it exactly as before.
+    if (!pick || !challengeBlocking(reading)) {
       return { blocking: false, wait: async () => "cleared", close: () => page.close() };
     }
     return {
       blocking: true,
-      pass: () => passProtections(page, { reading, timeoutMs: PROTECTIONS.attemptMs }),
+      ...(signal.blocking ? { pass: () => passProtections(page, { reading, timeoutMs: PROTECTIONS.attemptMs }) } : {}),
       wait: (ms) =>
         waitForCaptcha(jev, page, id, {
           timeoutMs: ms,
           submitSelector: pick.selector,
           read: async (p) => {
             const now = await readProtection(p);
-            return { blocking: protectionSignal(now).blocking, text: now.text };
+            return { blocking: challengeBlocking(now), text: now.text };
           },
         }),
       close: () => page.close(),

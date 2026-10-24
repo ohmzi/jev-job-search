@@ -12,7 +12,8 @@ The user types a short command; you run the tool for them. They should never
 have to type `npx`. The search itself is read-only. When the portal's profile
 has `search.apply` and a `data/policy.json`, the same run also applies to a few
 fresh jobs whose links are forms the tool can fill. It never signs in, makes an
-account, reads mail or passes a robot check.
+account or reads mail. A robot check gets the tool's own one attempt; what it
+cannot pass is left for the person.
 
 ## What the user can type
 
@@ -84,8 +85,10 @@ page is opened and tried too.
 
 - **Never install or remove the timer unless the user typed that command**
   (`/hourly install`, `/hourly pause`) in this conversation.
-- **Never type a password, make an account, read mail or pass a robot check**
-  as part of the hourly run. It may open a sign-in page, put it in front and
+- **Never type a password, make an account or read mail** as part of the
+  hourly run, and never solve a picture or puzzle challenge or press a widget
+  twice. The run itself makes the one checkbox attempt; what is left is for the
+  person. It may open a sign-in page, put it in front and
   wait for the person; they sign in themselves. A code, sign-in or challenge is
   left for them. The hourly run may fill and send a fresh job, because the
   person turned `/hourly install` on and wrote the policy.

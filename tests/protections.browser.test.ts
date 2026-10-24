@@ -104,6 +104,33 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("a challenge in a real browser"
     }
   }, 20_000);
 
+  it("presses a checkbox that is below the fold where the pointer can reach it", async () => {
+    const page = await open("protection-below-fold.html");
+    try {
+      const reading = await readProtection(page);
+      expect(protectionSignal(reading)).toMatchObject({ provider: "recaptcha", blocking: true });
+      const result = await passProtections(page, { timeoutMs: 4_000 });
+      expect(result).toMatchObject({ passed: true, provider: "recaptcha" });
+      expect(await page.evaluate<number>("window.__clicks || 0")).toBe(1);
+      expect(await page.evaluate<string>('document.querySelector(\'textarea[name="g-recaptcha-response"]\').value')).toBe("test-response");
+    } finally {
+      await close(page);
+    }
+  }, 20_000);
+
+  it("waits out a managed Cloudflare page without pressing its frame", async () => {
+    const page = await open("protection-managed.html");
+    try {
+      const reading = await readProtection(page);
+      expect(protectionSignal(reading).provider).toBe("turnstile");
+      const result = await passProtections(page, { reading, timeoutMs: 0 });
+      expect(result).toMatchObject({ passed: false, needsHuman: true, provider: "turnstile" });
+      expect(await page.evaluate<number>("window.__clicks || 0")).toBe(0);
+    } finally {
+      await close(page);
+    }
+  }, 20_000);
+
   it("reads a DataDome wall and presses nothing", async () => {
     const page = await open("protection-datadome.html");
     try {

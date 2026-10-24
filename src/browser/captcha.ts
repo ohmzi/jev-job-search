@@ -68,7 +68,7 @@ export async function captchaState(page: Page): Promise<CaptchaPageState> {
   return { descriptors: raw.descriptors ?? [], tokens: raw.tokens ?? [], text: raw.text ?? "" };
 }
 
-/** True when a widget on the page is a challenge the person has to do. An invisible */
+/** What one read of the page says about a challenge: whether one blocks the form, and the page's words. */
 export type ChallengeReading = {
   /** A challenge is on the page and not yet answered. */
   blocking: boolean;

@@ -6,6 +6,8 @@
 > `waitAtCaptcha` (Phase 3), and the fixtures and tests (Phase 4). Two parts of the plan
 > below were not built: `jev status` has no per-protection line, and a wall in front of
 > the fill is reported and the job set aside rather than held open for a two-minute wait.
+> The fixture-based per-provider report from Phase 0's second bullet was not built either;
+> `doctor --protections` reports the runner window's own fingerprint and its tells.
 >
 > **Terms-of-service risk.** Pressing a provider's checkbox and presenting an ordinary
 > browser fingerprint may breach a site's terms. This stays a single-user tool driving

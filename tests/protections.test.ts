@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Page } from "../src/browser/cdp.js";
-import { clickPoint, humanClick, passProtections, protectionSignal, protectionStopReason, type ChallengeBox, type ProtectionReading } from "../src/browser/protections.js";
+import { challengeBlocking, clickPoint, humanClick, isManagedCloudflare, passProtections, protectionSignal, protectionStopReason, readProtection, type ChallengeBox, type ProtectionReading } from "../src/browser/protections.js";
 import { recaptcha } from "../src/browser/recaptcha.js";
 import { turnstile } from "../src/browser/turnstile.js";
 
@@ -30,6 +30,35 @@ describe("what a form is showing", () => {
   });
   it("is nothing at all on an ordinary form", () => {
     expect(protectionSignal(reading({ text: "Apply for this job" }))).toEqual({ provider: "none", blocking: false, reason: "" });
+  });
+  it("does not call an ordinary form a wall because a site's cookie jar has a tracker in it", () => {
+    expect(protectionSignal(reading({ cookies: ["datadome"], text: "Please verify your email address" }))).toEqual({ provider: "none", blocking: false, reason: "" });
+    expect(protectionSignal(reading({ cookies: ["_abck"], text: "We will verify your details" }))).toEqual({ provider: "none", blocking: false, reason: "" });
+  });
+});
+
+describe("a challenge with no adapter still stops the form", () => {
+  it("counts an hCaptcha, an Arkose or an unknown widget", () => {
+    expect(challengeBlocking(reading({ descriptors: ["iframe:hcaptcha:normal"] }))).toBe(true);
+    expect(challengeBlocking(reading({ descriptors: ["iframe:arkose:normal"] }))).toBe(true);
+    expect(challengeBlocking(reading({ descriptors: ["widget:unknown:normal"] }))).toBe(true);
+  });
+  it("does not count one that already carries its response", () => {
+    expect(challengeBlocking(reading({ descriptors: ["iframe:hcaptcha:normal"], tokens: ["hcaptcha"] }))).toBe(false);
+  });
+  it("counts a challenge the adapters do handle", () => {
+    expect(challengeBlocking(reading({ descriptors: ["iframe:recaptcha:normal"] }))).toBe(true);
+    expect(challengeBlocking(reading({ text: "Apply for this job" }))).toBe(false);
+  });
+});
+
+describe("the Cloudflare page that is a wait, not a checkbox", () => {
+  it("is recognized by its words", () => {
+    expect(isManagedCloudflare(reading({ text: "Just a moment... Checking your browser before accessing" }))).toBe(true);
+    expect(isManagedCloudflare(reading({ text: "Enable JavaScript and cookies to continue" }))).toBe(true);
+  });
+  it("is not an explicit Turnstile widget on a form", () => {
+    expect(isManagedCloudflare(reading({ descriptors: ["iframe:turnstile:normal"], text: "Apply for this job" }))).toBe(false);
   });
 });
 
@@ -101,6 +130,13 @@ describe("a challenge the tool tries before handing it to a person", () => {
     expect(result).toMatchObject({ passed: true, needsHuman: false, provider: "turnstile" });
   });
 
+  it("does not press a managed Cloudflare page's frame", async () => {
+    const { page, seen } = fakePage({ box });
+    const result = await turnstile.attempt(page, reading({ text: "Just a moment... Checking your browser" }), { timeoutMs: 0 });
+    expect(result.needsHuman).toBe(true);
+    expect(seen.clicks).toHaveLength(0);
+  });
+
   it("goes straight on when there is no challenge", async () => {
     const { page, seen } = fakePage({ box: null });
     const result = await passProtections(page, { reading: reading() });
@@ -123,23 +159,32 @@ describe("a challenge the tool tries before handing it to a person", () => {
 });
 
 describe("what stops a fill at a wall", () => {
-  const tried = (over: Partial<{ passed: boolean; needsHuman: boolean; provider: "recaptcha" | "none" }>) => ({
-    passed: false,
-    waitedMs: 5,
-    needsHuman: true,
-    provider: "recaptcha" as const,
-    ...over,
-  });
-
   it("holds the job when the wall is still there after the attempt", () => {
-    const why = protectionStopReason(tried({}), reading({ descriptors: ["iframe:recaptcha:normal"] }));
+    const why = protectionStopReason(reading({ descriptors: ["iframe:recaptcha:normal"] }));
     expect(why).toContain("robot check in front of the form");
   });
-  it("goes on when the wall cleared during the attempt", () => {
-    expect(protectionStopReason(tried({}), reading({ text: "Apply for this job" }))).toBeNull();
+  it("holds the job for a second wall, even after one was passed", () => {
+    expect(protectionStopReason(reading({ text: "Just a moment..." }))).toContain("robot check in front of the form");
   });
-  it("goes on when there was nothing to try", () => {
-    expect(protectionStopReason(null, reading({ descriptors: ["iframe:recaptcha:normal"] }))).toBeNull();
-    expect(protectionStopReason(tried({ passed: true, needsHuman: false, provider: "none" }), null)).toBeNull();
+  it("goes on when the wall is gone", () => {
+    expect(protectionStopReason(reading({ text: "Apply for this job" }))).toBeNull();
+    expect(protectionStopReason(null)).toBeNull();
+  });
+});
+
+describe("reading a page's cookies", () => {
+  it("asks for the cookies of this page only, not the whole browser", async () => {
+    let asked: { method: string; params: Record<string, unknown> } | null = null;
+    const page = {
+      awj: async () => ({ descriptors: [], tokens: [], text: "" }),
+      evaluate: async () => "https://jobs.example.com/apply",
+      send: async (method: string, params: Record<string, unknown>) => {
+        asked = { method, params };
+        return { cookies: [{ name: "datadome" }] };
+      },
+    } as unknown as Parameters<typeof readProtection>[0];
+    const got = await readProtection(page);
+    expect(asked).toEqual({ method: "Network.getCookies", params: { urls: ["https://jobs.example.com/apply"] } });
+    expect(got.cookies).toEqual(["datadome"]);
   });
 });

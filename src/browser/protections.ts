@@ -29,5 +29,5 @@ export async function passProtections(page: Page, opts: { reading?: ProtectionRe
   return adapter.attempt(page, reading, { timeoutMs, ...(opts.pollMs !== undefined ? { pollMs: opts.pollMs } : {}) });
 }
 
-export { clickPoint, humanClick, protectionSignal, protectionStopReason, readProtection } from "./protection.js";
+export { challengeBlocking, clickPoint, humanClick, isManagedCloudflare, protectionSignal, protectionStopReason, readProtection } from "./protection.js";
 export type { ChallengeBox, ProtectionProvider, ProtectionReading, ProtectionResult, ProtectionSignal } from "./protection.js";

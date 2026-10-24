@@ -435,6 +435,9 @@
         .filter((n) => named(`${n.src || ""} ${n.getAttribute("title") || ""} ${n.className || ""} ${n.id || ""}`));
       const n = els[0];
       if (!n) return null;
+      // A frame below the fold is scrolled to before it is measured: input events use viewport
+      // coordinates, so a box measured off-screen would send the click into empty space.
+      try { n.scrollIntoView({ block: "center", inline: "center" }); } catch (e) {}
       const r = n.getBoundingClientRect();
       return { x: r.x, y: r.y, width: r.width, height: r.height, kind: n.tagName === "IFRAME" ? "iframe" : "widget" };
     },

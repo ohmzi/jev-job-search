@@ -86,10 +86,10 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job, opts: 
     // sign-in: the adapter chain does not run there, and the account rules own that page.
     if (!d.hasPassword) {
       const shield = await passProtections(page, { timeoutMs: PROTECTIONS.attemptMs }).catch(() => null);
+      const still = await readProtection(page).catch(() => null);
+      const why = protectionStopReason(still);
+      if (why) return saveReport(blockedReport(job, why, d.url, seconds()));
       if (shield && shield.provider !== "none") {
-        const still = await readProtection(page).catch(() => null);
-        const why = protectionStopReason(shield, still);
-        if (why) return saveReport(blockedReport(job, why, d.url, seconds()));
         signal?.throwIfAborted();
         await install(page);
         d = await dump(page);

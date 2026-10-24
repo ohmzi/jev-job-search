@@ -5,7 +5,7 @@
  * refused it: what it cannot do with certainty goes to the person.
  */
 import { PROTECTIONS } from "../config.js";
-import { captchaState } from "./captcha.js";
+import { blockingCaptcha, captchaState } from "./captcha.js";
 import { sleep, type Page } from "./cdp.js";
 
 export type ProtectionProvider = "turnstile" | "recaptcha" | "datadome" | "akamai" | "none";
@@ -67,12 +67,14 @@ export function protectionSignal(r: ProtectionReading): ProtectionSignal {
   if (shown("recaptcha")) return answered("recaptcha") ? none() : sig("recaptcha", "a reCAPTCHA checkbox is on the page");
 
   const dataDomeCookie = r.cookies.some((c) => /^(datadome|_dd_s|_ddv|_ddgs)$/i.test(c));
-  if (/captcha-delivery|datadome/i.test(`${r.url} ${words}`) || (dataDomeCookie && /denied|blocked|captcha|verify/i.test(words))) {
+  // The cookie alone is not a wall: many sites carry one from an earlier visit. The words have to
+  // be a denial, not an ordinary "verify your email" on a form.
+  if (/captcha-delivery|datadome/i.test(`${r.url} ${words}`) || (dataDomeCookie && /access to this page has been denied|please enable js and disable any ad blocker|blocked by (datadome|security)|verify you are (a )?human/i.test(words))) {
     return sig("datadome", "DataDome is asking for a check");
   }
 
   const akamaiCookie = r.cookies.some((c) => /^(_abck|bm_sz|ak_bmsc|bm_sv)$/i.test(c));
-  if (akamaiCookie && /access denied|reference #|verify you are human|please verify|blocked/i.test(words)) {
+  if (akamaiCookie && /access denied|reference #|request unsuccessful|incapsula|verify you are (a )?human/i.test(words)) {
     return sig("akamai", "Akamai refused the page");
   }
   if (/just a moment|checking your browser|verify you are human|attention required|enable javascript and cookies/i.test(words)) {
@@ -80,6 +82,19 @@ export function protectionSignal(r: ProtectionReading): ProtectionSignal {
   }
   if (/access to this page has been denied/i.test(words)) return sig("akamai", "the page says access was denied");
   return none();
+}
+
+/**
+ * True for a challenge no adapter owns: hCaptcha, Arkose, GeeTest, or a widget with no vendor
+ * the page names. The old widget test still catches these, and the person is asked.
+ */
+export function challengeBlocking(r: ProtectionReading): boolean {
+  return protectionSignal(r).blocking || blockingCaptcha(r.descriptors, r.tokens);
+}
+
+/** The Cloudflare page that has no checkbox worth pressing: it is waited out, never clicked. */
+export function isManagedCloudflare(r: ProtectionReading): boolean {
+  return /just a moment|checking your browser|enable javascript and cookies|cf-browser-verification|challenge-platform/i.test(r.text);
 }
 
 /** Where the pointer presses: the checkbox for a vendor frame, the middle for a widget drawn in the page. */
@@ -118,7 +133,9 @@ export async function readProtection(page: Page): Promise<ProtectionReading> {
   const url = await page.evaluate<string>("location.href").catch(() => "");
   let cookies: string[] = [];
   try {
-    const all = await page.send<{ cookies: { name: string }[] }>("Network.getAllCookies");
+    // Only this page's cookies: the runner's profile holds the cookies of every board it has
+    // visited, and a DataDome cookie from last week must not turn this form into a wall.
+    const all = url ? await page.send<{ cookies: { name: string }[] }>("Network.getCookies", { urls: [url] }) : { cookies: [] };
     cookies = all.cookies.map((c) => c.name);
   } catch {
     cookies = [];
@@ -157,11 +174,10 @@ export async function waitForClear(page: Page, opts: AdapterOptions): Promise<bo
 }
 
 /**
- * The reason a fill or a send stops at a wall, or null when it may go on. A failed attempt
- * that left the wall on the page stops it; a wall that cleared by itself does not.
+ * The reason a fill or a send stops at a wall, or null when it may go on. It reads the page as
+ * it is now, so a wall that survived an attempt is caught even when the attempt reported a pass.
  */
-export function protectionStopReason(tried: ProtectionResult | null, now: ProtectionReading | null): string | null {
-  if (!tried || tried.provider === "none" || tried.passed) return null;
+export function protectionStopReason(now: ProtectionReading | null): string | null {
   const signal = now ? protectionSignal(now) : null;
   return signal?.blocking ? `robot check in front of the form: ${signal.reason}` : null;
 }
