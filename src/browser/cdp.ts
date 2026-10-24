@@ -9,8 +9,9 @@ import { mkdirSync } from "node:fs";
 import { BROWSER, childEnv } from "../config.js";
 import { safeUrl } from "../util/redact.js";
 import { STEALTH } from "./stealth.js";
+import { openStealthTab, type StealthInit } from "./stealthPlaywright.js";
 
-export type Target = { id: string; type: string; url: string; title: string; webSocketDebuggerUrl: string };
+export type Target = { id: string; type: string; url: string; title: string; webSocketDebuggerUrl: string; stealth?: StealthInit };
 
 const base = () => `http://127.0.0.1:${BROWSER.port}`;
 export const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -55,8 +56,12 @@ export async function ensureBrowser(): Promise<void> {
 }
 
 export async function newTab(url: string): Promise<Target> {
-  const res = await fetch(`${base()}/json/new?${encodeURIComponent(url)}`, { method: "PUT" });
-  return (await res.json()) as Target;
+  // Playwright creates the tab and hands back its stealth evasions. The browser is the tool's
+  // own long-lived one; Playwright only connects, and disconnects before returning.
+  const { targetId, ...stealth } = await openStealthTab(base(), url);
+  const target = (await listTargets())?.find((t) => t.id === targetId);
+  if (!target) throw new Error("the tab opened but the browser did not list it");
+  return { ...target, stealth };
 }
 
 export async function closeTab(id: string): Promise<void> {
@@ -163,7 +168,11 @@ export class Page {
     await page.send("Network.enable");
     // Lets a tab that is not the frontmost one keep focus semantics, so dropdowns open.
     await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
-    // The page sees this before any of its own scripts, on this document and every later one.
+    // The page sees these before any of its own scripts, on this document and every later one.
+    // Playwright's evasions go first: they are registered on this session, which stays open
+    // for the page's life, so they apply to every navigation the tool makes.
+    if (target.stealth?.userAgentOverride) await page.send("Network.setUserAgentOverride", target.stealth.userAgentOverride).catch(() => undefined);
+    for (const source of target.stealth?.initScripts ?? []) await page.send("Page.addScriptToEvaluateOnNewDocument", { source });
     await page.addInitScript(STEALTH);
     await page.rawEvaluate(STEALTH).catch(() => undefined);
     return page;

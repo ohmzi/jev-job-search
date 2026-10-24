@@ -3,11 +3,14 @@
 > **Implemented.** The shipped pieces are the stealth bundle and its injection (Phase 1),
 > the fingerprint probe and `doctor --protections` (Phase 0), the four adapters and the
 > `passProtections` chain (Phase 2), the wiring in `formRunner.ts`, `submit.ts` and
-> `waitAtCaptcha` (Phase 3), and the fixtures and tests (Phase 4). Two parts of the plan
-> below were not built: `jev status` has no per-protection line, and a wall in front of
-> the fill is reported and the job set aside rather than held open for a two-minute wait.
-> The fixture-based per-provider report from Phase 0's second bullet was not built either;
-> `doctor --protections` reports the runner window's own fingerprint and its tells.
+> `waitAtCaptcha` (Phase 3), and the fixtures and tests (Phase 4). Phase 1 also uses
+> Playwright's stealth evasions (`playwright-extra` with `puppeteer-extra-plugin-stealth`)
+> in place of the plan's puppeteer option: Playwright connects to the tool's own Chrome,
+> because a browser Playwright launches is closed when the command exits. Two parts of the
+> plan below were not built: `jev status` has no per-protection line, and a wall in front
+> of the fill is reported and the job set aside rather than held open for a two-minute
+> wait. The fixture-based per-provider report from Phase 0's second bullet was not built
+> either; `doctor --protections` reports the runner window's own fingerprint and its tells.
 >
 > **Terms-of-service risk.** Pressing a provider's checkbox and presenting an ordinary
 > browser fingerprint may breach a site's terms. This stays a single-user tool driving
@@ -41,7 +44,10 @@ The design constraint that stays: a *visible* browser the person can watch, fix,
   - scrub automation artifacts (`cdc_*`, `__playwright*,` etc.).
 - Because we already run a **visible** real Chrome (no `--enable-automation`, no headless), most headless tells are gone, and the injected script covers the rest. This is roughly what `puppeteer-extra-plugin-stealth` does, minus the dependency.
 
-**Option B (off-the-shelf library):** add `puppeteer-core` + `@puppeteer-extra/puppeteer-extra-plugin-stealth`, let it replace `cdp.ts`'s low-level page driving while keeping `ensureBrowser()`'s visible-window launch (connect to `127.0.0.1:${BROWSER.port}` via `connectOverCDP`). Trade-off: ~2 new dependencies vs. zero.
+**Option B (off-the-shelf library):** add `playwright-extra` with the stealth plugin, let
+it prepare each tab's evasions while the repo's own CDP client keeps driving the visible
+Chrome. Trade-off: three new dependencies (`playwright-extra`, `puppeteer-extra-plugin-stealth`,
+`playwright-core`) against a stronger fingerprint. This is the option that shipped.
 
 Decision gate: if Option A's fingerprint report (Phase 0) is clean, stop at A: fewer moving parts, and the repo's zero-dep policy stays intact.
 

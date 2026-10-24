@@ -83,8 +83,9 @@ profile. The tool makes that the only way.
 Automated form submission may be against the terms of a given job board
 or ATS. The tool uses a browser on the user's own machine and their own
 identity, submits one application per posting, paces itself per site, and
-presents the fingerprint of an ordinary visible Chrome window so a bot
-score is not tripped by the fact that it is scripted. It presses a
+presents the fingerprint of an ordinary visible Chrome window, using
+Playwright's stealth evasions, so a bot score is not tripped by the fact
+that it is scripted. It presses a
 provider's own checkbox once when that provider offers one, and never
 solves a picture, audio or puzzle challenge. It makes an account only where
 you allowed one, under your own address, at most a few a day. A site's

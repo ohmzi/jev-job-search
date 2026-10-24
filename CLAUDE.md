@@ -201,8 +201,11 @@ doctor` says what is in place and what to do next.
 
 - TypeScript, strict, ESM, Node 22, run with `tsx`. No build step.
 - Two runtime dependencies (`commander`, `zod`) plus the Node standard
-  library. The browser layer uses Node's own `fetch` and `WebSocket`. Adding
-  a dependency needs a reason in the PR.
+  library. The browser stealth layer adds `playwright-extra`,
+  `puppeteer-extra-plugin-stealth` and their required `playwright-core`.
+  The browser is still driven by the repo's own CDP client; Playwright only
+  prepares each tab's stealth evasions. Adding any other dependency needs a
+  reason in the PR.
 - Every external payload (DeepSeek, ATS APIs, the queue file, form dumps, the
   writer's reply, the memory file) is parsed with a zod schema before use.
 - The three scripts in `src/forms/*.js` run inside the page. They are plain
