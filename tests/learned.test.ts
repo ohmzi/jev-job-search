@@ -85,6 +85,39 @@ describe("the pending learned answers", () => {
     expect(() => confirmLearned("not-a-real-id", "Yes.", files())).toThrow(/No learned answer/);
   });
 
+  it("refuses a blank answer and writes nothing", () => {
+    const f = files();
+    addLearned([row()], f.pending);
+    const id = loadLearned(f.pending).pending[0]!.id;
+    const before = readFileSync(f.profile, "utf8");
+
+    expect(() => confirmLearned(id, "", f)).toThrow(/needs an answer/);
+    expect(readFileSync(f.profile, "utf8")).toBe(before);
+    expect(loadLearned(f.pending).pending.map((p) => p.id)).toEqual([id]);
+  });
+
+  it("refuses a whitespace-only answer and writes nothing", () => {
+    const f = files();
+    addLearned([row()], f.pending);
+    const id = loadLearned(f.pending).pending[0]!.id;
+    const before = readFileSync(f.profile, "utf8");
+
+    expect(() => confirmLearned(id, "   ", f)).toThrow(/needs an answer/);
+    expect(readFileSync(f.profile, "utf8")).toBe(before);
+    expect(loadLearned(f.pending).pending.map((p) => p.id)).toEqual([id]);
+  });
+
+  it("refuses a pending answer with no question and writes nothing", () => {
+    const f = files();
+    addLearned([row({ question: "   " })], f.pending);
+    const id = loadLearned(f.pending).pending[0]!.id;
+    const before = readFileSync(f.profile, "utf8");
+
+    expect(() => confirmLearned(id, "Yes.", f)).toThrow(/needs a question/);
+    expect(readFileSync(f.profile, "utf8")).toBe(before);
+    expect(loadLearned(f.pending).pending.map((p) => p.id)).toEqual([id]);
+  });
+
   it("does not write a profile that does not validate, and keeps the entry", () => {
     const f = files();
     addLearned([row()], f.pending);

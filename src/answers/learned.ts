@@ -71,7 +71,8 @@ export function addLearned(rows: NewPending[], file = PATHS.learned): number {
 /**
  * Turns one pending answer into a standing one. The answer given is the person's, which may be
  * the walk's own wording or their edit. An entry with the same question is replaced, never
- * duplicated. The profile is parsed whole before either file is written.
+ * duplicated. A question or answer that is only whitespace is refused, so a blank standing
+ * answer can never reach the profile. The profile is parsed whole before either file is written.
  */
 export function confirmLearned(id: string, answer: string, files: { pending?: string; profile?: string } = {}): { question: string; answer: string } {
   return withStore(() => {
@@ -80,8 +81,10 @@ export function confirmLearned(id: string, answer: string, files: { pending?: st
     const { pending } = loadLearned(pendingFile);
     const row = pending.find((p) => p.id === id);
     if (!row) throw new Error(`No learned answer with id ${id}`);
-
+    if (!row.question.trim()) throw new Error("a learned answer needs a question before it can be confirmed");
     const final = { question: row.question, answer: answer.trim() };
+    if (!final.answer) throw new Error("a learned answer needs an answer before it can be confirmed");
+
     const raw = JSON.parse(readFileSync(profileFile, "utf8")) as Record<string, unknown>;
     const answers = Array.isArray(raw.answers) ? (raw.answers as { question?: string }[]) : [];
     const next = { ...raw, answers: [...answers.filter((a) => a?.question !== final.question), final] };
