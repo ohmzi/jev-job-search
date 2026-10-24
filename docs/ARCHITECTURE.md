@@ -308,19 +308,25 @@ queue.
   `needs_review` when the window closes. A status a person chose clears
   `holdUntil`, so the sweep never undoes it.
 - `src/sources/listingLink.ts` follows a new Indeed or LinkedIn listing to the
-  employer's own form. It starts the board's MCP server (`uvx mcp-server-linkedin`,
-  and the `openings-mcp` Docker image for Indeed; both in `MCP`), asks about the
-  one posting, and takes from the reply an https link that is not the board's and
-  is a known application board or looks like an application. A link found makes
-  the job fillable and it is queued. A job's id is derived from its link and
-  recomputed whenever the queue is read, so the id moves with the link. No link,
+  employer's own form. It starts the board's MCP server (LinkedIn: the local fork at
+  `/home/ohmz/StudioProjects/linkedin-mcp-server`; Indeed: the `openings-mcp` Docker
+  image; both in `MCP`), asks about the one posting, and takes from the reply an
+  https link that is not the board's and is a known application board or looks
+  like an application. A link found makes the job fillable and it is queued. A
+  job's id is derived from its link and recomputed whenever the queue is read,
+  so the id moves with the link. No link,
   or a server that fails, leaves the listing held for the person. The apply step
   asks again: `followListings` (`src/run/followListings.ts`) runs at the start of
   `pipeline`, so `/apply`, `daily` and the hourly apply pass all take a listing to
   the employer's form when the board's server has one (an answer of "no link" is
   kept for `MCP.retryAfterHours`, a link for good, a failure not at all). Chrome is
   the fallback: `openForm` loads the listing and follows its Apply button as it
-  does for any careers page. The servers read postings and apply for no one.
+  does for any careers page. The read tools apply for no one. A LinkedIn posting
+  that takes Easy Apply has no employer link: it keeps its board link and is
+  marked applyable, and `applyViaMcp` (`src/run/pipeline.ts`) records it
+  `submission_unknown` before asking the fork's apply tool to walk the wizard.
+  The questions that walk answered are shown on the Needs you page and become
+  standing answers in `profile.answers` only once the person keeps them.
 - The hourly run does not rate with DeepSeek, so it costs nothing beyond the
   board calls.
 

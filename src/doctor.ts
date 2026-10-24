@@ -39,16 +39,49 @@ export function checkChrome(file: string = BROWSER.chromePath): Check {
   return { name: "Google Chrome", ok: existsSync(file), detail: existsSync(file) ? "installed" : `not found at ${file}`, fix: "Install Google Chrome from https://www.google.com/chrome, or set BROWSER.chromePath in src/config.ts" };
 }
 
-/** Whether the programs that start the Indeed and LinkedIn MCP servers are installed. Optional: without them a listing goes straight to Chrome. */
-export function checkListingServers(): Check {
-  const has = (cmd: string) => spawnSync(cmd, ["--version"], { encoding: "utf8", env: childEnv(), timeout: 10_000 }).status === 0;
-  const missing = [MCP.linkedin.command, MCP.indeed.command].filter((c, i, all) => all.indexOf(c) === i && !has(c));
+/** The directory an MCP server is started in, from its `--directory` argument. */
+function mcpDirectory(spec: { args: readonly string[] }): string | null {
+  const at = spec.args.indexOf("--directory");
+  return at >= 0 ? spec.args[at + 1] ?? null : null;
+}
+
+/** A way to look for the programs and the directory without touching this machine, for tests. */
+export type ListingServerProbe = {
+  /** Whether a program is on PATH. */
+  has?: (command: string) => boolean;
+  /** Whether a path exists. */
+  exists?: (file: string) => boolean;
+};
+
+/**
+ * Whether the programs and the LinkedIn fork's directory the MCP servers need are in place.
+ * Optional: without them a listing goes straight to Chrome and an Easy Apply job is held.
+ */
+export function checkListingServers(probe: ListingServerProbe = {}): Check {
+  const has = probe.has ?? ((cmd: string) => spawnSync(cmd, ["--version"], { encoding: "utf8", env: childEnv(), timeout: 10_000 }).status === 0);
+  const exists = probe.exists ?? existsSync;
+  const dir = mcpDirectory(MCP.linkedin);
+  const commands = [MCP.linkedin.command, MCP.indeed.command].filter((c, i, all) => all.indexOf(c) === i);
+  const missing = commands.filter((c) => !has(c));
+  const dirMissing = dir !== null && !exists(dir);
+  const linkedinOk = !missing.includes(MCP.linkedin.command) && !dirMissing;
+  const indeedOk = !missing.includes(MCP.indeed.command);
+  const problems: string[] = [];
+  if (missing.length) problems.push(`${missing.join(" and ")} not found`);
+  if (dirMissing) problems.push(`LinkedIn's fork is not at ${dir}`);
+  const fixes: string[] = [];
+  if (missing.length) fixes.push(`Install ${missing.join(" and ")}: uv runs the LinkedIn fork (https://docs.astral.sh/uv/) and Docker runs the Indeed server (https://docs.docker.com/)`);
+  if (dirMissing) fixes.push(`Clone the LinkedIn MCP fork to ${dir}, or change MCP.linkedin in src/config.ts to where it is`);
+  const chrome = [...(linkedinOk ? [] : ["LinkedIn"]), ...(indeedOk ? [] : ["Indeed"])];
+  const fallback = [linkedinOk ? "" : "Easy Apply jobs are held for you", chrome.length ? `${chrome.join(" and ")} listings go to Chrome` : ""].filter(Boolean).join(" and ");
   return {
     name: "Indeed and LinkedIn links",
-    ok: missing.length === 0,
+    ok: problems.length === 0,
     optional: true,
-    detail: missing.length === 0 ? `${MCP.linkedin.command} and ${MCP.indeed.command} found, so board listings are followed to the employer` : `${missing.join(" and ")} not found, so board listings go straight to Chrome`,
-    fix: "Install uv (https://docs.astral.sh/uv/) for LinkedIn and Docker for Indeed, or ignore this: Chrome follows the listing's Apply button",
+    detail: problems.length === 0
+      ? `${MCP.linkedin.command} and ${MCP.indeed.command} found, LinkedIn runs from ${dir}: Easy Apply jobs are sent by the fork and board listings are followed to the employer`
+      : `${problems.join("; ")}, so ${fallback}`,
+    fix: problems.length === 0 ? "" : `${fixes.join(". ")}, or ignore this: Chrome follows the listing's Apply button`,
   };
 }
 

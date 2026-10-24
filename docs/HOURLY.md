@@ -25,11 +25,14 @@ account, reads mail or sends anything.
    Docker image, asking for jobs posted inside the profile's window. The four
    portals start at six hours.
 3. **Follows board listings to the employer.** A new Indeed or LinkedIn listing is
-   not a form. The board's MCP server (LinkedIn: `uvx mcp-server-linkedin`; Indeed:
+   not a form. The board's MCP server (LinkedIn: the local fork at
+   `/home/ohmz/StudioProjects/linkedin-mcp-server`, in `MCP.linkedin`; Indeed:
    the `openings-mcp` Docker image) is asked for the posting's apply link. If the
    reply holds an https link to an application board, or to a page that looks like
    an application, the job is queued at that link and the apply pass can fill it. The
-   servers read postings and apply for no one. `data/cache/listing-links.json` keeps
+   read tools apply for no one. A posting that takes Easy Apply has no employer
+   link: it keeps its board link, and the apply pass records it `submission_unknown`
+   and sends it through the fork's apply tool. `data/cache/listing-links.json` keeps
    each answer: a link for good, "no link" for six hours, a failure not at all. At most
    `MCP.maxPerRun` listings are asked about per run, and a server that will not start is
    skipped for the run.
