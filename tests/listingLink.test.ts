@@ -98,7 +98,7 @@ describe("resolving listings", () => {
   it("asks the right server with the right arguments, and keeps the answers", async () => {
     const cacheFile = path.join(dir(), "links.json");
     const asked: { board: string; args: Record<string, unknown> }[] = [];
-    const call = async (board: string, args: Record<string, unknown>) => {
+    const call = async (board: string, _tool: string, args: Record<string, unknown>) => {
       asked.push({ board, args });
       return board === "linkedin" ? "apply: https://boards.greenhouse.io/acme/jobs/123" : "no application link here";
     };

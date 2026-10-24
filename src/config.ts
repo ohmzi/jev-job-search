@@ -135,10 +135,10 @@ export const MCP = {
   maxPerRun: 30,
   /** A listing the servers had no employer link for is not asked about again for this long. */
   retryAfterHours: 6,
-  /** LinkedIn: the mcp-server-linkedin package, whose tool reads how a posting takes applications. */
-  linkedin: { command: "uvx", args: ["mcp-server-linkedin@latest"], tool: "get_job_apply_url" },
-  /** Indeed: the openings-mcp image, whose Indeed tool returns a posting's details. */
-  indeed: { command: "docker", args: ["run", "-i", "--rm", "ghcr.io/amikai/openings-mcp"], tool: "indeed_get_job_detail" },
+  /** LinkedIn: the local fork, whose read tool says how a posting takes applications and whose apply tool sends one. */
+  linkedin: { command: "uv", args: ["run", "--directory", "/home/ohmz/StudioProjects/linkedin-mcp-server", "-m", "linkedin_mcp_server"], tools: { read: "get_job_apply_url", apply: "apply_to_job" } },
+  /** Indeed: the openings-mcp image, whose read tool returns a posting's details. */
+  indeed: { command: "docker", args: ["run", "-i", "--rm", "ghcr.io/amikai/openings-mcp"], tools: { read: "indeed_get_job_detail" } },
   /** The openings-mcp Indeed tools want a country name. The profile keeps JobSpy's spelling. */
   indeedCountries: { USA: "United States", US: "United States", UK: "United Kingdom", Canada: "Canada", Australia: "Australia", Ireland: "Ireland", India: "India", Germany: "Germany", France: "France", Netherlands: "Netherlands", Singapore: "Singapore" } as Record<string, string>,
   /** Hosts that are the board itself, not an employer. A link on one of these is not the employer's form. */

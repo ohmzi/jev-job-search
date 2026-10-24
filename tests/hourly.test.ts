@@ -305,7 +305,7 @@ describe("board listings that lead to an employer form", () => {
     const f = setup();
     saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [] }, f.queueFile);
     const asked: unknown[] = [];
-    const listings = { call: async (board: string, args: Record<string, unknown>) => (asked.push([board, args]), "apply at https://boards.greenhouse.io/delta/jobs/777"), close: () => {} };
+    const listings = { call: async (board: string, _tool: string, args: Record<string, unknown>) => (asked.push([board, args]), "apply at https://boards.greenhouse.io/delta/jobs/777"), close: () => {} };
     const summary = await runHourly(profile(), { now: NOW, ...f, runner: () => ({ ok: true, stdout: rows, error: "" }), linksFile: f.cacheFile, listings: listings as never });
     expect(asked).toEqual([["linkedin", { job_id: "4252026496" }]]);
     expect(summary).toMatchObject({ added: 1, held: 0 });

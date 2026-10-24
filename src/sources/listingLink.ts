@@ -1,6 +1,6 @@
 /**
  * The employer's own form behind an Indeed or LinkedIn listing, found through the board's MCP
- * server. The servers read the posting; they apply for no one. What comes back is a link, and the
+ * server. This lookup reads the posting and applies for no one. What comes back is a link, and the
  * form behind it is filled by the same Chrome flow as any other. A listing the servers have no
  * link for is left as it is: Chrome follows the page's Apply button when the job's turn comes.
  *
@@ -8,7 +8,7 @@
  */
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
-import { MCP, PATHS } from "../config.js";
+import { MCP, PATHS, ROOT } from "../config.js";
 import { atsFromUrl, hostIs, jobId, type Job } from "../jobs/normalize.js";
 import { McpClient } from "../mcp/client.js";
 import { safeUrl } from "../util/redact.js";
@@ -17,8 +17,8 @@ import { withStore, writeAtomic } from "../util/store.js";
 export type Board = "linkedin" | "indeed";
 export type Listing = { board: Board; id: string };
 
-/** Asks one board's server about one listing and returns the text of its reply. */
-export type ToolCall = (board: Board, args: Record<string, unknown>) => Promise<string>;
+/** Asks one board's server about one listing with the named tool and returns the text of its reply. */
+export type ToolCall = (board: Board, tool: string, args: Record<string, unknown>) => Promise<string>;
 export type Caller = { call: ToolCall; close: () => void };
 
 /** Which board and which posting a link is, or null when it is neither Indeed nor LinkedIn. */
@@ -126,7 +126,7 @@ export function mcpCaller(log: (line: string) => void = () => {}): Caller {
   const clientFor = (board: Board) => {
     let p = clients.get(board);
     if (!p) {
-      p = McpClient.start(MCP[board], { startupMs: MCP.startupMs, name: `the ${board} MCP server` }).catch((err: unknown) => {
+      p = McpClient.start(MCP[board], { startupMs: MCP.startupMs, name: `the ${board} MCP server`, cwd: ROOT }).catch((err: unknown) => {
         log(`[links] ${err instanceof Error ? err.message : String(err)}`);
         return null;
       });
@@ -135,10 +135,10 @@ export function mcpCaller(log: (line: string) => void = () => {}): Caller {
     return p;
   };
   return {
-    async call(board, args) {
+    async call(board, tool, args) {
       const client = await clientFor(board);
       if (!client) throw new NotAvailable(board);
-      return client.callTool(MCP[board].tool, args, MCP.callMs);
+      return client.callTool(tool, args, MCP.callMs);
     },
     close() {
       for (const p of clients.values()) void p.then((c) => c?.close());
@@ -192,7 +192,7 @@ export async function resolveListings(jobs: Pick<Job, "id" | "url">[], o: Resolv
     asked++;
     try {
       const args = listing.board === "linkedin" ? { job_id: listing.id } : { job_key: listing.id, country: MCP.indeedCountries[o.country] ?? o.country };
-      const url = employerLinkIn(await o.call(listing.board, args));
+      const url = employerLinkIn(await o.call(listing.board, MCP[listing.board].tools.read, args));
       fresh[key] = { url, at: now.toISOString() };
       if (url) {
         found.set(job.id, url);
