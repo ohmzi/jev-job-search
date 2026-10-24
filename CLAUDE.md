@@ -193,7 +193,8 @@ doctor` says what is in place and what to do next.
   open is held for the person. The lookup runs at the start of `pipeline`
   (`src/run/followListings.ts`), so every way of applying has it. A job's id
   follows its link, because the queue derives it on every read. Never type into
-  a board for this.
+  a board for this lookup: its read tools only read, and Chrome fills the
+  employer's form.
 - **Pace every site.** Job boards drop or refuse bursts. Concurrency and
   gaps per host are in `RUN`; do not remove them to go faster.
 - **The tool learns by keeping notes, and reads them before it acts.** Site
