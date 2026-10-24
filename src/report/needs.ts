@@ -5,6 +5,7 @@
  * answer, and bring a form to the front.
  */
 import { readFileSync } from "node:fs";
+import { loadLearned, type Pending } from "../answers/learned.js";
 import { BROWSER, PATHS } from "../config.js";
 import { loadReport } from "../browser/report.js";
 import { loadSession } from "../browser/session.js";
@@ -24,6 +25,8 @@ export type Needs = {
   questions: { id: string; company: string; title: string; link: string; reason: string; items: Question[] }[];
   unconfirmed: { id: string; company: string; title: string; link: string }[];
   mail: { id: string; from: string; subject: string; on: string; kind: string | null; why: string; jobs: { id: string; company: string; title: string }[] }[];
+  /** Answers the Easy Apply walk gave that a person has not confirmed yet, one per question. */
+  answers: Pending[];
 };
 
 const PLACEHOLDER = /^(select|select\.\.\.|select an option|select one|please select|choose|choose one|-+)?$/i;
@@ -39,11 +42,11 @@ export function questionFor(label: string, kind: string, options: string[], why:
   return { question: label, kind: "ask", options: choices, canRemember: true, note: "" };
 }
 
-export function buildNeeds(entries: QueueEntry[], o: { report?: typeof loadReport; inboxFile?: string } = {}): Needs {
+export function buildNeeds(entries: QueueEntry[], o: { report?: typeof loadReport; inboxFile?: string; learnedFile?: string } = {}): Needs {
   const report = o.report ?? loadReport;
   const session = loadSession();
   const brief = (e: QueueEntry) => ({ id: e.job.id, company: e.job.company, title: e.job.title });
-  const needs: Needs = { waiting: [], questions: [], unconfirmed: [], mail: [] };
+  const needs: Needs = { waiting: [], questions: [], unconfirmed: [], mail: [], answers: loadLearned(o.learnedFile).pending };
   for (const e of entries) {
     if (e.status === "awaiting_user_action" || e.status === "awaiting_email_verification") {
       const w = e.waitingFor ?? (e.status === "awaiting_email_verification" ? "email_link" : "unknown");
