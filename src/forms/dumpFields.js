@@ -213,7 +213,7 @@
   // A drawn picker keeps the real, required input out of sight in the same box (Workable's comboboxes).
   const hiddenRequiredTwin = (el) => { const box = el.closest("[data-input-type], [data-ui], [class*=field i]"); return !!box && [...box.querySelectorAll("input[required], select[required]")].some((t) => t !== el && !visible(t)); };
   const headingSaysRequired = (el) => { const h = fieldHeading(el); return !!h && (/required/i.test(String(h.className)) || /[*✱]\s*$|^\s*[*✱]/.test(text(h))); };
-  const isRequired = (el, label) => !/\(optional\)/i.test(label) && (el.required || el.getAttribute("aria-required") === "true" || /[*✱]\s*$|^\s*[*✱]|\(required\)/i.test(label) || /required/i.test(el.closest("[class*=required i]")?.className || "") || hiddenRequiredTwin(el) || headingSaysRequired(el));
+  const isRequired = (el, label) => !/\(optional\)/i.test(label) && (el.required || el.getAttribute("aria-required") === "true" || /[*✱]\s*$|^\s*[*✱]|\(required\)/i.test(label) || /\srequired\s*$/i.test(label) || /required/i.test(el.closest("[class*=required i]")?.className || "") || hiddenRequiredTwin(el) || headingSaysRequired(el));
 
   // A plain text input with a suggestion list beside it (Lever's location box) only accepts a picked suggestion.
   const hasSuggestBox = (el) => el.tagName === "INPUT" && !!el.parentElement && !!el.parentElement.querySelector('[class*="dropdown-results" i], [class*="autocomplete" i], [class*="typeahead" i], [class*="suggestions" i]');
@@ -365,10 +365,10 @@
       // The mark that a group is required sits on its question, not on its options.
       const box = el.closest("fieldset, [role=radiogroup], [class*=field-entry i], [class*=fieldEntry]");
       const head = box && [...box.querySelectorAll("legend, label, [class*=question-title i]")].find((h) => !h.querySelector("input") && !f.options.some((o) => o.label === text(h)));
-      if (head && (/required/i.test(String(head.getAttribute("class") || "")) || /[*✱]\s*$|^\s*[*✱]/.test(text(head)))) f.required = true;
+      if (head && (/required/i.test(String(head.getAttribute("class") || "")) || /[*✱]\s*$|^\s*[*✱]|\srequired\s*$/i.test(text(head)))) f.required = true;
       if (box && box.getAttribute("aria-required") === "true") f.required = true;
       // The question itself may carry the mark, before or after the words.
-      if (/^\s*[*✱]|[*✱]\s*$/.test(f.label) || /^\s*[*✱]/.test(f.section)) f.required = true;
+      if (/^\s*[*✱]|[*✱]\s*$|\srequired\s*$/i.test(f.label) || /^\s*[*✱]/.test(f.section)) f.required = true;
       f.label = f.label.replace(/^\s*[*✱]\s*|\s*[*✱]\s*$/g, "");
     } else if (kind === "select") {
       [...el.options].forEach((o) => { if (o.value !== "" || o.text.trim()) f.options.push({ value: o.value, label: o.text.trim() }); });
