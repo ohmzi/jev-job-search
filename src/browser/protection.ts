@@ -155,3 +155,13 @@ export async function waitForClear(page: Page, opts: AdapterOptions): Promise<bo
   }
   return false;
 }
+
+/**
+ * The reason a fill or a send stops at a wall, or null when it may go on. A failed attempt
+ * that left the wall on the page stops it; a wall that cleared by itself does not.
+ */
+export function protectionStopReason(tried: ProtectionResult | null, now: ProtectionReading | null): string | null {
+  if (!tried || tried.provider === "none" || tried.passed) return null;
+  const signal = now ? protectionSignal(now) : null;
+  return signal?.blocking ? `robot check in front of the form: ${signal.reason}` : null;
+}
