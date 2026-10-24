@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Page } from "../src/browser/cdp.js";
-import { clickPoint, humanClick, passProtections, protectionSignal, type ChallengeBox, type ProtectionReading } from "../src/browser/protections.js";
+import { clickPoint, humanClick, passProtections, protectionSignal, protectionStopReason, type ChallengeBox, type ProtectionReading } from "../src/browser/protections.js";
 import { recaptcha } from "../src/browser/recaptcha.js";
 import { turnstile } from "../src/browser/turnstile.js";
 
@@ -119,5 +119,27 @@ describe("a challenge the tool tries before handing it to a person", () => {
       expect(seen.moves).toBe(0);
       expect(seen.clicks).toHaveLength(0);
     }
+  });
+});
+
+describe("what stops a fill at a wall", () => {
+  const tried = (over: Partial<{ passed: boolean; needsHuman: boolean; provider: "recaptcha" | "none" }>) => ({
+    passed: false,
+    waitedMs: 5,
+    needsHuman: true,
+    provider: "recaptcha" as const,
+    ...over,
+  });
+
+  it("holds the job when the wall is still there after the attempt", () => {
+    const why = protectionStopReason(tried({}), reading({ descriptors: ["iframe:recaptcha:normal"] }));
+    expect(why).toContain("robot check in front of the form");
+  });
+  it("goes on when the wall cleared during the attempt", () => {
+    expect(protectionStopReason(tried({}), reading({ text: "Apply for this job" }))).toBeNull();
+  });
+  it("goes on when there was nothing to try", () => {
+    expect(protectionStopReason(null, reading({ descriptors: ["iframe:recaptcha:normal"] }))).toBeNull();
+    expect(protectionStopReason(tried({ passed: true, needsHuman: false, provider: "none" }), null)).toBeNull();
   });
 });

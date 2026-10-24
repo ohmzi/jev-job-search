@@ -5,13 +5,14 @@
  * Fills run side by side and paced per site, the writer takes a few forms at
  * a time, and submissions go one at a time with a pause per site.
  */
-import { ACCOUNTS, RUN } from "../config.js";
+import { ACCOUNTS, PROTECTIONS, RUN } from "../config.js";
 import { accountGate, adapterFor, capabilityFor } from "../accounts/capability.js";
 import { signedInNow } from "../accounts/gate.js";
 import { ensureBrowser, sleep } from "../browser/cdp.js";
 import { fillJob, nextPage, resolveJob, shouldAdvance } from "../browser/formRunner.js";
 import { blockedReport, loadPlan, loadReport, pickSubmit, saveReport, type FillReport } from "../browser/report.js";
-import { blockingCaptcha, captchaState, waitForCaptcha } from "../browser/captcha.js";
+import { waitForCaptcha } from "../browser/captcha.js";
+import { passProtections, protectionSignal, readProtection, type ProtectionResult } from "../browser/protections.js";
 import { closeJobTab, hasOpenTab, loadSession, mutateSession, pageFor } from "../browser/session.js";
 import { checkJob, submitJob, watchForConfirmation } from "../browser/submit.js";
 import { assist, captchaWords, notify, waitingWords } from "./assist.js";
@@ -314,8 +315,8 @@ export async function personPasses(jev: JevClient, id: string, ms: number, watch
   return ms > 0 && (await watch(jev, id, { timeoutMs: ms })) === "submitted";
 }
 
-/** A challenge on a job's form, and how to watch it while the person works. `close` releases the tab session. */
-export type CaptchaWait = { blocking: boolean; wait: (ms: number) => Promise<"cleared" | "submitted" | "timeout">; close?: () => void };
+/** A challenge on a job's form, and how to watch it while the person works. `pass` is the tool's own one attempt. `close` releases the tab session. */
+export type CaptchaWait = { blocking: boolean; pass?: () => Promise<ProtectionResult | null>; wait: (ms: number) => Promise<"cleared" | "submitted" | "timeout">; close?: () => void };
 
 /** Reads a job's tab for a challenge. Null when there is no tab, or nothing could be read. */
 async function readCaptcha(jev: JevClient, id: string): Promise<CaptchaWait | null> {
@@ -324,11 +325,24 @@ async function readCaptcha(jev: JevClient, id: string): Promise<CaptchaWait | nu
   if (!page) return null;
   try {
     const pick = pickSubmit(loadPlan(id).plan.submitSelectors);
-    const reading = await captchaState(page);
-    if (!pick || !blockingCaptcha(reading.descriptors, reading.tokens)) {
+    const reading = await readProtection(page);
+    if (!pick || !protectionSignal(reading).blocking) {
       return { blocking: false, wait: async () => "cleared", close: () => page.close() };
     }
-    return { blocking: true, wait: (ms) => waitForCaptcha(jev, page, id, { timeoutMs: ms, submitSelector: pick.selector }), close: () => page.close() };
+    return {
+      blocking: true,
+      pass: () => passProtections(page, { reading, timeoutMs: PROTECTIONS.attemptMs }),
+      wait: (ms) =>
+        waitForCaptcha(jev, page, id, {
+          timeoutMs: ms,
+          submitSelector: pick.selector,
+          read: async (p) => {
+            const now = await readProtection(p);
+            return { blocking: protectionSignal(now).blocking, text: now.text };
+          },
+        }),
+      close: () => page.close(),
+    };
   } catch {
     page.close();
     return null;
@@ -336,15 +350,19 @@ async function readCaptcha(jev: JevClient, id: string): Promise<CaptchaWait | nu
 }
 
 /**
- * Finds a challenge on a job's form before it is sent, tells the person, and waits while they
- * pass it. Nothing is solved here. "go" means the form may be sent now; "left" means it waits
- * for the person; "applied" means the page confirmed by itself.
+ * Finds a challenge on a job's form before it is sent, gives it the tool's own one attempt,
+ * then tells the person and waits while they finish it. "go" means the form may be sent now;
+ * "left" means it waits for the person; "applied" means the page confirmed by itself.
  */
 export async function waitAtCaptcha(jev: JevClient, id: string, ms: number, onHandOff: () => void, read: (id: string) => Promise<CaptchaWait | null> = (jobId) => readCaptcha(jev, jobId)): Promise<"go" | "applied" | "left"> {
   const c = await read(id).catch(() => null);
   if (!c) return "go";
   try {
     if (!c.blocking) return "go";
+    // The provider's own checkbox, pressed once. A pass means the wall is gone; anything else
+    // goes to the person, including a widget that took the click and never answered.
+    const tried = await c.pass?.().catch(() => null);
+    if (tried?.passed) return "go";
     onHandOff();
     if (ms <= 0) return "left";
     const w = await c.wait(ms);

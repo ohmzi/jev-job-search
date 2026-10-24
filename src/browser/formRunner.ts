@@ -6,7 +6,7 @@
  * Nothing here sends an application: that is submit.ts.
  */
 import path from "node:path";
-import { BROWSER, FORM, MEMORY, RUN } from "../config.js";
+import { BROWSER, FORM, MEMORY, PROTECTIONS, RUN } from "../config.js";
 import { isApplicationForm, type DumpedField, type FieldsDump, type FillPlan } from "../forms/fields.js";
 import { gateAnswer, hasChoosableOptions, mapForm } from "../forms/mapForm.js";
 import { decidePageState } from "../forms/pageState.js";
@@ -17,6 +17,7 @@ import { loadMemory, recallExact, recallForm, recallSameFields, recallSimilar, r
 import { contextFingerprint, resolveOpenFields, type OpenField, type Resolution } from "../answers/resolve.js";
 import type { QueueEntry } from "../jobs/queue.js";
 import { closeTab, ensureBrowser, newTab, Page, sleep } from "./cdp.js";
+import { passProtections, protectionStopReason, readProtection } from "./protections.js";
 import { candidateOptions, closestOptions, readDropdownOptions } from "./dropdowns.js";
 import { applyFills, clearBox, TYPED_KINDS, uploadFile, type FillGuide } from "./fill.js";
 import { isProfileKey } from "../profile/fieldKeys.js";
@@ -79,6 +80,19 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job, opts: 
     let d = await openForm(page, job);
     trace(`${job.company}: form open ${Date.now() - started}ms, ${d.fields.length} fields`);
     signal?.throwIfAborted();
+    // A bot check can stand where the form should be (Cloudflare's interstitial, a DataDome
+    // denial). The provider's own adapter gets one attempt; what it cannot pass is set aside
+    // with the board's own wall named, never filled around.
+    const shield = await passProtections(page, { timeoutMs: PROTECTIONS.attemptMs }).catch(() => null);
+    if (shield && shield.provider !== "none") {
+      const still = await readProtection(page).catch(() => null);
+      const why = protectionStopReason(shield, still);
+      if (why) return saveReport(blockedReport(job, why, d.url, seconds()));
+      signal?.throwIfAborted();
+      await install(page);
+      d = await dump(page);
+      trace(`${job.company}: bot check ${shield.passed ? `passed (${shield.provider})` : "cleared"} ${Date.now() - started}ms`);
+    }
     // Read and written in one synchronous step, so jobs filled side by side do not overwrite each other.
     mutateSession((s) => {
       s[job.id] = { targetId: target.id, url: d.url, state: "filling", since: new Date().toISOString() };

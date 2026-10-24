@@ -65,6 +65,46 @@ describe("a challenge before Submit", () => {
     expect(r).toBe("go");
     expect(told).toBe(false);
   });
+  it("tries the check's own widget before it asks the person", async () => {
+    let told = false;
+    let waited = false;
+    const r = await waitAtCaptcha(jev, "a", RUN.humanWaitMs, () => { told = true; }, async () => ({
+      blocking: true,
+      pass: async () => ({ passed: true, waitedMs: 10, needsHuman: false, provider: "recaptcha" as const }),
+      wait: async () => { waited = true; return "cleared" as const; },
+    }));
+    expect(r).toBe("go");
+    expect(told).toBe(false);
+    expect(waited).toBe(false);
+  });
+  it("passes a check it can pass even when no wait was asked for (the daily run)", async () => {
+    const r = await waitAtCaptcha(jev, "a", 0, () => {}, async () => ({
+      blocking: true,
+      pass: async () => ({ passed: true, waitedMs: 10, needsHuman: false, provider: "turnstile" as const }),
+      wait: async () => "cleared" as const,
+    }));
+    expect(r).toBe("go");
+  });
+  it("asks the person when its own attempt did not pass", async () => {
+    let told = false;
+    const r = await waitAtCaptcha(jev, "a", RUN.humanWaitMs, () => { told = true; }, async () => ({
+      blocking: true,
+      pass: async () => ({ passed: false, waitedMs: 10, needsHuman: true, provider: "recaptcha" as const }),
+      wait: async () => "cleared" as const,
+    }));
+    expect(r).toBe("go");
+    expect(told).toBe(true);
+  });
+  it("asks the person when its own attempt broke", async () => {
+    let told = false;
+    const r = await waitAtCaptcha(jev, "a", RUN.humanWaitMs, () => { told = true; }, async () => ({
+      blocking: true,
+      pass: async () => { throw new Error("the tab went away"); },
+      wait: async () => "cleared" as const,
+    }));
+    expect(r).toBe("go");
+    expect(told).toBe(true);
+  });
 });
 
 describe("a prefilled phone", () => {

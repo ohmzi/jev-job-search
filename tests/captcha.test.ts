@@ -36,15 +36,15 @@ describe("what to do when a challenge is on the form", () => {
 });
 
 describe("judging a page while the person works", () => {
-  const check = (over: Partial<CaptchaCheck>): CaptchaCheck => ({ descriptors: [], tokens: [], submitPresent: true, state: null, elapsedMs: 0, clearForMs: 0, ...over });
+  const check = (over: Partial<CaptchaCheck>): CaptchaCheck => ({ blocking: false, submitPresent: true, state: null, elapsedMs: 0, clearForMs: 0, ...over });
   const opts = { timeoutMs: 120_000, settleMs: 1_500 };
 
   it("counts a confirmation at once", () => {
-    expect(captchaVerdict(check({ state: "submitted", descriptors: ["iframe:recaptcha:normal"] }), opts)).toBe("submitted");
+    expect(captchaVerdict(check({ state: "submitted", blocking: true }), opts)).toBe("submitted");
   });
   it("keeps waiting while the challenge is there", () => {
-    expect(captchaVerdict(check({ descriptors: ["iframe:recaptcha:normal"] }), opts)).toBe("wait");
-    expect(captchaVerdict(check({ descriptors: ["iframe:recaptcha:normal"], elapsedMs: 120_000 }), opts)).toBe("timeout");
+    expect(captchaVerdict(check({ blocking: true }), opts)).toBe("wait");
+    expect(captchaVerdict(check({ blocking: true, elapsedMs: 120_000 }), opts)).toBe("timeout");
   });
   it("never calls it clear while the Submit control is gone", () => {
     expect(captchaVerdict(check({ submitPresent: false }), opts)).toBe("wait");

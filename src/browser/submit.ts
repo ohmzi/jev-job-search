@@ -12,6 +12,7 @@ import { emptyRequired, loadPlan, loadReport, pickSubmit, showsPlanned } from ".
 import type { FillPlan } from "../forms/fields.js";
 import { controlStates, dump, inFront, install, pageFor, shownValues, type Point } from "./session.js";
 import { blockingCaptcha, captchaState } from "./captcha.js";
+import { protectionSignal, readProtection } from "./protections.js";
 
 export type SubmitResult = {
   state: PageState["state"];
@@ -62,9 +63,12 @@ export async function submitJob(jev: JevClient, jobId: string, opts: { force?: b
     const { dump: d, plan } = loadPlan(jobId);
     const pick = pickSubmit(plan.submitSelectors);
     if (!pick) throw new Error("No submit control in the plan.");
-    // A challenge is never clicked past, with or without force. The person passing it is the only way through.
+    // A challenge is never clicked past by the submit itself, with or without force. The chain
+    // before this call had its one attempt already; what is still here is the person's.
     const cap = await captchaState(page).catch(() => null);
     if (cap && captchaStopsSubmit(cap.descriptors, cap.tokens)) throw new Error("a robot check is still on the form");
+    const wall = await readProtection(page).catch(() => null);
+    if (wall && protectionSignal(wall).blocking) throw new Error("a robot check is still on the form");
     if (!force) {
       // A question may have appeared since the page was read, or the tool may never have seen one. The whole page is
       // read afresh, and any required control on it that shows nothing stops the click.
