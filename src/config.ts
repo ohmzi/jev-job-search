@@ -26,6 +26,8 @@ export const PATHS = {
   applied: path.join(ROOT, "applications", "applied.csv"),
   /** Answers the writer has given before, kept so the same question is not paid for twice. */
   memory: path.join(ROOT, "data", "memory.json"),
+  /** Answers the LinkedIn Easy Apply walk filled in on its own, kept until a person confirms them. */
+  learned: path.join(ROOT, "data", "learned.json"),
   cache: path.join(ROOT, "data", "cache"),
   /** What every user's runs have taught the tool about sites. Shipped with the repository. */
   knowledgeShipped: path.join(ROOT, "knowledge", "sites.json"),

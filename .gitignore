@@ -8,6 +8,7 @@ data/profile.json
 data/bank.json
 data/voice.local.md
 data/memory.json
+data/learned.json
 data/knowledge.json
 applications/*
 !applications/README.md
