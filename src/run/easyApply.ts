@@ -2,27 +2,31 @@
  * The Easy Apply step of an hourly run. It asks the local LinkedIn fork for postings this portal's
  * profile wants, reads each result, keeps the ones that take Easy Apply and were posted in the last
  * twelve hours, and sends them through the fork. Every reply is data: it is parsed and never run,
- * and a sign of a bot check stops the whole step rather than pressing on.
+ * and a board notice that asks whether a person is there stops the whole step rather than pressing
+ * on.
  *
  * The search asks LinkedIn for the last day because its filter has no twelve-hour option. The age
  * is read from the posting itself and checked in code, so an older posting is skipped even though
  * the board returned it.
+ *
+ * An application is written to the queue as unconfirmed before the fork is asked to send it, and
+ * only promoted to applied on a clean reply. An unreadable reply, a timeout or an unknown outcome
+ * is therefore never sent again by a later run.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 import { HOURLY, MCP, PATHS } from "../config.js";
+import { appliedKey } from "../jobs/keys.js";
 import { jobId } from "../jobs/normalize.js";
-import { loadQueue } from "../jobs/queue.js";
-import { recordMcpApplication } from "../jobs/recordMcp.js";
+import { loadQueue, MAYBE_SENT } from "../jobs/queue.js";
+import { recordMcpApplication, recordMcpSubmission, type McpRecord } from "../jobs/recordMcp.js";
 import { loadRows, parseCsv } from "../log/csv.js";
 import type { Profile } from "../profile/schema.js";
 import { applyOnLinkedIn } from "../sources/linkedinApply.js";
 import { applyTypeIn, mcpCaller, type Caller, type ToolCall } from "../sources/listingLink.js";
 import { countToday, localDay } from "./daily.js";
 import type { Policy } from "./policy.js";
-
-/** The read tool that returns a posting's own text, including its place, age and applicant count. */
-const DETAILS_TOOL = "get_job_details";
+import { recordSharedApplied, sharedAppliedKeys } from "./shared.js";
 
 export type EasyApplyOptions = {
   dry?: boolean;
@@ -50,8 +54,16 @@ export type EasyApplySummary = {
 };
 
 const SearchReply = z.object({ job_ids: z.array(z.string()).default([]) });
-const ReadReply = z.object({ url: z.string().optional() });
-const DetailsReply = z.object({ sections: z.record(z.string()).optional() });
+const ErrorReply = z
+  .object({
+    section_errors: z.record(z.unknown()).optional(),
+    error_type: z.string().optional(),
+    error_message: z.string().optional(),
+    message: z.string().optional(),
+  })
+  .passthrough();
+const SectionError = z.object({ error_type: z.string().optional(), error_message: z.string().optional(), message: z.string().optional() }).passthrough();
+const DetailsReply = z.object({ sections: z.record(z.unknown()).optional() });
 
 type PostingDetails = { company: string; title: string; location: string; ageHours: number | null; ageText: string | null };
 
@@ -60,8 +72,44 @@ const linkedinUrl = (id: string) => `https://www.linkedin.com/jobs/view/${id}`;
 /** The empty answer when the step never gets as far as the board. */
 const empty = (): EasyApplySummary => ({ found: 0, scanned: 0, applied: [], left: 0, tooOld: 0, reason: null, stopped: null });
 
-/** The text that says a board is asking whether a person is there, or has had enough for now. */
-const CHALLENGE = /captcha|challenge|rate[\s-]?limit|unusual activity|verify you|security check/i;
+/**
+ * A board notice that asks whether a person is there, or says the board has had enough for now.
+ * Only notice fields are matched, never a posting's own text: a job description that talks about
+ * challenges or rate limiting must not stop a run.
+ */
+const NOTICE = /captcha|unusual activity|security check|rate[\s-]?limit(?:ed|ing)?|verify you are human/i;
+
+/** The token in a string that reads as a board notice, or null. */
+export function noticeIn(text: string | undefined | null): string | null {
+  if (!text) return null;
+  const hit = NOTICE.exec(text);
+  return hit ? hit[0] : null;
+}
+
+/**
+ * A challenge in a reply's error fields, or null. Sections are never read: `get_job_details`
+ * carries the whole posting there, and an ordinary description must not look like a wall. The
+ * fork's structured `error_type: "rate_limit"` counts even when its message says nothing.
+ */
+export function challengeIn(text: string): string | null {
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  const parsed = ErrorReply.safeParse(json);
+  if (!parsed.success) return null;
+  for (const value of Object.values(parsed.data.section_errors ?? {})) {
+    const error = SectionError.safeParse(value);
+    if (!error.success) continue;
+    const type = error.data.error_type ?? "";
+    if (/^(?:rate_limit|captcha)$/i.test(type)) return type;
+    const notice = noticeIn(error.data.error_message ?? error.data.message);
+    if (notice) return notice;
+  }
+  return noticeIn(parsed.data.error_type) ?? noticeIn(parsed.data.error_message) ?? noticeIn(parsed.data.message);
+}
 
 /**
  * How old a posting is, in hours, from the segment of its own line that says so. "Just now" is
@@ -84,9 +132,11 @@ export function ageHoursOf(segment: string): number | null {
 }
 
 /**
- * The company, title, place and age at the top of a posting's own text. The first two lines are
- * the company and the title; the next is the place, the age and the applicant count, separated by
- * a middle dot. Null when the reply carries no posting text this module can read.
+ * The company, title, place and age at the top of a posting's own text. The first two non-empty
+ * lines are the company then the title, the live layout. The age is looked for on the first
+ * several lines, because it sometimes sits on the place's line and sometimes on one of its own,
+ * and the place is the segment just before it. Null when the reply carries no posting text this
+ * module can read.
  */
 export function postingDetailsIn(text: string): PostingDetails | null {
   let json: unknown;
@@ -98,52 +148,37 @@ export function postingDetailsIn(text: string): PostingDetails | null {
   const parsed = DetailsReply.safeParse(json);
   if (!parsed.success) return null;
   const posting = parsed.data.sections?.job_posting;
-  if (!posting) return null;
+  if (typeof posting !== "string") return null;
   const lines = posting.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   if (!lines.length) return null;
   const company = lines[0] ?? "";
   const title = lines[1] ?? "";
-  const parts = (lines[2] ?? "").split("·").map((part) => part.trim()).filter(Boolean);
   let location = "";
-  if (parts.length) {
-    const first = parts[0] as string;
-    if (/^location[:\s]*$/i.test(first) && parts.length > 1) {
-      location = parts[1] as string;
-      parts.splice(0, 2);
-    } else {
-      location = first.replace(/^location[:\s]+/i, "").trim();
-      parts.shift();
-    }
-  }
   let ageHours: number | null = null;
   let ageText: string | null = null;
-  for (const part of parts) {
-    const hours = ageHoursOf(part);
-    if (hours !== null) {
+  const last = Math.min(lines.length, 12);
+  for (let i = 0; i < last && ageHours === null; i++) {
+    const parts = (lines[i] as string).split("·").map((part) => part.trim()).filter(Boolean);
+    for (let j = 0; j < parts.length; j++) {
+      const segment = parts[j] as string;
+      const hours = ageHoursOf(segment);
+      if (hours === null) continue;
       ageHours = hours;
-      ageText = part.replace(/^posted\s+/i, "");
+      ageText = segment.replace(/^posted\s+/i, "");
+      let before = parts[j - 1];
+      if (before && /^location[:\s]*$/i.test(before) && j >= 2) before = parts[j - 2];
+      if (before) location = before.replace(/^location[:\s]+/i, "").trim();
+      else if (i > 0) location = (lines[i - 1] as string).replace(/^location[:\s]+/i, "").trim();
       break;
     }
   }
   return { company, title, location, ageHours, ageText };
 }
 
-/** The link the read tool gave for the posting, when it is LinkedIn's own; otherwise the usual one. */
-function readUrlIn(text: string, id: string): string {
-  try {
-    const parsed = ReadReply.safeParse(JSON.parse(text));
-    const url = parsed.success ? parsed.data.url : undefined;
-    if (url && /(^|\.)linkedin\.com$/i.test(new URL(url).hostname)) return url;
-  } catch {
-    /* the usual link below */
-  }
-  return linkedinUrl(id);
-}
-
 /**
- * What the record files already say was sent. The full file holds every application and is where
- * applied.csv is rebuilt from; the plain file is read too when the real records are in use, in
- * case another command wrote it since the full one was read.
+ * What the record files already say was sent, or may have been. The full file holds every
+ * application and is where applied.csv is rebuilt from; the plain file is read too when the real
+ * records are in use, in case another command wrote it since the full one was read.
  */
 function sentAlready(rowsFile?: string): Set<string> {
   const out = new Set<string>();
@@ -151,8 +186,16 @@ function sentAlready(rowsFile?: string): Set<string> {
     if (link) out.add(link);
     if (id) out.add(id);
   };
-  for (const row of loadRows(rowsFile ?? PATHS.applications)) {
-    if (row["App. Status"].startsWith("Applied")) add(row["Job Link"], row["Job ID"]);
+  // "Unconfirmed" is a send whose confirmation never came. It is treated as sent, never repeated.
+  const sent = (status: string) => status.startsWith("Applied") || status.startsWith("Unconfirmed");
+  let rows: ReturnType<typeof loadRows> = [];
+  try {
+    rows = loadRows(rowsFile ?? PATHS.applications);
+  } catch {
+    /* an unreadable record leaves the queue as the record of what was sent */
+  }
+  for (const row of rows) {
+    if (sent(row["App. Status"])) add(row["Job Link"], row["Job ID"]);
   }
   if (rowsFile === undefined && existsSync(PATHS.applied)) {
     try {
@@ -169,8 +212,9 @@ function sentAlready(rowsFile?: string): Set<string> {
 
 /**
  * Runs the Easy Apply step. Every reply is parsed as JSON; anything else is no answer. A posting
- * is applied to only when it takes Easy Apply, its age is inside the window, and nothing on the
- * board already records it as sent. The first bot check stops the step.
+ * is applied to only when it takes Easy Apply, its age is inside the window, nothing on the board
+ * records it as sent, and no portal has sent it already. The first board notice stops the step.
+ * The caller holds the cross-portal apply lock.
  */
 export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Promise<EasyApplySummary> {
   const cfg = HOURLY.easyApply;
@@ -187,16 +231,17 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
     summary.reason = "the profile has no search term or place for the easy apply step";
     return summary;
   }
+  const portal = search?.portal ?? "portal";
 
   const caller: Caller = o.call ? { call: o.call, close: o.close ?? (() => {}) } : mcpCaller(log);
   const clockStart = o.now ?? new Date();
-  // A run's clock only moves when it sleeps, so a test that injects a no-op sleep sees the pacing
-  // without waiting. A real run sleeps for real.
+  // The pacing clock only moves when the run sleeps, so a test that injects a no-op sleep sees the
+  // pacing without waiting. Recorded times use the real clock, never this one.
   let clock = clockStart.getTime();
   const sleep = o.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   let lastRead = Number.NEGATIVE_INFINITY;
   let lastSubmit = Number.NEGATIVE_INFINITY;
-  /** Waits until `gap` has passed since `last`, and moves the run's clock with the wait. */
+  /** Waits until `gap` has passed since `last`, and moves the pacing clock with the wait. */
   const pace = async (last: number, gap: number) => {
     const wait = last + gap - clock;
     if (wait <= 0) return;
@@ -209,13 +254,6 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
     lastRead = clock;
     return text;
   };
-  const stopOnChallenge = (text: string): boolean => {
-    const hit = CHALLENGE.exec(text);
-    if (!hit) return false;
-    summary.stopped = text.trim();
-    log(`[easy] the step stopped: ${hit[0]}`);
-    return true;
-  };
 
   try {
     let searchText: string;
@@ -225,7 +263,12 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
       summary.reason = `the linkedin search tool did not answer: ${err instanceof Error ? err.message : String(err)}`;
       return summary;
     }
-    if (stopOnChallenge(searchText)) return summary;
+    const searchNotice = challengeIn(searchText);
+    if (searchNotice) {
+      summary.stopped = searchNotice;
+      log(`[easy] the step stopped: ${searchNotice}`);
+      return summary;
+    }
     let ids: string[];
     try {
       ids = [...new Set(SearchReply.parse(JSON.parse(searchText)).job_ids.map((id) => id.trim()).filter(Boolean))];
@@ -236,10 +279,12 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
     summary.found = ids.length;
 
     const queue = loadQueue(o.files?.queue ?? PATHS.queue);
-    const day = countToday(queue.entries, localDay(new Date(clock)));
-    const already = new Set<string>(sentAlready(o.files?.rows));
+    const day = countToday(queue.entries, localDay(o.now ?? clockStart));
+    const shared = sharedAppliedKeys();
+    const already = sentAlready(o.files?.rows);
+    // A send that was never confirmed still occupies the posting: it is never sent a second time.
     for (const entry of queue.entries) {
-      if (entry.status !== "applied") continue;
+      if (!MAYBE_SENT.includes(entry.status)) continue;
       already.add(entry.job.url);
       already.add(entry.job.id);
     }
@@ -250,11 +295,13 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
     }
 
     let applied = 0;
+    let wouldApply = 0;
     for (const id of ids.slice(0, cfg.scan)) {
       if (applied >= cap) break;
-      const baseUrl = linkedinUrl(id);
-      const baseId = jobId(baseUrl);
-      if (already.has(baseUrl) || already.has(baseId)) {
+      if (o.dry && wouldApply >= cap) break;
+      const url = linkedinUrl(id);
+      const recordId = jobId(url);
+      if (already.has(url) || already.has(recordId)) {
         log(`[easy] ${id} skipped: already applied`);
         continue;
       }
@@ -267,21 +314,30 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
         continue;
       }
       summary.scanned++;
-      if (stopOnChallenge(readText)) return summary;
+      const readNotice = challengeIn(readText);
+      if (readNotice) {
+        summary.stopped = readNotice;
+        log(`[easy] the step stopped: ${readNotice}`);
+        return summary;
+      }
       if (applyTypeIn(readText) !== "easy_apply") continue;
-      if (o.dry) break;
 
-      // The age has to be read before the application is sent, so a posting outside the window
-      // never reaches the fork's submit control.
+      // The details are read before anything is sent: the age has to be checked, and the company
+      // and title are what the record needs. They are reused for the recording, never read twice.
       let detailsText: string;
       try {
-        detailsText = await read(DETAILS_TOOL, { job_id: id });
+        detailsText = await read(MCP.linkedin.tools.details, { job_id: id });
       } catch (err) {
         summary.tooOld++;
         log(`[easy] ${id} skipped: its posted date could not be read (${err instanceof Error ? err.message : String(err)})`);
         continue;
       }
-      if (stopOnChallenge(detailsText)) return summary;
+      const detailsNotice = challengeIn(detailsText);
+      if (detailsNotice) {
+        summary.stopped = detailsNotice;
+        log(`[easy] the step stopped: ${detailsNotice}`);
+        return summary;
+      }
       const details = postingDetailsIn(detailsText);
       const label = details ? [details.company, details.title].filter(Boolean).join(" - ") || id : id;
       if (!details || details.ageHours === null) {
@@ -294,33 +350,111 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
         log(`[easy] ${label} skipped: posted ${details.ageText ?? "too long ago"}`);
         continue;
       }
+      const key = appliedKey({ company: details.company, title: details.title });
+      if (shared.has(key)) {
+        already.add(url);
+        already.add(recordId);
+        log(`[easy] ${label} skipped: another portal already applied`);
+        continue;
+      }
+      if (o.dry) {
+        wouldApply++;
+        log(`[easy] would apply: ${label} (${details.ageText ?? "just now"})`);
+        continue;
+      }
 
-      const url = readUrlIn(readText, id);
-      await pace(lastSubmit, cfg.gapMs);
+      const recordInput = { jobId: id, company: details.company, title: details.title, location: details.location, url, source: "linkedin easy apply (mcp)" };
+      // The unconfirmed record goes in before the fork is asked to send. If it cannot be written,
+      // nothing is sent: the next run would otherwise have no way to know an application may exist.
+      let attempt: McpRecord;
       try {
-        lastSubmit = clock;
+        attempt = recordMcpSubmission({ ...recordInput, appliedAt: null }, o.files, log);
+      } catch (err) {
+        summary.reason = `the queue could not record the send, so the step stopped before sending: ${err instanceof Error ? err.message : String(err)}`;
+        log(`[easy] ${summary.reason}`);
+        return summary;
+      }
+      if (!attempt.rowsWritten) {
+        summary.reason = "the sheet could not be written, so the step stopped before sending; reconcile the record queue and sheet";
+        log(`[easy] ${summary.reason}`);
+        return summary;
+      }
+
+      await pace(lastSubmit, cfg.gapMs);
+      lastSubmit = clock;
+      let status: string;
+      let message: string;
+      try {
         const result = await applyOnLinkedIn(id, { call: caller.call, callMs: MCP.applyCallMs });
-        if (stopOnChallenge(result.message)) return summary;
-        if (result.status === "applied" || result.status === "already_applied") {
-          summary.applied.push({ company: details.company, title: details.title, url });
-          if (!o.dry) {
-            recordMcpApplication(
-              { jobId: id, company: details.company, title: details.title, location: details.location, url, appliedAt: new Date(clock).toISOString(), source: "linkedin easy apply (mcp)" },
-              o.files,
-            );
-          }
-          already.add(url);
-          already.add(jobId(url));
-          applied++;
-        } else if (result.status === "blocked" || result.status === "failed") {
-          summary.left++;
-          log(`[easy] ${[details.company, details.title].filter(Boolean).join(" - ") || id} ${result.status}: ${result.message}`);
-        } else {
-          log(`[easy] ${[details.company, details.title].filter(Boolean).join(" - ") || id} ${result.status}: ${result.message}`);
-        }
+        status = result.status;
+        message = result.message;
       } catch (err) {
         summary.left++;
-        log(`[easy] ${id}: ${err instanceof Error ? err.message : String(err)}`);
+        log(`[easy] ${label} left unconfirmed: ${err instanceof Error ? err.message : String(err)}`);
+        continue;
+      }
+      const applyNotice = noticeIn(message);
+      if (applyNotice) {
+        summary.stopped = applyNotice;
+        log(`[easy] the step stopped: ${applyNotice}`);
+        return summary;
+      }
+      if (status === "applied") {
+        // Counting the send and writing it are separate: a failed write must not make the run send
+        // more than its cap while recording none of them.
+        applied++;
+        summary.applied.push({ company: details.company, title: details.title, url });
+        const appliedAt = new Date().toISOString();
+        try {
+          const written = recordMcpApplication({ ...recordInput, appliedAt }, o.files, log);
+          if (!written.rowsWritten) {
+            summary.reason = "the application was recorded in the queue but the sheet could not be written; reconcile them";
+            log(`[easy] ${summary.reason}`);
+            return summary;
+          }
+        } catch (err) {
+          summary.reason = `the application was sent but could not be recorded: ${err instanceof Error ? err.message : String(err)}`;
+          log(`[easy] ${summary.reason}`);
+          return summary;
+        }
+        shared.add(key);
+        already.add(url);
+        already.add(recordId);
+        try {
+          recordSharedApplied([{ id: recordId, company: details.company, title: details.title, url, appliedAt }], portal);
+        } catch (err) {
+          log(`[easy] the shared applied list could not be written: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      } else if (status === "already_applied") {
+        // The time it was sent is unknown, so it is recorded without one and does not count
+        // against today's target. It still stops this or any other portal sending it again.
+        try {
+          const written = recordMcpApplication({ ...recordInput, appliedAt: null }, o.files, log);
+          if (!written.rowsWritten) {
+            summary.reason = "the application was recorded in the queue but the sheet could not be written; reconcile them";
+            log(`[easy] ${summary.reason}`);
+            return summary;
+          }
+        } catch (err) {
+          summary.reason = `linkedin said the posting was already applied to but it could not be recorded: ${err instanceof Error ? err.message : String(err)}`;
+          log(`[easy] ${summary.reason}`);
+          return summary;
+        }
+        shared.add(key);
+        already.add(url);
+        already.add(recordId);
+        try {
+          recordSharedApplied([{ id: recordId, company: details.company, title: details.title, url }], portal);
+        } catch (err) {
+          log(`[easy] the shared applied list could not be written: ${err instanceof Error ? err.message : String(err)}`);
+        }
+        log(`[easy] ${label} was already applied on linkedin`);
+      } else if (status === "blocked" || status === "failed") {
+        summary.left++;
+        log(`[easy] ${label} ${status}: ${message}`);
+      } else {
+        // not_easy_apply, closed and outcome_unknown leave the entry unconfirmed.
+        log(`[easy] ${label} ${status}: ${message}`);
       }
     }
     return summary;

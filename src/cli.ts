@@ -274,7 +274,7 @@ program
 
 program
   .command("hourly")
-  .description("Find jobs posted recently, queue them, and move held jobs to Needs you after twelve hours. Read-only: no browser, no sign-in, no sending")
+  .description("Find jobs posted recently, queue them, send fresh Easy Apply postings through the LinkedIn fork, and move held jobs to Needs you after twelve hours. The fork signs in itself; this run never drives the tool's Chrome")
   .option("--dry", "search and show what would be added, without writing or applying")
   .option("--json")
   .action(async (o: { dry?: boolean; json?: boolean }) => {
@@ -289,15 +289,26 @@ program
         say("[hourly] no data/policy.json, so the fresh jobs were queued but not applied to");
       } else {
         documentsFromOptions({ tailor: policy.documents.tailor, cover: policy.documents.cover });
-        try {
-          easyApply = await applyEasyApply(profile, { dry: !!o.dry, policy, log: say });
-          const names = easyApply.applied.map((a) => [a.company, a.title].filter(Boolean).join(" | ")).join(", ");
-          const older = easyApply.tooOld ? `, ${easyApply.tooOld} skipped as older than twelve hours or undated` : "";
-          if (easyApply.applied.length) say(`[hourly] easy apply: ${easyApply.applied.length} applied (${names})${older}`);
-          else if (easyApply.stopped) say(`[hourly] easy apply stopped: ${easyApply.stopped.slice(0, 200)}`);
-          else say(`[hourly] easy apply: ${easyApply.reason ?? `nothing applied (${easyApply.found} found, ${easyApply.scanned} read)`}${older}`);
-        } catch (err) {
-          say(`[hourly] the easy apply step was skipped: ${err instanceof Error ? err.message : String(err)}`);
+        // The fork sends applications too, so it holds the same cross-portal lock as the apply
+        // pass. A held lock means another portal is applying, and this hour is skipped.
+        const releaseEasy = acquireGlobalRun("hourly easy apply");
+        if (!releaseEasy) {
+          say("[hourly] easy apply skipped this hour: another portal is applying right now");
+        } else {
+          try {
+            easyApply = await applyEasyApply(profile, { dry: !!o.dry, policy, log: say });
+            const names = easyApply.applied.map((a) => [a.company, a.title].filter(Boolean).join(" | ")).join(", ");
+            const notes = [easyApply.tooOld ? `${easyApply.tooOld} skipped as older than twelve hours or undated` : "", easyApply.left ? `${easyApply.left} left for you` : ""].filter(Boolean).join("; ");
+            const tail = notes ? `; ${notes}` : "";
+            const stop = easyApply.stopped ? `; stopped: ${easyApply.stopped}` : "";
+            if (easyApply.applied.length) say(`[hourly] easy apply: ${easyApply.applied.length} applied (${names})${tail}${stop}`);
+            else if (easyApply.stopped) say(`[hourly] easy apply stopped: ${easyApply.stopped}${tail}`);
+            else say(`[hourly] easy apply: ${easyApply.reason ?? `nothing applied (${easyApply.found} found, ${easyApply.scanned} read)`}${tail}`);
+          } catch (err) {
+            say(`[hourly] the easy apply step was skipped: ${err instanceof Error ? err.message : String(err)}`);
+          } finally {
+            releaseEasy();
+          }
         }
         if (o.dry) {
           applied = await applyFresh(profile, policy, { dry: true, log: say });

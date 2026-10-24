@@ -147,7 +147,7 @@ export const MCP = {
    * child's working directory alone, so the fork resolves the apply identity for this project's
    * folder rather than always falling back to its default.
    */
-  linkedin: { command: "uv", args: ["run", "--project", "/home/ohmz/StudioProjects/linkedin-mcp-server", "python", "-m", "linkedin_mcp_server"], tools: { search: "search_jobs", read: "get_job_apply_url", apply: "apply_to_job" } },
+  linkedin: { command: "uv", args: ["run", "--project", "/home/ohmz/StudioProjects/linkedin-mcp-server", "python", "-m", "linkedin_mcp_server"], tools: { search: "search_jobs", read: "get_job_apply_url", details: "get_job_details", apply: "apply_to_job" } },
   /** Indeed: the openings-mcp image, whose read tool returns a posting's details. */
   indeed: { command: "docker", args: ["run", "-i", "--rm", "ghcr.io/amikai/openings-mcp"], tools: { read: "indeed_get_job_detail" } },
   /** The openings-mcp Indeed tools want a country name. The profile keeps JobSpy's spelling. */
