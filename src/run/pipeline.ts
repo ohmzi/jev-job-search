@@ -22,7 +22,7 @@ import { applyUrlFor, hostIs, type Job } from "../jobs/normalize.js";
 import { loadQueue, mutateQueue, RUN_OWNED, sortEntries, updateEntry, type QueueEntry } from "../jobs/queue.js";
 import { appliedKey } from "../jobs/keys.js";
 import { followListings } from "./followListings.js";
-import { listingOf, mcpCaller, type Caller, type ToolCall } from "../sources/listingLink.js";
+import { listingOf, mcpCaller, NotAvailable, type Caller, type ToolCall } from "../sources/listingLink.js";
 import { applyOnLinkedIn, type McpApplyResult } from "../sources/linkedinApply.js";
 import { addLearned } from "../answers/learned.js";
 import { FieldKind } from "../forms/fields.js";
@@ -722,11 +722,21 @@ const mcpReport = (entry: QueueEntry, state: "filled" | "blocked", reason: strin
  */
 async function applyViaMcp(entry: QueueEntry, call: ToolCall, o: RunOptions): Promise<{ sent: boolean; report: FillReport }> {
   const id = entry.job.id;
+  // The answers the person gave for this job's own questions, as the apply tool takes them.
+  const answers = Object.fromEntries((entry.answers ?? []).map((a) => [a.question, a.answer]));
   record(id, "submission_unknown", "sent to the LinkedIn MCP; waiting for its answer");
   let result: McpApplyResult;
   try {
-    result = await applyOnLinkedIn(id, { call, callMs: MCP.applyCallMs });
+    result = await applyOnLinkedIn(id, { call, callMs: MCP.applyCallMs, ...(Object.keys(answers).length ? { answers } : {}) });
   } catch (err) {
+    // The fork never started, so nothing was sent: the job goes back in the queue instead of
+    // being left unconfirmed as though an application might be with the employer.
+    if (err instanceof NotAvailable) {
+      const message = `the LinkedIn MCP fork did not start (${err.message}), so nothing was sent`;
+      record(id, "queued", "the LinkedIn MCP fork is not available; nothing was sent");
+      console.log(`${id}  ${message}. The job is back in the queue`);
+      return { sent: false, report: mcpReport(entry, "blocked", message) };
+    }
     const message = err instanceof Error ? err.message : String(err);
     console.log(`${id}  not confirmed: ${message}. Check the posting on LinkedIn before applying again`);
     return { sent: false, report: mcpReport(entry, "blocked", message) };
@@ -779,7 +789,6 @@ export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ 
   // An Indeed or LinkedIn listing is taken to the employer's own form first, when its board's MCP server has the link.
   await followListings(entries, profile, { dry: o.dry, quiet: o.quiet, ...(o.listings !== undefined ? { listings: o.listings } : {}), ...(o.linksFile ? { linksFile: o.linksFile } : {}) });
   const jev = new JevClient();
-  await ensureBrowser();
   const writer = limiter(RUN.writerConcurrency);
   const reports = new Array<FillReport>(entries.length);
   const sent: string[] = [];
@@ -787,6 +796,8 @@ export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ 
   // own server instead of the fill loop. Everything else goes through Chrome as before.
   const mcp = entries.filter(isMcpApply);
   const formJobs = entries.filter((e) => !isMcpApply(e));
+  // Chrome is started only when a job needs a page. A run of Easy Apply jobs sends through the fork and opens none.
+  if (formJobs.length) await ensureBrowser();
   const after: Promise<void>[] = [];
   /** Jobs to fill once more when the rest are done, each with the window to itself. */
   const again: QueueEntry[] = [];
@@ -823,11 +834,18 @@ export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ 
       const caller = mcpCaller(o.quiet ? () => {} : (line) => console.log(line));
       try {
         for (const e of mcp) {
-          const { sent: didSend, report } = await mcpPerEmployer(employerKey(e.job.company), () =>
-            mcpPerSite(siteKeyOf(e.job.url), () => applyViaMcp(e, caller.call, o)),
-          );
-          reports[entries.indexOf(e)] = report;
-          if (didSend) sent.push(e.job.id);
+          // One job's store failure is its own: the rest of the MCP jobs and the Chrome jobs still run.
+          try {
+            const { sent: didSend, report } = await mcpPerEmployer(employerKey(e.job.company), () =>
+              mcpPerSite(siteKeyOf(e.job.url), () => applyViaMcp(e, caller.call, o)),
+            );
+            reports[entries.indexOf(e)] = report;
+            if (didSend) sent.push(e.job.id);
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.log(`${e.job.id}  ${message}`);
+            reports[entries.indexOf(e)] = mcpReport(e, "blocked", message);
+          }
         }
       } finally {
         caller.close();

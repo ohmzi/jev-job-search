@@ -55,8 +55,9 @@ async function within<T>(work: Promise<T>, ms: number | undefined): Promise<T> {
 }
 
 /** Sends the application for one LinkedIn posting and returns what the server said it did. */
-export async function applyOnLinkedIn(id: string, o: { call: ToolCall; callMs?: number }): Promise<McpApplyResult> {
-  const text = await within(o.call("linkedin", MCP.linkedin.tools.apply, { job_id: id }, o.callMs), o.callMs);
+export async function applyOnLinkedIn(id: string, o: { call: ToolCall; callMs?: number; answers?: Record<string, string> }): Promise<McpApplyResult> {
+  const args = { job_id: id, ...(o.answers && Object.keys(o.answers).length ? { answers: o.answers } : {}) };
+  const text = await within(o.call("linkedin", MCP.linkedin.tools.apply, args, o.callMs), o.callMs);
   let json: unknown;
   try {
     json = JSON.parse(text);

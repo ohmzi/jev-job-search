@@ -92,6 +92,27 @@ describe("the apply step following a listing to the employer", () => {
     expect(loadQueue(f.queueFile).entries[0]?.job.url).toBe("https://boards.greenhouse.io/x/1");
   });
 
+  it.each(["external", "unknown"])("a %s posting with no employer link stays off the apply run", async (type) => {
+    const f = files();
+    const a = entry("a", "https://www.linkedin.com/jobs/view/4252026496", { applyable: true });
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [a] }, f.queueFile);
+    const moved = await followListings([a], profile, { ...f, now: NOW, quiet: true, listings: caller(() => JSON.stringify({ apply: { type } })) as never });
+    expect(moved).toBe(0);
+    expect(a.applyable).toBe(false);
+    expect(a.job.url).toBe("https://www.linkedin.com/jobs/view/4252026496");
+    expect(loadQueue(f.queueFile).entries[0]).toMatchObject({ applyable: false, job: { url: "https://www.linkedin.com/jobs/view/4252026496" } });
+  });
+
+  it("an unresolved posting is not marked for the mcp", async () => {
+    const f = files();
+    const a = entry("a", "https://www.linkedin.com/jobs/view/4252026496", { applyable: true });
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [a] }, f.queueFile);
+    const moved = await followListings([a], profile, { ...f, now: NOW, quiet: true, listings: caller(() => "no link in this posting") as never });
+    expect(moved).toBe(0);
+    expect(a.applyable).toBe(false);
+    expect(loadQueue(f.queueFile).entries[0]?.applyable).toBe(false);
+  });
+
   it("never marks an applied or unconfirmed easy apply listing", async () => {
     const f = files();
     const a = entry("a", "https://www.linkedin.com/jobs/view/4252026496", { status: "applied" });

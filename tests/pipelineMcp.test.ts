@@ -4,10 +4,12 @@ import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MCP, PATHS, RUN } from "../src/config.js";
 import { loadLearned } from "../src/answers/learned.js";
+import { ensureBrowser } from "../src/browser/cdp.js";
 import { jobId } from "../src/jobs/normalize.js";
 import { loadQueue, saveQueue, type QueueEntry } from "../src/jobs/queue.js";
 import { loadReport } from "../src/browser/report.js";
 import { pipeline, takeJobs, type RunOptions } from "../src/run/pipeline.js";
+import { NotAvailable } from "../src/sources/listingLink.js";
 import { McpApplyError } from "../src/sources/linkedinApply.js";
 
 // The apply loop builds its client on the way in, and the tests drive no DeepSeek call.
@@ -21,9 +23,36 @@ const URL_TWO = "https://www.linkedin.com/jobs/view/4252026497";
 const fake = vi.hoisted(() => ({
   call: null as null | ((board: string, tool: string, args: Record<string, unknown>, timeoutMs?: number) => Promise<string>),
   applyCalls: 0,
+  applyArgs: [] as Record<string, unknown>[],
   applyTimeouts: [] as (number | undefined)[],
   closed: 0,
+  learnedFails: false,
 }));
+
+vi.mock("../src/answers/learned.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/answers/learned.js")>();
+  return {
+    ...actual,
+    addLearned: (rows: Parameters<typeof actual.addLearned>[0], file?: string) => {
+      if (fake.learnedFails) {
+        fake.learnedFails = false;
+        throw new Error("the answer store is not writable");
+      }
+      return actual.addLearned(rows, file);
+    },
+  };
+});
+
+// The Chrome path is exercised by the pipeline tests with a fill that cannot open a page.
+vi.mock("../src/browser/formRunner.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/browser/formRunner.js")>();
+  return {
+    ...actual,
+    fillJob: vi.fn(async () => {
+      throw new Error("no Chrome in this test");
+    }),
+  };
+});
 
 vi.mock("../src/sources/listingLink.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/sources/listingLink.js")>();
@@ -63,8 +92,11 @@ beforeEach(() => {
   writeFileSync(paths.profile as string, readFileSync(PATHS.profileExample, "utf8"));
   fake.call = null;
   fake.applyCalls = 0;
+  fake.applyArgs = [];
   fake.applyTimeouts = [];
   fake.closed = 0;
+  fake.learnedFails = false;
+  vi.mocked(ensureBrowser).mockClear();
 });
 
 const entry = (over: Partial<QueueEntry> = {}, url = URL_ONE, company = "Delta"): QueueEntry => ({
@@ -111,10 +143,11 @@ const taken = (): QueueEntry[] => {
 /** The apply tool's reply, in the shape the server documents. */
 const reply = (status: string, extra: Record<string, unknown> = {}) => JSON.stringify({ status, message: `the server said ${status}`, learned: [], unanswered: [], ...extra });
 
-/** Answers the read tool the way a posting with no employer link does, and the apply tool with what the test asks for. */
-const service = (apply: () => Promise<string>) => async (_board: string, tool: string): Promise<string> => {
-  if (tool === MCP.linkedin.tools.read) return "this posting has no employer link";
+/** Answers the read tool the way an Easy Apply posting does, and the apply tool with what the test asks for. */
+const service = (apply: () => Promise<string>) => async (_board: string, tool: string, args: Record<string, unknown>): Promise<string> => {
+  if (tool === MCP.linkedin.tools.read) return JSON.stringify({ apply: { type: "easy_apply" } });
   fake.applyCalls++;
+  fake.applyArgs.push(args);
   return apply();
 };
 
@@ -174,6 +207,78 @@ describe("Easy Apply jobs through the LinkedIn MCP", () => {
     expect(loadLearned().pending.map((p) => p.question)).toEqual(["Do you have 5+ years of Android experience?"]);
     // The listing lookup's caller and the apply loop's caller are both stopped when their work is done.
     expect(fake.closed).toBe(2);
+    // An Easy Apply run opens no page, so Chrome is never started.
+    expect(vi.mocked(ensureBrowser)).not.toHaveBeenCalled();
+  });
+
+  it("passes the job's own answers to the apply tool", async () => {
+    const answered = entry({ answers: [{ question: "Years of Android experience", answer: "5" }] });
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [answered] }, paths.queue);
+    fake.call = service(async () => reply("applied"));
+
+    await pipeline(takeJobs([jobId(URL_ONE)], { count: 1, dry: false }), base());
+
+    expect(fake.applyArgs[0]).toEqual({ job_id: jobId(URL_ONE), answers: { "Years of Android experience": "5" } });
+  });
+
+  it.each(["external", "unknown"])("a LinkedIn posting with apply type %s stays off the mcp", async (type) => {
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [entry()] }, paths.queue);
+    const entries = takeJobs([jobId(URL_ONE)], { count: 1, dry: false });
+    fake.call = async (_board, tool) => {
+      if (tool === MCP.linkedin.tools.read) return JSON.stringify({ apply: { type } });
+      fake.applyCalls++;
+      return reply("applied");
+    };
+
+    const result = await pipeline(entries, base());
+
+    // The posting goes to the Chrome path, which holds it for the person, never to the fork.
+    expect(fake.applyCalls).toBe(0);
+    expect(loadQueue().entries[0]?.applyable).toBe(false);
+    expect(loadQueue().entries[0]?.status).not.toBe("submission_unknown");
+    expect(result.reports[0]).not.toBeUndefined();
+    expect(vi.mocked(ensureBrowser)).toHaveBeenCalled();
+  });
+
+  it("a fork that cannot start puts the job back in the queue", async () => {
+    fake.call = service(async () => {
+      throw new NotAvailable("linkedin");
+    });
+
+    const result = await pipeline(taken(), base());
+
+    // Nothing was sent, so the job may be taken again instead of waiting to be settled by hand.
+    expect(loadQueue().entries[0]).toMatchObject({ status: "queued" });
+    expect(loadQueue().entries[0]?.statusReason).toMatch(/LinkedIn MCP fork/);
+    expect(result.sent).toEqual([]);
+    expect(result.reports[0]).toMatchObject({ jobId: jobId(URL_ONE), state: "blocked", reason: expect.stringMatching(/fork/) });
+  });
+
+  it("a store failure on one easy apply job does not stop the next", async () => {
+    const a = entry({}, URL_ONE, "Alpha");
+    const b = entry({}, URL_TWO, "Beta");
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [a, b] }, paths.queue);
+    const entries = takeJobs([a.job.id, b.job.id], { count: 2, dry: false });
+    fake.learnedFails = true;
+    fake.call = service(async () =>
+      reply("applied", { learned: [{ question: "Do you have 5+ years of Android experience?", answer: "Yes", options: ["Yes", "No"], required: true }] }),
+    );
+
+    let result: Awaited<ReturnType<typeof pipeline>>;
+    vi.useFakeTimers();
+    try {
+      const run = pipeline(entries, base());
+      await vi.advanceTimersByTimeAsync(RUN.submitGapMs + 1);
+      result = await run;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    // The first addLearned throws, and the second job is still sent and recorded.
+    expect(fake.applyCalls).toBe(2);
+    expect(loadQueue().entries.map((e) => e.status)).toEqual(["applied", "applied"]);
+    expect(result.reports[0]).toMatchObject({ state: "blocked", reason: "the answer store is not writable" });
+    expect(result.reports[1]).toMatchObject({ state: "filled" });
   });
 
   it.each([
@@ -194,7 +299,7 @@ describe("Easy Apply jobs through the LinkedIn MCP", () => {
 
   it("gives the apply call the long timeout the wizard needs", async () => {
     fake.call = async (_board, tool, _args, timeoutMs) => {
-      if (tool === MCP.linkedin.tools.read) return "this posting has no employer link";
+      if (tool === MCP.linkedin.tools.read) return JSON.stringify({ apply: { type: "easy_apply" } });
       fake.applyCalls++;
       fake.applyTimeouts.push(timeoutMs);
       return reply("applied");

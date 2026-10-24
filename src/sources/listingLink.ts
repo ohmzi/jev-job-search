@@ -163,9 +163,11 @@ export function mcpCaller(log: (line: string) => void = () => {}): Caller {
   };
 }
 
-class NotAvailable extends Error {
-  constructor(board: Board) {
+/** The board's server never started, so the call sent nothing. */
+export class NotAvailable extends Error {
+  constructor(readonly board: Board) {
     super(`the ${board} MCP server is not available`);
+    this.name = "NotAvailable";
   }
 }
 

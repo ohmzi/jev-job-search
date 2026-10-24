@@ -34,6 +34,12 @@ describe("applying through the LinkedIn MCP", () => {
     } satisfies McpApplyResult);
   });
 
+  it("passes the job's own answers as the tool's answers map", async () => {
+    const c = caller('{"status":"applied","message":"ok"}');
+    await applyOnLinkedIn("4252026496", { call: c.call, answers: { "Years of Android experience": "5" } });
+    expect(c.calls[0]?.args).toEqual({ job_id: "4252026496", answers: { "Years of Android experience": "5" } });
+  });
+
   it("reads the questions it could not answer", async () => {
     const reply = JSON.stringify({
       status: "blocked",
