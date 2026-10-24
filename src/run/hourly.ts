@@ -236,12 +236,13 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
     const caller = listings ?? mcpCaller(log);
     try {
       const links = await resolveListings(unresolved, { call: caller.call, country: search.countryIndeed, now, log, ...(o.dry ? { dry: true } : {}), ...(o.linksFile ? { cacheFile: o.linksFile } : {}) });
-      if (links.size) {
+      const withLink = [...links.values()].filter((r) => r.url !== null).length;
+      if (withLink) {
         result.jobs = result.jobs.map((j) => {
-          const url = links.get(j.id);
+          const url = links.get(j.id)?.url;
           return url ? withEmployerLink(j, url) : j;
         });
-        log(`[hourly] ${links.size} of ${unresolved.length} board listing(s) led to the employer's own form`);
+        log(`[hourly] ${withLink} of ${unresolved.length} board listing(s) led to the employer's own form`);
       }
     } finally {
       caller.close();

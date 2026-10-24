@@ -16,6 +16,8 @@ import { withStore, writeAtomic } from "../util/store.js";
 
 export type Board = "linkedin" | "indeed";
 export type Listing = { board: Board; id: string };
+/** What a board's server said about one posting: the employer's link and how the posting takes applications. */
+export type ResolvedListing = { url: string | null; applyType: string | null };
 
 /** Asks one board's server about one listing with the named tool and returns the text of its reply. */
 export type ToolCall = (board: Board, tool: string, args: Record<string, unknown>) => Promise<string>;
@@ -107,7 +109,19 @@ export function withEmployerLink<T extends { id: string; url: string; ats: strin
   return { ...job, id: jobId(url), url, ats: atsFromUrl(url) } as T;
 }
 
-const Cache = z.record(z.object({ url: z.string().nullable(), at: z.string() }));
+const Apply = z.object({ apply: z.object({ type: z.string() }).nullish() });
+
+/** How a posting takes applications, as its server's reply names it in `apply.type`, or null when it names none. */
+export function applyTypeIn(text: string): string | null {
+  try {
+    const parsed = Apply.safeParse(JSON.parse(text));
+    return parsed.success ? (parsed.data.apply?.type ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
+const Cache = z.record(z.object({ url: z.string().nullable(), applyType: z.string().nullable().default(null), at: z.string() }));
 type CacheFile = z.infer<typeof Cache>;
 
 export function loadListingLinks(file = PATHS.listingLinks): CacheFile {
@@ -165,16 +179,17 @@ export type ResolveOptions = {
 };
 
 /**
- * Asks the boards' servers for the employer link of each listing, at most `limit` of them, and
- * returns job id to link for those that have one. An answer is kept: a link for good, and "no link"
- * for MCP.retryAfterHours. A server that fails is not an answer and is not kept.
+ * Asks the boards' servers for the employer link and the apply type of each listing, at most `limit`
+ * of them, and returns job id to what the server said for those it said anything about. An answer is
+ * kept: a link for good, and "no link" for MCP.retryAfterHours. A server that fails is not an answer
+ * and is not kept.
  */
-export async function resolveListings(jobs: Pick<Job, "id" | "url">[], o: ResolveOptions): Promise<Map<string, string>> {
+export async function resolveListings(jobs: Pick<Job, "id" | "url">[], o: ResolveOptions): Promise<Map<string, ResolvedListing>> {
   const now = o.now ?? new Date();
   const log = o.log ?? (() => {});
   const cache = loadListingLinks(o.cacheFile);
   const fresh: CacheFile = {};
-  const found = new Map<string, string>();
+  const found = new Map<string, ResolvedListing>();
   const down = new Set<Board>();
   let asked = 0;
   const limit = o.limit ?? MCP.maxPerRun;
@@ -184,19 +199,24 @@ export async function resolveListings(jobs: Pick<Job, "id" | "url">[], o: Resolv
     const key = `${listing.board}:${listing.id}`;
     const kept = cache[key];
     if (kept?.url) {
-      found.set(job.id, kept.url);
+      found.set(job.id, { url: kept.url, applyType: kept.applyType });
       continue;
     }
-    if (kept && now.getTime() - Date.parse(kept.at) < MCP.retryAfterHours * 3_600_000) continue;
+    if (kept && now.getTime() - Date.parse(kept.at) < MCP.retryAfterHours * 3_600_000) {
+      if (kept.applyType) found.set(job.id, { url: null, applyType: kept.applyType });
+      continue;
+    }
     if (asked >= limit) break;
     asked++;
     try {
       const args = listing.board === "linkedin" ? { job_id: listing.id } : { job_key: listing.id, country: MCP.indeedCountries[o.country] ?? o.country };
-      const url = employerLinkIn(await o.call(listing.board, MCP[listing.board].tools.read, args));
-      fresh[key] = { url, at: now.toISOString() };
-      if (url) {
-        found.set(job.id, url);
-        log(`[links] ${listing.board} ${listing.id} -> ${safeUrl(url)}`);
+      const reply = await o.call(listing.board, MCP[listing.board].tools.read, args);
+      const url = employerLinkIn(reply);
+      const applyType = applyTypeIn(reply);
+      fresh[key] = { url, applyType, at: now.toISOString() };
+      if (url || applyType) {
+        found.set(job.id, { url, applyType });
+        if (url) log(`[links] ${listing.board} ${listing.id} -> ${safeUrl(url)}`);
       }
     } catch (err) {
       if (err instanceof NotAvailable) down.add(listing.board);

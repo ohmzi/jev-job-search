@@ -10,7 +10,7 @@ import type { Job } from "../jobs/normalize.js";
 import { mutateQueue, type QueueEntry } from "../jobs/queue.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import type { Profile } from "../profile/schema.js";
-import { listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
+import { listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller, type ResolvedListing } from "../sources/listingLink.js";
 import { withStore } from "../util/store.js";
 
 export type FollowOptions = {
@@ -34,7 +34,7 @@ export async function followListings(entries: QueueEntry[], profile: Profile, o:
   const now = o.now ?? new Date();
   const log = o.quiet ? () => {} : (line: string) => console.log(line);
   const caller = o.listings ?? mcpCaller(log);
-  let links: Map<string, string>;
+  let links: Map<string, ResolvedListing>;
   try {
     links = await resolveListings(held.map((e) => e.job), {
       call: caller.call,
@@ -47,14 +47,15 @@ export async function followListings(entries: QueueEntry[], profile: Profile, o:
   } finally {
     caller.close();
   }
-  if (!links.size) return 0;
+  const withLink = [...links.values()].filter((r) => r.url !== null).length;
+  if (!withLink) return 0;
   const move = (e: QueueEntry, url: string) => {
     e.job = withEmployerLink(e.job, url);
     e.applyable = canFill(e.job as unknown as Job);
     if (e.applyable) e.holdUntil = null;
   };
   for (const e of held) {
-    const url = links.get(e.job.id);
+    const url = links.get(e.job.id)?.url;
     if (url) move(e, url);
   }
   if (!o.dry) {
@@ -62,7 +63,7 @@ export async function followListings(entries: QueueEntry[], profile: Profile, o:
       const changed = mutateQueue((q) => {
         const out: QueueEntry[] = [];
         for (const x of q.entries) {
-          const url = links.get(x.job.id);
+          const url = links.get(x.job.id)?.url;
           if (!url || x.status === "applied" || x.status === "submission_unknown" || !listingOf(x.job.url)) continue;
           move(x, url);
           x.updatedAt = now.toISOString();
@@ -75,6 +76,6 @@ export async function followListings(entries: QueueEntry[], profile: Profile, o:
       saveRows(rows, o.rowsFile);
     });
   }
-  log(`${links.size} of ${held.length} board listing(s) led to the employer's own form`);
-  return links.size;
+  log(`${withLink} of ${held.length} board listing(s) led to the employer's own form`);
+  return withLink;
 }

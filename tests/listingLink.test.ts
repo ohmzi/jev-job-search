@@ -1,11 +1,11 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { jobId } from "../src/jobs/normalize.js";
 import { McpClient } from "../src/mcp/client.js";
-import { employerLinkIn, linksIn, listingOf, loadListingLinks, resolveListings, withEmployerLink } from "../src/sources/listingLink.js";
+import { applyTypeIn, employerLinkIn, linksIn, listingOf, loadListingLinks, resolveListings, withEmployerLink } from "../src/sources/listingLink.js";
 
 const fake = (mode: string) => ({ command: process.execPath, args: [fileURLToPath(new URL("./helpers/fakeMcpServer.mjs", import.meta.url)), mode] });
 
@@ -85,6 +85,13 @@ describe("the employer's link in a reply", () => {
     const j = withEmployerLink({ id: "abc", url: "https://www.indeed.com/viewjob?jk=1", ats: "other" }, "https://boards.greenhouse.io/acme/jobs/123");
     expect(j).toEqual({ id: jobId("https://boards.greenhouse.io/acme/jobs/123"), url: "https://boards.greenhouse.io/acme/jobs/123", ats: "greenhouse" });
   });
+  it("reads the apply type from a JSON reply and nothing else", () => {
+    expect(applyTypeIn('{"apply":{"type":"easy_apply"}}')).toBe("easy_apply");
+    expect(applyTypeIn('{"apply":{"type":"external","url":"https://acme.com/jobs/1"}}')).toBe("external");
+    expect(applyTypeIn("apply: https://boards.greenhouse.io/acme/jobs/123")).toBeNull();
+    expect(applyTypeIn('{"apply":{"type":7}}')).toBeNull();
+    expect(applyTypeIn('{"url":"https://acme.com/jobs/1"}')).toBeNull();
+  });
 });
 
 describe("resolving listings", () => {
@@ -103,7 +110,7 @@ describe("resolving listings", () => {
       return board === "linkedin" ? "apply: https://boards.greenhouse.io/acme/jobs/123" : "no application link here";
     };
     const found = await resolveListings(jobs, { call: call as never, country: "USA", cacheFile });
-    expect(found.get("li")).toBe("https://boards.greenhouse.io/acme/jobs/123");
+    expect(found.get("li")).toEqual({ url: "https://boards.greenhouse.io/acme/jobs/123", applyType: null });
     expect(found.has("in")).toBe(false);
     expect(found.has("direct")).toBe(false);
     expect(asked).toEqual([
@@ -113,9 +120,30 @@ describe("resolving listings", () => {
     // The second run asks about neither: the link is kept for good and "no link" for hours.
     asked.length = 0;
     const again = await resolveListings(jobs, { call: call as never, country: "USA", cacheFile });
-    expect(again.get("li")).toBe("https://boards.greenhouse.io/acme/jobs/123");
+    expect(again.get("li")).toEqual({ url: "https://boards.greenhouse.io/acme/jobs/123", applyType: null });
     expect(asked).toEqual([]);
     expect(Object.keys(loadListingLinks(cacheFile)).sort()).toEqual(["indeed:5f2a9c1b7d3e4a60", "linkedin:4252026496"]);
+  });
+
+  it("keeps easy apply as an answer with no link", async () => {
+    const cacheFile = path.join(dir(), "links.json");
+    const one = [{ id: "li", url: "https://www.linkedin.com/jobs/view/4252026496" }];
+    const t0 = new Date("2026-10-22T08:00:00Z");
+    const found = await resolveListings(one, { call: (async () => '{"apply":{"type":"easy_apply"}}') as never, country: "USA", cacheFile, now: t0 });
+    expect(found.get("li")).toEqual({ url: null, applyType: "easy_apply" });
+    // The type is kept beside the link, so the next run reads it back without asking the server.
+    let asked = 0;
+    const counting = async () => (asked++, '{"apply":{"type":"easy_apply"}}');
+    const again = await resolveListings(one, { call: counting as never, country: "USA", cacheFile, now: new Date(t0.getTime() + 3_600_000) });
+    expect(asked).toBe(0);
+    expect(again.get("li")).toEqual({ url: null, applyType: "easy_apply" });
+    expect(loadListingLinks(cacheFile)["linkedin:4252026496"]).toMatchObject({ url: null, applyType: "easy_apply" });
+  });
+
+  it("an old cache entry loads without an apply type", () => {
+    const cacheFile = path.join(dir(), "links.json");
+    writeFileSync(cacheFile, JSON.stringify({ "linkedin:123": { url: null, at: "2026-10-22T08:00:00Z" } }));
+    expect(loadListingLinks(cacheFile)).toEqual({ "linkedin:123": { url: null, applyType: null, at: "2026-10-22T08:00:00Z" } });
   });
 
   it("asks again about a listing with no link once the wait is over", async () => {
