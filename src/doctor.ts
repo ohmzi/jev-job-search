@@ -5,7 +5,7 @@
  * DeepSeek writer call to prove the key works.
  */
 import { spawnSync } from "node:child_process";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { BROWSER, childEnv, DOCTOR, GMAIL, MCP, PATHS, ROOT, WRITER } from "./config.js";
 import { loadAccounts } from "./accounts/config.js";
@@ -39,33 +39,76 @@ export function checkChrome(file: string = BROWSER.chromePath): Check {
   return { name: "Google Chrome", ok: existsSync(file), detail: existsSync(file) ? "installed" : `not found at ${file}`, fix: "Install Google Chrome from https://www.google.com/chrome, or set BROWSER.chromePath in src/config.ts" };
 }
 
-/** The directory an MCP server is started in, from its `--directory` argument. */
+/** The project folder an MCP server is started from, from its `--project` argument (or a legacy `--directory`). */
 function mcpDirectory(spec: { args: readonly string[] }): string | null {
-  const at = spec.args.indexOf("--directory");
+  const at = spec.args.findIndex((a) => a === "--project" || a === "--directory");
   return at >= 0 ? spec.args[at + 1] ?? null : null;
 }
 
-/** A way to look for the programs and the directory without touching this machine, for tests. */
+/** A way to look for the programs, the directory and the profile table without touching this machine, for tests. */
 export type ListingServerProbe = {
   /** Whether a program is on PATH. */
   has?: (command: string) => boolean;
-  /** Whether a path exists. */
+  /** Whether a path is a directory. */
+  isDirectory?: (file: string) => boolean;
+  /** Whether a file exists. */
   exists?: (file: string) => boolean;
+  /** Reads a file, or null when it cannot be read. */
+  read?: (file: string) => string | null;
+  /** The folder this run starts in, whose name the fork looks up. */
+  folder?: string;
 };
 
 /**
- * Whether the programs and the LinkedIn fork's directory the MCP servers need are in place.
- * Optional: without them a listing goes straight to Chrome and an Easy Apply job is held.
+ * Whether the programs and the LinkedIn fork's directory the MCP servers need are in place, and
+ * which apply identity the fork will use. The fork resolves its identity from the folder the run
+ * starts in, so the profile table is read when it is there: a folder it does not name gets the
+ * fork's default phone and resume. Optional: without the programs a listing goes straight to
+ * Chrome and an Easy Apply job is held.
  */
 export function checkListingServers(probe: ListingServerProbe = {}): Check {
   const has = probe.has ?? ((cmd: string) => spawnSync(cmd, ["--version"], { encoding: "utf8", env: childEnv(), timeout: 10_000 }).status === 0);
+  const isDirectory = probe.isDirectory ?? ((file: string) => {
+    try {
+      return statSync(file).isDirectory();
+    } catch {
+      return false;
+    }
+  });
   const exists = probe.exists ?? existsSync;
+  const read = probe.read ?? ((file: string) => {
+    try {
+      return readFileSync(file, "utf8");
+    } catch {
+      return null;
+    }
+  });
+  const folder = probe.folder ?? path.basename(ROOT);
   const dir = mcpDirectory(MCP.linkedin);
   const commands = [MCP.linkedin.command, MCP.indeed.command].filter((c, i, all) => all.indexOf(c) === i);
   const missing = commands.filter((c) => !has(c));
-  const dirMissing = dir !== null && !exists(dir);
+  const dirMissing = dir !== null && !isDirectory(dir);
   const linkedinOk = !missing.includes(MCP.linkedin.command) && !dirMissing;
   const indeedOk = !missing.includes(MCP.indeed.command);
+  // A table that is not there changes nothing: the fork applies with its default identity either way.
+  let identity = "";
+  if (dir !== null && !dirMissing) {
+    const table = path.join(dir, "linkedin_mcp_server", "apply_profiles.json");
+    if (exists(table)) {
+      let keys: string[] = [];
+      try {
+        const parsed: unknown = JSON.parse(read(table) ?? "");
+        const projects = parsed && typeof parsed === "object" ? (parsed as { projects?: unknown }).projects : undefined;
+        if (projects && typeof projects === "object") keys = Object.keys(projects as Record<string, unknown>);
+      } catch {
+        keys = [];
+      }
+      identity = keys.includes(folder)
+        ? `the profile table names ${folder}, so this run applies as that identity`
+        : `the profile table has no entry for ${folder}, so this run will use the default identity`;
+    }
+  }
+  const where = dir === null ? "MCP.linkedin names no project folder" : `LinkedIn runs from ${dir}`;
   const problems: string[] = [];
   if (missing.length) problems.push(`${missing.join(" and ")} not found`);
   if (dirMissing) problems.push(`LinkedIn's fork is not at ${dir}`);
@@ -79,8 +122,8 @@ export function checkListingServers(probe: ListingServerProbe = {}): Check {
     ok: problems.length === 0,
     optional: true,
     detail: problems.length === 0
-      ? `${MCP.linkedin.command} and ${MCP.indeed.command} found, LinkedIn runs from ${dir}: Easy Apply jobs are sent by the fork and board listings are followed to the employer`
-      : `${problems.join("; ")}, so ${fallback}`,
+      ? `${commands.join(" and ")} found, ${where}${identity ? `; ${identity}` : ""}: Easy Apply jobs are sent by the fork and board listings are followed to the employer`
+      : `${problems.join("; ")}${identity ? `; ${identity}` : ""}, so ${fallback}`,
     fix: problems.length === 0 ? "" : `${fixes.join(". ")}, or ignore this: Chrome follows the listing's Apply button`,
   };
 }
