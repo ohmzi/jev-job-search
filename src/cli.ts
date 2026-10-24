@@ -28,6 +28,7 @@ import { gmailClient } from "./mail/gmail.js";
 import { hourlyScheduleStatus, installHourlySchedule, installSchedule, removeHourlySchedule, removeSchedule, scheduleStatus } from "./run/schedule.js";
 import { runHourly } from "./run/hourly.js";
 import { applyFresh, type HourlyApplySummary } from "./run/hourlyApply.js";
+import { applyEasyApply, type EasyApplySummary } from "./run/easyApply.js";
 import { acquireGlobalRun, recordSharedApplied, sharedAppliedKeys } from "./run/shared.js";
 import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule, useBrowserPassword } from "./accounts/commands.js";
 import { adapterFor } from "./accounts/capability.js";
@@ -281,12 +282,23 @@ program
     const profile = loadProfile();
     const summary = await runHourly(profile, { dry: !!o.dry, log: say });
     let applied: HourlyApplySummary | null = null;
+    let easyApply: EasyApplySummary | null = null;
     if (profile.search?.apply) {
       const policy = loadPolicy();
       if (!policy) {
         say("[hourly] no data/policy.json, so the fresh jobs were queued but not applied to");
       } else {
         documentsFromOptions({ tailor: policy.documents.tailor, cover: policy.documents.cover });
+        try {
+          easyApply = await applyEasyApply(profile, { dry: !!o.dry, policy, log: say });
+          const names = easyApply.applied.map((a) => [a.company, a.title].filter(Boolean).join(" | ")).join(", ");
+          const older = easyApply.tooOld ? `, ${easyApply.tooOld} skipped as older than twelve hours or undated` : "";
+          if (easyApply.applied.length) say(`[hourly] easy apply: ${easyApply.applied.length} applied (${names})${older}`);
+          else if (easyApply.stopped) say(`[hourly] easy apply stopped: ${easyApply.stopped.slice(0, 200)}`);
+          else say(`[hourly] easy apply: ${easyApply.reason ?? `nothing applied (${easyApply.found} found, ${easyApply.scanned} read)`}${older}`);
+        } catch (err) {
+          say(`[hourly] the easy apply step was skipped: ${err instanceof Error ? err.message : String(err)}`);
+        }
         if (o.dry) {
           applied = await applyFresh(profile, policy, { dry: true, log: say });
         } else {
@@ -305,7 +317,7 @@ program
         }
       }
     }
-    if (o.json) return console.log(JSON.stringify({ ...summary, apply: applied }, null, 2));
+    if (o.json) return console.log(JSON.stringify({ ...summary, easyApply, apply: applied }, null, 2));
     console.log(`\n${summary.found} matching postings. ${summary.added} new (${summary.held} held for you), ${summary.updated} refreshed, ${summary.skipped} skipped, ${summary.aged} aged out. ${summary.calls} board call(s)${summary.failures.length ? `, ${summary.failures.length} failed` : ""}.`);
     if (applied) {
       if (applied.picked.length) {

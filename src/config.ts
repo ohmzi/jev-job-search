@@ -147,7 +147,7 @@ export const MCP = {
    * child's working directory alone, so the fork resolves the apply identity for this project's
    * folder rather than always falling back to its default.
    */
-  linkedin: { command: "uv", args: ["run", "--project", "/home/ohmz/StudioProjects/linkedin-mcp-server", "python", "-m", "linkedin_mcp_server"], tools: { read: "get_job_apply_url", apply: "apply_to_job" } },
+  linkedin: { command: "uv", args: ["run", "--project", "/home/ohmz/StudioProjects/linkedin-mcp-server", "python", "-m", "linkedin_mcp_server"], tools: { search: "search_jobs", read: "get_job_apply_url", apply: "apply_to_job" } },
   /** Indeed: the openings-mcp image, whose read tool returns a posting's details. */
   indeed: { command: "docker", args: ["run", "-i", "--rm", "ghcr.io/amikai/openings-mcp"], tools: { read: "indeed_get_job_detail" } },
   /** The openings-mcp Indeed tools want a country name. The profile keeps JobSpy's spelling. */
@@ -469,6 +469,26 @@ export const HOURLY = {
   lockStaleMs: 30 * 60_000,
   /** The prefix of the scheduled job's name. The portal id makes it unique among the four clones. */
   labelPrefix: "jev-hourly",
+  /**
+   * The Easy Apply step that runs between the search and the apply pass: it searches LinkedIn
+   * through the local fork for postings this portal's profile wants, reads each one, and sends the
+   * Easy Apply ones through the fork. Few, paced, and stopped at the first sign of a bot check.
+   */
+  easyApply: {
+    enabled: true,
+    /** Most applications this step sends in one hourly run. */
+    count: 3,
+    /** Most search results it reads looking for Easy Apply. */
+    scan: 30,
+    pages: 2,
+    /** Between reads, inside the fork's rate guidance. */
+    readGapMs: 6_000,
+    /** Between submissions. */
+    gapMs: 300_000,
+    /** LinkedIn has no twelve-hour filter, so the search asks for a day and the code keeps the last twelve hours. */
+    datePosted: "past_24_hours",
+    maxAgeHours: 12,
+  },
 } as const;
 
 /** Signing in to job boards the person has an account on, and making an account where they allowed it (`src/accounts/`). */
