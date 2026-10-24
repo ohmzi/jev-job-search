@@ -298,7 +298,7 @@ program
           try {
             easyApply = await applyEasyApply(profile, { dry: !!o.dry, policy, log: say });
             const names = easyApply.applied.map((a) => [a.company, a.title].filter(Boolean).join(" | ")).join(", ");
-            const notes = [easyApply.tooOld ? `${easyApply.tooOld} skipped as older than twelve hours or undated` : "", easyApply.left ? `${easyApply.left} left for you` : ""].filter(Boolean).join("; ");
+            const notes = [easyApply.tooOld ? `${easyApply.tooOld} skipped as older than twelve hours or undated` : "", easyApply.notEasyApply ? `${easyApply.notEasyApply} not easy apply` : "", easyApply.left ? `${easyApply.left} left for you` : ""].filter(Boolean).join("; ");
             const tail = notes ? `; ${notes}` : "";
             const stop = easyApply.stopped ? `; stopped: ${easyApply.stopped}` : "";
             if (easyApply.applied.length) say(`[hourly] easy apply: ${easyApply.applied.length} applied (${names})${tail}${stop}`);

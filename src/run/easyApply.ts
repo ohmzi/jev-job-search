@@ -47,6 +47,8 @@ export type EasyApplySummary = {
   applied: { company: string; title: string; url: string }[];
   /** Postings read but left alone: blocked, failed, or a call that did not answer. */
   left: number;
+  /** Postings whose read said they do not take Easy Apply. */
+  notEasyApply: number;
   /** Postings skipped because their posted date is older than the window, or cannot be read. */
   tooOld: number;
   reason: string | null;
@@ -70,7 +72,7 @@ type PostingDetails = { company: string; title: string; location: string; ageHou
 const linkedinUrl = (id: string) => `https://www.linkedin.com/jobs/view/${id}`;
 
 /** The empty answer when the step never gets as far as the board. */
-const empty = (): EasyApplySummary => ({ found: 0, scanned: 0, applied: [], left: 0, tooOld: 0, reason: null, stopped: null });
+const empty = (): EasyApplySummary => ({ found: 0, scanned: 0, applied: [], left: 0, notEasyApply: 0, tooOld: 0, reason: null, stopped: null });
 
 /**
  * A board notice that asks whether a person is there, or says the board has had enough for now.
@@ -320,7 +322,12 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
         log(`[easy] the step stopped: ${readNotice}`);
         return summary;
       }
-      if (applyTypeIn(readText) !== "easy_apply") continue;
+      const applyType = applyTypeIn(readText);
+      if (applyType !== "easy_apply") {
+        summary.notEasyApply++;
+        log(`[easy] ${id} skipped: not easy apply (${applyType ?? "unknown"})`);
+        continue;
+      }
 
       // The details are read before anything is sent: the age has to be checked, and the company
       // and title are what the record needs. They are reused for the recording, never read twice.
@@ -486,6 +493,13 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
         // outcome_unknown may have been sent: the entry stays unconfirmed.
         log(`[easy] ${label} ${status}: ${message}`);
       }
+    }
+    // A run that read results but applied to none says why, so the hourly line is never silent.
+    if (summary.applied.length === 0 && summary.reason === null && summary.stopped === null && !o.dry) {
+      summary.reason =
+        summary.found > 0 && summary.notEasyApply === summary.found
+          ? "no posting in the results was an Easy Apply posting"
+          : "no posting in the results was applied to";
     }
     return summary;
   } finally {

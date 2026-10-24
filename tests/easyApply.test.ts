@@ -399,6 +399,24 @@ describe("the hourly Easy Apply step", () => {
     expect(loadSharedApplied().some((e) => e.company === "Acme Corp" && e.title === "Android Engineer")).toBe(true);
   });
 
+  it("says so when no result takes Easy Apply, without writing anything", async () => {
+    const f = files();
+    const h = harness({
+      search_jobs: () => searchReply(["111111", "222222", "333333"]),
+      get_job_apply_url: ({ job_id }) => readReply(job_id as string, "external"),
+    });
+    const logs: string[] = [];
+    const summary = await applyEasyApply(profile, { policy, log: (line) => logs.push(line), call: h.call, close: h.close, now: NOW, sleep: h.sleep, files: f });
+
+    expect(summary.notEasyApply).toBe(3);
+    expect(summary.applied).toEqual([]);
+    expect(summary.reason).toBe("no posting in the results was an Easy Apply posting");
+    expect(h.calls.some((c) => c.tool === "apply_to_job")).toBe(false);
+    expect(logs.join("\n")).toMatch(/111111 skipped: not easy apply \(external\)/);
+    expect(existsSync(f.queue)).toBe(false);
+    expect(existsSync(f.rows)).toBe(false);
+  });
+
   it("skips a posting another portal has already sent", async () => {
     const url = "https://www.linkedin.com/jobs/view/111111";
     recordSharedApplied([{ id: jobId(url), company: "Acme Corp", title: "Android Engineer", url }], "other-portal");
