@@ -86,7 +86,7 @@ ${embedded}
   const startScreen = location.hash.replace(/^#/, "");
   let data = null, needs = null, auto = null, screen = SCREENS.some(([k]) => k === startScreen) ? startScreen : "today", tab = "applied", sortKey = "applied_on", sortDir = -1, q = "";
   const post = (path, body) => fetch(path, { method: "POST", headers: { "content-type": "application/json", "x-jev-token": TOKEN }, body: JSON.stringify(body) });
-  const needCount = () => needs ? needs.waiting.length + needs.questions.length + needs.unconfirmed.length + needs.mail.length : 0;
+  const needCount = () => needs ? needs.waiting.length + needs.questions.length + needs.unconfirmed.length + needs.answers.length + needs.mail.length : 0;
   const recentCount = () => data && data.recent ? data.recent.length : 0;
   function renderNav() {
     const count = (k) => (k === "needs" && needCount() ? " (" + needCount() + ")" : "") + (k === "recent" && recentCount() ? " (" + recentCount() + ")" : "");
@@ -98,6 +98,13 @@ ${embedded}
     if (!needs) return;
     const out = [];
     if (!needCount()) out.push('<p class="note">Nothing needs you right now.</p>');
+    if (needs.answers.length) out.push("<h2>Answers to confirm</h2>");
+    for (const a of needs.answers) out.push('<div class="item" data-learned="' + esc(a.id) + '"><h4>' + esc(a.company) + '</h4><p class="note">' + esc(a.title) + ", filled in by the Easy Apply walk without you.</p>" +
+      '<p class="q">' + esc(a.question) + '</p>' +
+      '<p class="note">The walk answered "' + esc(a.answer) + '".' + (a.options.length ? " Options it saw: " + esc(a.options.join(", ")) + "." : "") + "</p>" +
+      '<textarea data-la="' + esc(a.id) + '">' + esc(a.answer) + "</textarea>" +
+      '<button class="btn" data-confirm="' + esc(a.id) + '">Keep this answer for future applications</button><span class="saved" id="saved-learned-' + esc(a.id) + '"></span>' +
+      '<p class="note">Nothing is saved until you press it. A kept answer goes into your profile as a standing answer.</p></div>');
     if (needs.questions.length) out.push("<h2>Questions only you can answer</h2>");
     for (const j of needs.questions) {
       const ask = j.items.filter((x) => x.kind === "ask");
@@ -251,6 +258,12 @@ ${embedded}
       const answers = [...box.querySelectorAll("[data-q]")].map((el) => ({ question: job.items[Number(el.dataset.q)].question, answer: el.value.trim(), remember: !!box.querySelector('[data-keep="' + el.dataset.q + '"]').checked })).filter((a) => a.answer);
       if (!answers.length) { document.getElementById("saved-" + job.id).textContent = "type an answer first"; return; }
       await act("/api/answer", { id: job.id, answers }, "saved-" + job.id);
+      return;
+    }
+    const conf = t.closest("[data-confirm]");
+    if (conf) {
+      const box = conf.closest("[data-learned]");
+      await act("/api/confirm-answer", { id: conf.dataset.confirm, answer: box.querySelector("[data-la]").value }, "saved-learned-" + conf.dataset.confirm);
       return;
     }
     const mok = t.closest("[data-mail-ok]"); if (mok) { const box = mok.closest("[data-mail]"); const jobId = box.querySelector("[data-mjob]").value; if (!jobId) return; await act("/api/mail", { id: mok.dataset.mailOk, jobId, kind: box.querySelector("[data-mkind]").value }); return; }
