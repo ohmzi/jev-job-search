@@ -127,6 +127,12 @@ describe("planField", () => {
   it("checks consent boxes and leaves opt-ins alone", () => {
     expect(planField(field({ kind: "checkbox", label: "I certify the above is accurate" }), { type: "noul", noul: 0.95 }, profile, j)).toMatchObject({ action: "fill", value: "true" });
     expect(planField(field({ kind: "checkbox", label: "Send me job alerts" }), { type: "noul", noul: 0.05 }, profile, j).action).toBe("skip");
+    // An "I agree" consent box on the application is ticked even when the model is unsure: it is
+    // the applicant's own agreement to the form's data terms, not a marketing opt-in.
+    expect(planField(field({ kind: "checkbox", label: "I agree that my personal data may be stored for suitable job opportunities" }), { type: "noul", noul: 0.1 }, profile, j)).toMatchObject({ action: "fill", value: "true" });
+    expect(planField(field({ kind: "checkbox", label: "I agree to receive marketing emails" }), { type: "noul", noul: 0.1 }, profile, j).action).toBe("skip");
+    // A criminal, background or credit consent is a question only the person can answer.
+    expect(planField(field({ kind: "checkbox", label: "I agree to a criminal background check" }), { type: "noul", noul: 0.1 }, profile, j).action).not.toBe("fill");
     // Whether the person goes by another name is the profile's to say, however sure JEV is about the box.
     const plain = { ...profile, name: { first: profile.name.first, last: profile.name.last } } as typeof profile;
     expect(planField(field({ kind: "checkbox", label: "I have a preferred name" }), { type: "noul", noul: 0.94 }, plain, j)).toMatchObject({ action: "skip", key: "unchecked" });

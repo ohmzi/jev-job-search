@@ -97,6 +97,12 @@ const SPONSOR_Q = new RegExp(`sponsor|${NEEDS_PERMIT_Q.source}`, "i");
 const AGREEMENT_Q = /\b(agree|agreement|acknowledg|consent|terms|privacy|arbitration|attest|certify|accept)/i;
 /** A tick that asks to be marketed to. It is never ticked, however sure the model is. */
 const MARKETING_Q = /\b(marketing|newsletter|job alerts?|alerts? (?:about|for) (?:jobs|roles)|promotional|product updates|text messages?|sms|subscribe|mailing list|future (?:roles|opportunities|positions)|talent (?:pool|community)|may we contact)\b/i;
+
+/** An "I agree" or "I consent" box: the applicant's own acceptance of the form's terms. */
+const LEADING_AGREE = /^\s*i\s+(?:hereby\s+)?(?:agree|consent)\b/i;
+
+/** Agreements about a record, a check or a waiver: the answer is the person's, not the tool's. */
+const SENSITIVE_AGREEMENT = /\b(criminal|background check|drug|credit|arbitration|class action|waive|lawsuit)\b/i;
 /** Talk about the application itself is transactional, not marketing. */
 const APPLICATION_CONTACT = /\b(?:your|this|the) application\b|application (?:status|process|updates?)\b/i;
 /** A tick that only states the applicant is a person. It is a form field, not a CAPTCHA, which is a widget in a frame. */
@@ -468,6 +474,12 @@ export function planField(f: DumpedField, answer: Answer | undefined, profile: P
     return { ...base, action: "skip", key: "unchecked", value: null, confidence: 1, note: "a marketing or alert opt-in is never ticked" };
   }
   if (f.kind === "checkbox" && HUMAN_CONFIRM_Q.test(f.label)) return { ...base, action: "fill", key: "checked", value: "true", confidence: 1, note: "confirming the applicant is a person" };
+  // The applicant's own "I agree" to the form's data terms is ticked. Marketing and alert boxes
+  // were left unchecked above, and a criminal, background, credit or waiver agreement is the
+  // person's to read and answer, not a box the tool can tick for them.
+  if (f.kind === "checkbox" && LEADING_AGREE.test(f.label) && !SENSITIVE_AGREEMENT.test(`${f.label} ${f.section ?? ""}`)) {
+    return { ...base, action: "fill", key: "checked", value: "true", confidence: 1, note: "an I-agree box on the application form" };
+  }
   if (!answer) return { ...base, action: "review", key: "unknown", value: null, confidence: 0, note: "no answer" };
 
   if (f.kind === "checkbox") {
