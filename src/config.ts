@@ -302,6 +302,25 @@ export const BROWSER = {
   captchaSettleMs: 1_500,
 } as const;
 
+/** The tool's own attempt at a bot check, before the person is asked. Nothing here solves a picture or a puzzle. */
+export const PROTECTIONS = {
+  /** The whole attempt at one challenge, across a click and the wait for its response. */
+  attemptMs: 12_000,
+  /** How long a widget is given to produce its response after its checkbox is clicked. */
+  tokenWaitMs: 8_000,
+  /** How often the page is read while a widget works. */
+  pollMs: 250,
+  /** A wall with no widget of its own is given this long to clear before the person is asked. */
+  passiveWaitMs: 3_000,
+  /** The checkbox sits this far from the left of a reCAPTCHA or Turnstile frame, and at this fraction of its height. */
+  checkboxOffsetX: 28,
+  checkboxOffsetY: 0.5,
+  /** The pointer walks to the checkbox in this many moves, with this much jitter and this pause between them. */
+  mouseSteps: 12,
+  mouseJitterPx: 3,
+  mouseStepMs: 12,
+} as const;
+
 /**
  * The writer for what JEV cannot type: open questions, fields it was unsure of, the two sheet notes,
  * and tailored resumes and cover letters. It is DeepSeek, reached with the same key as JEV, asked for

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>reCAPTCHA</title>
+<style>body{margin:0;background:#f9f9f9}button{position:absolute;left:0;top:0;width:70px;height:70px;border:2px solid #555}</style>
+</head>
+<body>
+<button id="check" aria-label="I'm not a robot">I'm not a robot</button>
+<script>
+  document.getElementById("check").addEventListener("click", function () {
+    var top = window.parent;
+    top.__clicks = (top.__clicks || 0) + 1;
+    top.document.querySelector('textarea[name="g-recaptcha-response"]').value = "test-response";
+    document.body.style.background = "#cfc";
+  });
+</script>
+</body>
+</html>

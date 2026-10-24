@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>reCAPTCHA</title>
+<style>body{margin:0;background:#f9f9f9}button{position:absolute;left:0;top:0;width:70px;height:70px;border:2px solid #555}</style>
+</head>
+<body>
+<button id="check" aria-label="I'm not a robot">I'm not a robot</button>
+<script>
+  // A widget that took the click but never produced a response: the person's turn.
+  document.getElementById("check").addEventListener("click", function () {
+    window.parent.__clicks = (window.parent.__clicks || 0) + 1;
+  });
+</script>
+</body>
+</html>

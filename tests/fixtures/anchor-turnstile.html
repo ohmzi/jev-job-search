@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Turnstile</title>
+<style>body{margin:0;background:#fafafa}button{position:absolute;left:0;top:0;width:70px;height:64px;border:2px solid #555}</style>
+</head>
+<body>
+<button id="check" aria-label="Verify you are human">Verify you are human</button>
+<script>
+  document.getElementById("check").addEventListener("click", function () {
+    var top = window.parent;
+    top.__clicks = (top.__clicks || 0) + 1;
+    top.document.querySelector('textarea[name="cf-turnstile-response"]').value = "test-token";
+    document.body.style.background = "#cfc";
+  });
+</script>
+</body>
+</html>

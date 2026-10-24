@@ -422,6 +422,22 @@
       }
       return { descriptors, tokens, text: document.body ? document.body.innerText : "" };
     },
+    // Where a challenge widget sits, so a click can be sent to its own checkbox. An element's
+    // position on the page is readable even when its frame belongs to another origin.
+    challengeBox(vendor) {
+      const named = (s) => /recaptcha/i.test(s) && vendor === "recaptcha"
+        || /hcaptcha/i.test(s) && vendor === "hcaptcha"
+        || /turnstile|challenges\.cloudflare/i.test(s) && vendor === "turnstile"
+        || /captcha-delivery|datadome/i.test(s) && vendor === "datadome"
+        || /akamai|bm-verify/i.test(s) && vendor === "akamai";
+      const els = [...document.querySelectorAll("iframe[src], iframe[title], .g-recaptcha, .h-captcha, .cf-turnstile, [data-sitekey]")]
+        .filter(visible)
+        .filter((n) => named(`${n.src || ""} ${n.getAttribute("title") || ""} ${n.className || ""} ${n.id || ""}`));
+      const n = els[0];
+      if (!n) return null;
+      const r = n.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height, kind: n.tagName === "IFRAME" ? "iframe" : "widget" };
+    },
     controlCount() {
       return document.readyState !== "loading" ? document.querySelectorAll("input, select, textarea").length : -1;
     },
