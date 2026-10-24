@@ -211,9 +211,14 @@ export function pickSubmit(submitSelectors: string[]): { selector: string; text:
 }
 
 /** The control that leads to the next page, when the page has one and has no way to send. */
-export function pickNext(submitSelectors: string[]): { selector: string; text: string } | null {
+export function pickNext(submitSelectors: string[], easyApply = false): { selector: string; text: string } | null {
   if (pickSubmit(submitSelectors)) return null;
-  return buttons(submitSelectors).find((c) => /^(next|next step|continue|save and continue|save & continue|save and next)\b/i.test(c.text)) ?? null;
+  // "Review" is the last step before Submit in LinkedIn's Easy Apply dialog. On an ordinary form it
+  // is not taken for a way on: a review there can be a summary panel rather than another page.
+  const forward = easyApply
+    ? /^(next|next step|continue|save and continue|save & continue|save and next|review)\b/i
+    : /^(next|next step|continue|save and continue|save & continue|save and next)\b/i;
+  return buttons(submitSelectors).find((c) => forward.test(c.text)) ?? null;
 }
 
 export type Failure = { selector: string; why: string };

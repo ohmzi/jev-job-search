@@ -246,7 +246,7 @@ async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, 
   savePlan(job.id, d, plan);
   const read = await readBack(page, d, plan, failedRaw, uploaded);
   guide.learn([...read.failed, ...read.leftBlank]);
-  const partial = { jobId: job.id, company: job.company, title: job.title, ats: job.ats, ...read, takeHome: d.takeHome, page: at.page, earlier: at.earlier, hasNext: !!pickNext(plan.submitSelectors), seconds: (Date.now() - at.started) / 1000, jevCostUsd: (at.jevCostUsd ?? 0) + plan.jevCostUsd };
+  const partial = { jobId: job.id, company: job.company, title: job.title, ats: job.ats, ...read, takeHome: d.takeHome, page: at.page, earlier: at.earlier, hasNext: !!pickNext(plan.submitSelectors, d.easyApply), seconds: (Date.now() - at.started) / 1000, jevCostUsd: (at.jevCostUsd ?? 0) + plan.jevCostUsd };
   return saveReport({ ...partial, ready: isReady(partial) });
 }
 
@@ -339,7 +339,7 @@ const pageSignature = (d: FieldsDump) => `${d.url.split("#")[0]}\n${d.fields.map
 export async function nextPage(jev: JevClient, profile: Profile, job: Job, opts: { dry: boolean }): Promise<FillReport> {
   const r = loadReport(job.id);
   const { dump: before, plan } = loadPlan(job.id);
-  const next = pickNext(plan.submitSelectors);
+  const next = pickNext(plan.submitSelectors, before.easyApply);
   if (!next || !isClean(r)) return r;
   const started = Date.now();
   const hold = (reason: string): FillReport => saveReport({ ...r, ready: false, reason, stuck: reason, failed: [...r.failed, { selector: next.selector, label: next.text, why: reason }] });

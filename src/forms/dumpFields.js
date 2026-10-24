@@ -23,6 +23,24 @@
   };
   // The words of an element. An icon's fallback text ("SVGs not supported by this browser.") is not one of them.
   const text = (el) => (el ? (el.innerText || el.textContent || "").replace(/SVGs? not supported by this browser\.?/gi, "").replace(/\s+/g, " ").trim() : "");
+  // LinkedIn's Easy Apply is a dialog on the posting, not a page of its own. Its controls are the
+  // application. A sign-in dialog can wear the same frame: it is only the application when a Next,
+  // Review or Submit control leads further into the form, and it never speaks of signing in.
+  const EASY_APPLY = (() => {
+    const forward = /^\s*(next|review|submit application|continue)\s*$/i;
+    const signIn = /\b(sign in|sign up|log in|join now|join linkedin|create an? account|new to linkedin)\b/i;
+    const buttons = "button, [role=button], input[type=submit]";
+    for (const n of document.querySelectorAll('[role="dialog"], [data-test-modal]')) {
+      const cls = typeof n.className === "string" ? n.className : "";
+      const marked = /easy-apply/i.test(cls) || !!n.querySelector("[class*='easy-apply'], [data-test*='easy-apply'], [data-easy-apply-next-button], [data-easy-apply-submit-button]");
+      if (!marked) continue;
+      if ([...n.querySelectorAll("input[type=password]")].some(visible)) continue;
+      if (signIn.test(text(n))) continue;
+      if (![...n.querySelectorAll(buttons)].some((b) => forward.test(text(b)))) continue;
+      return n;
+    }
+    return null;
+  })();
   // An attribute value inside a quoted CSS selector: backslashes and quotes escaped.
   const attr = (v) => v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const cssEscape = (s) => (window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/([^\w-])/g, "\\$1"));
@@ -262,6 +280,8 @@
     const tag = el.tagName.toLowerCase();
     const type = (el.getAttribute("type") || (tag === "input" ? "text" : tag)).toLowerCase();
     if (SKIP_TYPES.has(type) && !el.matches(MENU_BUTTON)) return;
+    // The posting's own controls (a search box, a language picker) are not part of the dialog.
+    if (EASY_APPLY && !EASY_APPLY.contains(el)) return;
     // A box for a one-time code is never read: a code a site sends is typed by the person, or by the sign-in for an account they set up.
     if (/one-time-code/i.test(el.getAttribute("autocomplete") || "")) return;
     const isControl = ["input", "select", "textarea"].includes(tag);
@@ -467,13 +487,16 @@
     .slice(0, 3)
     .map((n) => ({ text: text(n).slice(0, 300), url: (n.querySelector("a[href^='http']") || {}).href || (URL_IN_TEXT.exec(text(n)) || [""])[0] }));
   const form = fields.length && document.querySelector(fields[0].selector)?.closest("form");
-  const headings = [...(form || document).querySelectorAll("h1, h2, h3, p")].slice(0, 8).map(text).filter(Boolean);
+  const scope = EASY_APPLY || form || document;
+  const headings = [...scope.querySelectorAll("h1, h2, h3, p")].slice(0, 8).map(text).filter(Boolean);
   out.context = headings.join(" | ").slice(0, 800);
+  // A dialog carries its own controls, wherever its buttons sit.
+  out.easyApply = !!EASY_APPLY;
   const SUBMIT_WORD = /submit|apply|send|continue|next|review|finish|soumettre|postuler|envoyer/i;
   // JazzHR draws its Submit as a styled link.
   const submitLike = (root) => [...root.querySelectorAll("button, input[type=submit], [role=button], a[class*=submit i], a[class*=btn i]")].filter((b) => SUBMIT_WORD.test((text(b) || b.value || b.getAttribute("aria-label") || "").trim()) && visible(b));
   // The button may sit outside the form element (BambooHR draws it in a footer of its own), so the page is searched when the form has none.
-  const buttons = form && submitLike(form).length ? submitLike(form) : submitLike(document);
+  const buttons = EASY_APPLY ? submitLike(EASY_APPLY) : form && submitLike(form).length ? submitLike(form) : submitLike(document);
   buttons.forEach((b) => {
     const t = (text(b) || b.value || b.getAttribute("aria-label") || "").trim();
     out.submitSelectors.push(selectorFor(b) + "  /* " + t.slice(0, 40) + " */");

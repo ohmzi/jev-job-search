@@ -48,6 +48,8 @@ export const FieldsDump = z.object({
   frames: z.array(z.string()).default([]),
   /** True when the page shows a password box: a login or account page, which the tool never fills. */
   hasPassword: z.boolean().default(false),
+  /** LinkedIn's Easy Apply dialog: the application is the dialog on the posting, and LinkedIn already knows the name. */
+  easyApply: z.boolean().default(false),
   /** A take-home assignment the page asks for, with its link: the application still goes, and the assignment is listed for the person. */
   takeHome: z.array(z.object({ text: z.string(), url: z.string() })).default([]),
 });
@@ -62,6 +64,8 @@ export type FieldsDump = z.infer<typeof FieldsDump>;
  * email box alone is a job alert or a newsletter, which must never be filled or sent.
  */
 export function isApplicationForm(d: FieldsDump): boolean {
+  // LinkedIn fills the name from the profile, so its Easy Apply dialog can hold only contact fields.
+  if (d.easyApply) return true;
   const asksFile = d.fields.some((f) => f.kind === "file" || /resume|\bcv\b|curriculum/i.test(f.label));
   const asksName = d.fields.some((f) => /first name|last name|full name|legal name|^(your )?name\b|prénom|\bnom\b/i.test(f.label));
   const asksEmail = d.fields.some((f) => f.kind === "email" || /e-?mail|courriel/i.test(f.label));
