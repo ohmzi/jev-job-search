@@ -2,7 +2,8 @@ import { mkdtempSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { jobId } from "../src/jobs/normalize.js";
+import { canFill } from "../src/jobs/fillable.js";
+import { jobId, type Job } from "../src/jobs/normalize.js";
 import { followListings } from "../src/run/followListings.js";
 import { loadQueue, saveQueue, type QueueEntry } from "../src/jobs/queue.js";
 import type { Profile } from "../src/profile/schema.js";
@@ -63,6 +64,45 @@ describe("the apply step following a listing to the employer", () => {
     await followListings([a], profile, { ...f, dry: true, now: NOW, quiet: true, listings: caller(() => "https://boards.greenhouse.io/delta/jobs/777") as never });
     expect(a.job.url).toBe("https://boards.greenhouse.io/delta/jobs/777");
     expect(loadQueue(f.queueFile).entries[0]?.job.url).toBe("https://www.linkedin.com/jobs/view/4252026496");
+  });
+
+  it("puts an easy apply listing in the apply run with no employer link", async () => {
+    const f = files();
+    const a = entry("a", "https://www.linkedin.com/jobs/view/4252026496");
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [a] }, f.queueFile);
+    const moved = await followListings([a], profile, { ...f, now: NOW, quiet: true, listings: caller(() => JSON.stringify({ apply: { type: "easy_apply" } })) as never });
+    expect(moved).toBe(0);
+    expect(a.applyable).toBe(true);
+    expect(a.job.url).toBe("https://www.linkedin.com/jobs/view/4252026496");
+    expect(a.holdUntil).toBeNull();
+    const saved = loadQueue(f.queueFile).entries;
+    expect(saved.find((e) => e.job.id === a.job.id)).toMatchObject({ applyable: true, holdUntil: null, status: "in_progress", job: { url: "https://www.linkedin.com/jobs/view/4252026496" } });
+  });
+
+  it("an external posting is not routed to the mcp", async () => {
+    const f = files();
+    const a = entry("a", "https://www.linkedin.com/jobs/view/4252026496");
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [a] }, f.queueFile);
+    const moved = await followListings([a], profile, { ...f, now: NOW, quiet: true, listings: caller(() => JSON.stringify({ apply: { type: "external", url: "https://boards.greenhouse.io/x/1" } })) as never });
+    expect(moved).toBe(1);
+    expect(a.job.url).toBe("https://boards.greenhouse.io/x/1");
+    expect(a.job.ats).toBe("greenhouse");
+    expect(a.applyable).toBe(canFill(a.job as unknown as Job));
+    expect(a.holdUntil).toBeNull();
+    expect(loadQueue(f.queueFile).entries[0]?.job.url).toBe("https://boards.greenhouse.io/x/1");
+  });
+
+  it("never marks an applied or unconfirmed easy apply listing", async () => {
+    const f = files();
+    const a = entry("a", "https://www.linkedin.com/jobs/view/4252026496", { status: "applied" });
+    const b = entry("b", "https://www.linkedin.com/jobs/view/4252026497", { status: "submission_unknown" });
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [a, b] }, f.queueFile);
+    await followListings([a, b], profile, { ...f, now: NOW, quiet: true, listings: caller(() => JSON.stringify({ apply: { type: "easy_apply" } })) as never });
+    expect(a.applyable).toBe(false);
+    expect(a.holdUntil).not.toBeNull();
+    expect(b.applyable).toBe(false);
+    expect(b.holdUntil).not.toBeNull();
+    expect(loadQueue(f.queueFile).entries.map((e) => e.applyable)).toEqual([false, false]);
   });
 
   it("asks nothing for a job that already has an employer's link, and nothing when listings are off", async () => {

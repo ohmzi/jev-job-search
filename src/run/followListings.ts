@@ -2,8 +2,10 @@
  * The apply step's first move for a job whose link is an Indeed or LinkedIn listing: ask the board's
  * MCP server for the employer's own form, and take the job there. This runs inside `pipeline`, so
  * `/apply`, `daily` and the hourly apply pass all get it. The servers read the posting and return a
- * link; they apply for no one, and Chrome fills and sends the form. With no link, or a server that
- * fails, the job is left as it is and Chrome opens the listing and follows its Apply button.
+ * link; they apply for no one, and Chrome fills and sends the form. A posting that takes Easy Apply
+ * has no employer link: it keeps its board link and is marked applyable so the apply run takes it.
+ * Any other posting with no link, or a server that fails, is left as it is and Chrome opens the
+ * listing and follows its Apply button.
  */
 import { canFill } from "../jobs/fillable.js";
 import type { Job } from "../jobs/normalize.js";
@@ -27,7 +29,7 @@ export type FollowOptions = {
   now?: Date;
 };
 
-/** Takes each listing entry to the employer's link where its board's MCP has one. Changes the entries it is given. Returns how many moved. */
+/** Takes each listing entry to the employer's link where its board's MCP has one, or marks an Easy Apply listing applyable on its board link. Changes the entries it is given. Returns how many moved. */
 export async function followListings(entries: QueueEntry[], profile: Profile, o: FollowOptions = {}): Promise<number> {
   const held = entries.filter((e) => listingOf(e.job.url));
   if (!held.length || o.listings === false) return 0;
@@ -48,24 +50,33 @@ export async function followListings(entries: QueueEntry[], profile: Profile, o:
     caller.close();
   }
   const withLink = [...links.values()].filter((r) => r.url !== null).length;
-  if (!withLink) return 0;
+  const isEasyApply = (r: ResolvedListing | undefined) => !!r && r.url === null && r.applyType === "easy_apply";
+  if (!withLink && !held.some((e) => isEasyApply(links.get(e.job.id)))) return 0;
   const move = (e: QueueEntry, url: string) => {
     e.job = withEmployerLink(e.job, url);
     e.applyable = canFill(e.job as unknown as Job);
     if (e.applyable) e.holdUntil = null;
   };
+  // A posting that takes Easy Apply has no employer link. It keeps its board link and is handed to the apply run.
+  const markEasyApply = (e: QueueEntry) => {
+    e.applyable = true;
+    e.holdUntil = null;
+  };
   for (const e of held) {
-    const url = links.get(e.job.id)?.url;
-    if (url) move(e, url);
+    const resolved = links.get(e.job.id);
+    if (resolved?.url) move(e, resolved.url);
+    else if (isEasyApply(resolved) && e.status !== "applied" && e.status !== "submission_unknown") markEasyApply(e);
   }
   if (!o.dry) {
     withStore(() => {
       const changed = mutateQueue((q) => {
         const out: QueueEntry[] = [];
         for (const x of q.entries) {
-          const url = links.get(x.job.id)?.url;
-          if (!url || x.status === "applied" || x.status === "submission_unknown" || !listingOf(x.job.url)) continue;
-          move(x, url);
+          if (x.status === "applied" || x.status === "submission_unknown" || !listingOf(x.job.url)) continue;
+          const resolved = links.get(x.job.id);
+          if (resolved?.url) move(x, resolved.url);
+          else if (isEasyApply(resolved)) markEasyApply(x);
+          else continue;
           x.updatedAt = now.toISOString();
           out.push(x);
         }
