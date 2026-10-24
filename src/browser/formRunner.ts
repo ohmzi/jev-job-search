@@ -17,6 +17,7 @@ import { loadMemory, recallExact, recallForm, recallSameFields, recallSimilar, r
 import { contextFingerprint, resolveOpenFields, type OpenField, type Resolution } from "../answers/resolve.js";
 import type { QueueEntry } from "../jobs/queue.js";
 import { closeTab, ensureBrowser, newTab, Page, sleep } from "./cdp.js";
+import { dismissConsent } from "./consent.js";
 import { passProtections, protectionStopReason, readProtection } from "./protections.js";
 import { candidateOptions, closestOptions, readDropdownOptions } from "./dropdowns.js";
 import { applyFills, clearBox, TYPED_KINDS, uploadFile, type FillGuide } from "./fill.js";
@@ -33,6 +34,13 @@ const APPLY_BUTTON = "^\\s*(apply|apply now|easy apply|apply for this job|apply 
 async function openForm(page: Page, job: Job): Promise<FieldsDump> {
   await goto(page, applyUrlFor(job));
   let d = await dump(page);
+  // A consent banner over the Apply control would take the click. The banner is answered with
+  // its least-permissive choice, then the page is read again before the Apply control is used.
+  if (await dismissConsent(page)) {
+    await settle(page);
+    await install(page);
+    d = await dump(page);
+  }
   for (let hop = 0; hop < 3 && !isApplicationForm(d); hop++) {
     const frame = d.frames[0];
     if (frame) {

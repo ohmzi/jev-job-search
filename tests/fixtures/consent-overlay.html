@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Apply</title>
+<style>
+  body { font: 14px sans-serif; margin: 24px; }
+  #apply { position: absolute; left: 100px; top: 200px; width: 200px; height: 50px; z-index: 1; }
+  #apply2 { position: absolute; left: 600px; top: 200px; width: 200px; height: 50px; z-index: 1; }
+  #overlay { position: fixed; left: 0; top: 0; width: 420px; height: 320px; background: rgba(0,0,0,.5); z-index: 9; }
+  #overlay div { position: absolute; left: 20px; top: 20px; background: #fff; padding: 16px; }
+  #form { display: none; margin-top: 300px; }
+</style>
+</head>
+<body>
+<button id="apply" onclick="document.getElementById('form').style.display='block'">Apply now</button>
+<button id="apply2" onclick="document.getElementById('form').style.display='block'">Apply now</button>
+<div id="overlay">
+  <div>
+    <p>We value your privacy.</p>
+    <button id="reject">Only Necessary Cookies</button>
+    <button>Accept All Cookies</button>
+  </div>
+</div>
+<div id="form"><label>Email <input name="email"></label></div>
+<script>
+  document.getElementById("reject").addEventListener("click", function () {
+    window.__rejected = true;
+    document.getElementById("overlay").remove();
+  });
+</script>
+</body>
+</html>

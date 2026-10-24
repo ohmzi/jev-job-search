@@ -12,6 +12,7 @@ import { emptyRequired, loadPlan, loadReport, pickSubmit, showsPlanned } from ".
 import type { FillPlan } from "../forms/fields.js";
 import { controlStates, dump, inFront, install, pageFor, shownValues, type Point } from "./session.js";
 import { blockingCaptcha, captchaState } from "./captcha.js";
+import { dismissConsent } from "./consent.js";
 import { protectionSignal, readProtection } from "./protections.js";
 
 export type SubmitResult = {
@@ -94,12 +95,8 @@ export async function submitJob(jev: JevClient, jobId: string, opts: { force?: b
       // A cookie banner over the button would take the click. It is answered with its most private choice
       // (necessary cookies only), never with "accept all". If the button is still covered, it is pressed from script.
       if (await page.awj<string>("coveredBy", pick.selector)) {
-        const decline = await page.awj<Point>("clickByText", DECLINE_COOKIES);
-        if (decline.ok) {
-          await page.click(decline.x, decline.y);
-          await sleep(BROWSER.pollMs * 3);
-          p = await page.awj<Point>("point", pick.selector);
-        }
+        await dismissConsent(page);
+        p = await page.awj<Point>("point", pick.selector);
       }
       opts.onClick?.();
       if (await page.awj<string>("coveredBy", pick.selector)) await page.awj<boolean>("press", pick.selector);
@@ -152,9 +149,6 @@ export async function submitJob(jev: JevClient, jobId: string, opts: { force?: b
     page.close();
   }
 }
-
-/** The choice on a cookie banner that allows the least. */
-const DECLINE_COOKIES = "^\\s*(necessary only|only necessary|necessary cookies only|use necessary cookies only|reject all|reject|decline|decline all|refuse|deny)\\s*$";
 
 /** A board that refuses a second application from the same person for now. The job is skipped, not held. */
 export const ALREADY_APPLIED = /recently applied for another role|unable to accept an additional application|already (applied|submitted an application)/i;

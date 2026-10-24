@@ -466,7 +466,16 @@
     },
     clickByText(pattern) {
       const re = new RegExp(pattern, "i");
-      const b = [...document.querySelectorAll("a, button, [role=button]")].find((x) => visible(x) && re.test(text(x)));
+      const all = [...document.querySelectorAll("a, button, [role=button]")].filter((x) => visible(x) && re.test(text(x)));
+      const onScreen = (el) => { const r = el.getBoundingClientRect(); return r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth; };
+      // A banner can sit over the first match (OneTrust does). An uncovered control is the one a
+      // person would press, so it wins over a covered match even when it comes later on the page.
+      const covered = (el) => {
+        const r = el.getBoundingClientRect();
+        const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return !!top && !el.contains(top) && !top.contains(el);
+      };
+      const b = all.find((x) => onScreen(x) && !covered(x)) || all.find((x) => !covered(x)) || all[0];
       if (!b) return { x: 0, y: 0, ok: false };
       // Where the button leads, when it is a plain link to another page.
       const a = b.closest("a[href]");
