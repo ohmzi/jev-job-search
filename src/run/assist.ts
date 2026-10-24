@@ -1,8 +1,8 @@
 /**
- * Help for the person when a form waits on them. The tool never passes a human check and never
- * reads or types a code a board sent to prove a person is applying. What it does: says so with a
- * notification, puts the form in front, and opens the person's own mail at a search for that
- * email, so the code is one glance away.
+ * Help for the person when a form waits on them, after the tool's own one attempt at a bot
+ * check. It never reads or types a code a board sent to prove a person is applying. What it
+ * does: says so with a notification, puts the form in front, and opens the person's own mail
+ * at a search for that email, so the code is one glance away.
  */
 import { spawn } from "node:child_process";
 import { ASSIST, childEnv } from "../config.js";

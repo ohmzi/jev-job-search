@@ -82,16 +82,19 @@ export async function fillJob(jev: JevClient, profile: Profile, job: Job, opts: 
     signal?.throwIfAborted();
     // A bot check can stand where the form should be (Cloudflare's interstitial, a DataDome
     // denial). The provider's own adapter gets one attempt; what it cannot pass is set aside
-    // with the board's own wall named, never filled around.
-    const shield = await passProtections(page, { timeoutMs: PROTECTIONS.attemptMs }).catch(() => null);
-    if (shield && shield.provider !== "none") {
-      const still = await readProtection(page).catch(() => null);
-      const why = protectionStopReason(shield, still);
-      if (why) return saveReport(blockedReport(job, why, d.url, seconds()));
-      signal?.throwIfAborted();
-      await install(page);
-      d = await dump(page);
-      trace(`${job.company}: bot check ${shield.passed ? `passed (${shield.provider})` : "cleared"} ${Date.now() - started}ms`);
+    // with the board's own wall named, never filled around. A page with a password box is a
+    // sign-in: the adapter chain does not run there, and the account rules own that page.
+    if (!d.hasPassword) {
+      const shield = await passProtections(page, { timeoutMs: PROTECTIONS.attemptMs }).catch(() => null);
+      if (shield && shield.provider !== "none") {
+        const still = await readProtection(page).catch(() => null);
+        const why = protectionStopReason(shield, still);
+        if (why) return saveReport(blockedReport(job, why, d.url, seconds()));
+        signal?.throwIfAborted();
+        await install(page);
+        d = await dump(page);
+        trace(`${job.company}: bot check ${shield.passed ? `passed (${shield.provider})` : "cleared"} ${Date.now() - started}ms`);
+      }
     }
     // Read and written in one synchronous step, so jobs filled side by side do not overwrite each other.
     mutateSession((s) => {
