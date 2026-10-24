@@ -466,9 +466,15 @@ function submitAndRecordOnSite(jev: JevClient, id: string, force: boolean, keepO
         if (r.errors.length) console.log(`  errors: ${r.errors.join(" | ")}`);
         console.log(`  page: ${r.excerpt}`);
         if (r.state === "application_form" && (r.errors.length > 0 || r.formStillOpen)) {
-          // The form is still there with its Submit control: the click did not send it.
-          record(id, "needs_review", `not sent: the form is still open after Submit${r.errors.length ? ` (${r.errors.slice(0, 3).join("; ").slice(0, 160)})` : ""}`);
-          await close();
+          // The form is still there with its Submit control: the click did not send it. It is left
+          // open for the person, because the page named what it wants (a missing entry, a box it
+          // refused) and that is one answer away from being finished.
+          const why = `not sent: the form is still open after Submit${r.errors.length ? ` (${r.errors.slice(0, 3).join("; ").slice(0, 160)})` : ""}`;
+          const e = record(id, "awaiting_user_action", why, {}, "unknown");
+          keepTab(id, "awaiting_user_action");
+          void focusTab(id);
+          assist(e.job, "unknown", r.url);
+          console.log(`  left open for you: finish the form, then run: node bin/jev.js resume`);
           return false;
         }
         // Neither a confirmation nor the form: the application may or may not be with the employer.

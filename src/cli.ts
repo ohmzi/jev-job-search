@@ -192,7 +192,7 @@ program
       if (given.length && !ids.length) return;
       const entries = takeJobs(ids, { count: o.count, dry: !!o.dry, resubmit: !!o.resubmit, shared: sharedAppliedKeys() });
       if (given.length && !entries.length) return;
-      const { reports, sent } = await pipeline(entries, { submit: !!o.submit, dry: !!o.dry, fresh: !!o.fresh, quiet: !!o.json, waitAtSignIn: given.length > 0, humanWaitMs: RUN.humanWaitMs });
+      const { reports, sent } = await pipeline(entries, { submit: !!o.submit, dry: !!o.dry, fresh: !!o.fresh, quiet: !!o.json, waitAtSignIn: given.length > 0, humanWaitMs: RUN.humanWaitMs, keepOpenOnNeedsReview: true });
       if (o.json) console.log(JSON.stringify(reports, null, 2));
       if (!o.dry) {
         await noteApplied(sent);
