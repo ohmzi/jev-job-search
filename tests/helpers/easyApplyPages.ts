@@ -49,10 +49,30 @@ const SIGN_IN = `<!doctype html>
   </div>
 </body></html>`;
 
+const NATIVE = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Senior Android Developer</title></head>
+<body>
+  <div id="site-search"><input type="text" aria-label="Search" placeholder="Search"></div>
+  <main>
+    <h1>Senior Android Developer</h1><p>Programmers.io</p><button>Easy Apply</button>
+    <div class="apply-panel">
+      <div class="apply-counter">1/4 pages</div>
+      <p>Contact info</p>
+      <label for="email">Email address</label>
+      <select id="email"><option>person@example.com</option><option>other@example.com</option></select>
+      <label for="cc">Phone country code</label>
+      <select id="cc"><option>United States (+1)</option><option>Canada (+1)</option></select>
+      <label for="phone">Mobile phone number</label>
+      <input id="phone" type="tel">
+      <footer><button>Next</button></footer>
+    </div>
+  </main>
+</body></html>`;
+
 export type EasyApplyPages = { origin: string; close: () => Promise<void> };
 
 export async function startEasyApplyPages(): Promise<EasyApplyPages> {
-  const pages: Record<string, string> = { "/contact.html": CONTACT, "/review.html": REVIEW, "/sign-in.html": SIGN_IN };
+  const pages: Record<string, string> = { "/contact.html": CONTACT, "/review.html": REVIEW, "/sign-in.html": SIGN_IN, "/native.html": NATIVE };
   const server = createServer((req, res) => {
     const name = (req.url ?? "/").split("?")[0] ?? "";
     const body = pages[name];

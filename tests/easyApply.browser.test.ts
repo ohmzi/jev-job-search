@@ -97,4 +97,21 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("a LinkedIn Easy Apply dialog",
       await closeTab(page.targetId).catch(() => undefined);
     }
   }, 20_000);
+
+  it("marks LinkedIn's own apply view and takes only its footer button", async () => {
+    const page = await open("/native.html?applicantTrackingSystemName=LinkedIn");
+    try {
+      const d = await dump(page);
+      expect(d.easyApply).toBe(true);
+      expect(isApplicationForm(d)).toBe(true);
+      const labels = d.fields.map((f) => f.label);
+      expect(labels).toContain("Email address");
+      expect(labels).not.toContain("Search");
+      expect(d.submitSelectors.some((s) => /Next/.test(s))).toBe(true);
+      expect(d.submitSelectors.some((s) => /Easy Apply/.test(s))).toBe(false);
+    } finally {
+      page.close();
+      await closeTab(page.targetId).catch(() => undefined);
+    }
+  }, 20_000);
 });
