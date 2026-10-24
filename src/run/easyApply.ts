@@ -19,7 +19,7 @@ import { HOURLY, MCP, PATHS } from "../config.js";
 import { appliedKey } from "../jobs/keys.js";
 import { jobId } from "../jobs/normalize.js";
 import { loadQueue, MAYBE_SENT } from "../jobs/queue.js";
-import { recordMcpApplication, recordMcpSubmission, type McpRecord } from "../jobs/recordMcp.js";
+import { recordMcpApplication, recordMcpOutcome, recordMcpSubmission, type McpRecord } from "../jobs/recordMcp.js";
 import { loadRows, parseCsv } from "../log/csv.js";
 import type { Profile } from "../profile/schema.js";
 import { applyOnLinkedIn } from "../sources/linkedinApply.js";
@@ -405,6 +405,16 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
         applied++;
         summary.applied.push({ company: details.company, title: details.title, url });
         const appliedAt = new Date().toISOString();
+        shared.add(key);
+        already.add(url);
+        already.add(recordId);
+        // The shared list goes in before the local record, so a local write failure cannot leave
+        // another portal free to send the same posting.
+        try {
+          recordSharedApplied([{ id: recordId, company: details.company, title: details.title, url, appliedAt }], portal);
+        } catch (err) {
+          log(`[easy] the shared applied list could not be written: ${err instanceof Error ? err.message : String(err)}`);
+        }
         try {
           const written = recordMcpApplication({ ...recordInput, appliedAt }, o.files, log);
           if (!written.rowsWritten) {
@@ -417,17 +427,17 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
           log(`[easy] ${summary.reason}`);
           return summary;
         }
+      } else if (status === "already_applied") {
+        // The time it was sent is unknown, so it is recorded without one and does not count
+        // against today's target. It still stops this or any other portal sending it again.
         shared.add(key);
         already.add(url);
         already.add(recordId);
         try {
-          recordSharedApplied([{ id: recordId, company: details.company, title: details.title, url, appliedAt }], portal);
+          recordSharedApplied([{ id: recordId, company: details.company, title: details.title, url }], portal);
         } catch (err) {
           log(`[easy] the shared applied list could not be written: ${err instanceof Error ? err.message : String(err)}`);
         }
-      } else if (status === "already_applied") {
-        // The time it was sent is unknown, so it is recorded without one and does not count
-        // against today's target. It still stops this or any other portal sending it again.
         try {
           const written = recordMcpApplication({ ...recordInput, appliedAt: null }, o.files, log);
           if (!written.rowsWritten) {
@@ -440,20 +450,40 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
           log(`[easy] ${summary.reason}`);
           return summary;
         }
-        shared.add(key);
-        already.add(url);
-        already.add(recordId);
-        try {
-          recordSharedApplied([{ id: recordId, company: details.company, title: details.title, url }], portal);
-        } catch (err) {
-          log(`[easy] the shared applied list could not be written: ${err instanceof Error ? err.message : String(err)}`);
-        }
         log(`[easy] ${label} was already applied on linkedin`);
-      } else if (status === "blocked" || status === "failed") {
+      } else if (status === "closed") {
+        try {
+          const written = recordMcpOutcome({ ...recordInput, appliedAt: null }, "skipped", "the posting is closed", o.files, log);
+          if (!written.rowsWritten) {
+            summary.reason = "the posting was recorded in the queue but the sheet could not be written; reconcile them";
+            log(`[easy] ${summary.reason}`);
+            return summary;
+          }
+        } catch (err) {
+          summary.reason = `the closed posting could not be recorded: ${err instanceof Error ? err.message : String(err)}`;
+          log(`[easy] ${summary.reason}`);
+          return summary;
+        }
+        log(`[easy] ${label} skipped: the posting is closed`);
+      } else if (status === "blocked" || status === "failed" || status === "not_easy_apply" || status === "external") {
+        // The fork returns these before its submit control is clicked, so nothing was sent. The
+        // pre-send record is replaced by needs_review, which a later run may take again.
         summary.left++;
+        try {
+          const written = recordMcpOutcome({ ...recordInput, appliedAt: null }, "needs_review", message, o.files, log);
+          if (!written.rowsWritten) {
+            summary.reason = "the posting was recorded in the queue but the sheet could not be written; reconcile them";
+            log(`[easy] ${summary.reason}`);
+            return summary;
+          }
+        } catch (err) {
+          summary.reason = `the unsent posting could not be recorded: ${err instanceof Error ? err.message : String(err)}`;
+          log(`[easy] ${summary.reason}`);
+          return summary;
+        }
         log(`[easy] ${label} ${status}: ${message}`);
       } else {
-        // not_easy_apply, closed and outcome_unknown leave the entry unconfirmed.
+        // outcome_unknown may have been sent: the entry stays unconfirmed.
         log(`[easy] ${label} ${status}: ${message}`);
       }
     }

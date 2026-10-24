@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -7,6 +7,7 @@ import { jobId, type Job } from "../src/jobs/normalize.js";
 import { entryFor, loadQueue, saveQueue } from "../src/jobs/queue.js";
 import { loadRows } from "../src/log/csv.js";
 import type { Profile } from "../src/profile/schema.js";
+import { countToday, localDay } from "../src/run/daily.js";
 import { applyEasyApply } from "../src/run/easyApply.js";
 import { Policy } from "../src/run/policy.js";
 import { loadSharedApplied, recordSharedApplied } from "../src/run/shared.js";
@@ -131,6 +132,8 @@ describe("the hourly Easy Apply step", () => {
       job: { source: "linkedin easy apply (mcp)", url: "https://www.linkedin.com/jobs/view/111111", ats: "linkedin" },
     });
     expect(queue[0]?.appliedAt).not.toBeNull();
+    // The stamped time is the real clock, not the injected pacing time.
+    expect(queue[0]?.appliedAt).not.toBe(NOW.toISOString());
     const rows = loadRows(f.rows);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ "App. Status": "Applied", Source: "linkedin easy apply (mcp)", Company: "Acme Corp", "Role / Title": "Android Engineer" });
@@ -327,6 +330,73 @@ describe("the hourly Easy Apply step", () => {
     expect(h.calls.some((c) => c.tool === "apply_to_job")).toBe(false);
     expect(summary.applied).toEqual([]);
     expect(summary.reason).toMatch(/could not be written/);
+  });
+
+  it("does not mistake a notice-like string in the search sections for a board notice", async () => {
+    const h = harness({
+      search_jobs: () => JSON.stringify({ url: "https://www.linkedin.com/jobs/search/", sections: { search_results: "captcha unusual activity security check rate limited verify you are human" }, job_ids: ["111111"] }),
+      get_job_apply_url: () => readReply("111111", "easy_apply"),
+      get_job_details: () => detailsReply("5 hours ago"),
+      apply_to_job: () => applyReply(),
+    });
+    const summary = await applyEasyApply(profile, { policy, call: h.call, close: h.close, now: NOW, sleep: h.sleep, files: files() });
+
+    expect(summary.stopped).toBeNull();
+    expect(summary.applied).toHaveLength(1);
+  });
+
+  it.each([
+    ["blocked", "needs_review", "Needs you"],
+    ["external", "needs_review", "Needs you"],
+    ["closed", "skipped", "Skipped: the posting is closed"],
+  ] as const)("restores a %s posting the fork proved it did not send", async (status, queueStatus, csvStatus) => {
+    const f = files();
+    const first = harness({
+      search_jobs: () => searchReply(["111111"]),
+      get_job_apply_url: () => readReply("111111", "easy_apply"),
+      get_job_details: () => detailsReply("5 hours ago"),
+      apply_to_job: () => applyReply(status),
+    });
+    const one = await applyEasyApply(profile, { policy, call: first.call, close: first.close, now: NOW, sleep: first.sleep, files: f });
+
+    expect(one.applied).toEqual([]);
+    const queue = loadQueue(f.queue).entries;
+    expect(queue[0]).toMatchObject({ status: queueStatus, appliedAt: null });
+    expect(queue[0]?.statusReason).toBe(status === "closed" ? "the posting is closed" : status);
+    expect(loadRows(f.rows)[0]?.["App. Status"]).toBe(csvStatus);
+    // Nothing was sent, so the day has no unconfirmed send hiding in its count.
+    expect(countToday(queue, localDay(NOW)).unconfirmed).toBe(0);
+
+    // The next hour still considers the posting instead of treating it as already sent.
+    const second = harness({
+      search_jobs: () => searchReply(["111111"]),
+      get_job_apply_url: () => readReply("111111", "easy_apply"),
+      get_job_details: () => detailsReply("5 hours ago"),
+      apply_to_job: () => applyReply(),
+    });
+    const two = await applyEasyApply(profile, { policy, call: second.call, close: second.close, now: NOW, sleep: second.sleep, files: f });
+    expect(two.scanned).toBe(1);
+    expect(second.calls.some((c) => c.tool === "get_job_apply_url")).toBe(true);
+  });
+
+  it("writes the shared list even when the local record fails after a confirmed send", async () => {
+    const f = files();
+    const h = harness({
+      search_jobs: () => searchReply(["111111"]),
+      get_job_apply_url: () => readReply("111111", "easy_apply"),
+      get_job_details: () => detailsReply("5 hours ago"),
+      apply_to_job: () => {
+        // Make the queue unreadable between the pre-send record and the promotion.
+        rmSync(f.queue, { force: true });
+        mkdirSync(f.queue);
+        return applyReply();
+      },
+    });
+    const summary = await applyEasyApply(profile, { policy, call: h.call, close: h.close, now: NOW, sleep: h.sleep, files: f });
+
+    expect(summary.applied).toHaveLength(1);
+    expect(summary.reason).toMatch(/could not be recorded/);
+    expect(loadSharedApplied().some((e) => e.company === "Acme Corp" && e.title === "Android Engineer")).toBe(true);
   });
 
   it("skips a posting another portal has already sent", async () => {

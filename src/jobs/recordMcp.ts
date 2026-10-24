@@ -33,7 +33,9 @@ export type McpRecord = { entry: QueueEntry; rowsWritten: boolean };
 
 const DEFAULT_SOURCE = "linkedin easy apply (mcp)";
 
-function write(input: McpApplicationInput, status: "applied" | "submission_unknown", files: RecordFiles, log?: (line: string) => void): McpRecord {
+type McpRecordStatus = "applied" | "submission_unknown" | "needs_review" | "skipped";
+
+function write(input: McpApplicationInput, status: McpRecordStatus, reason: string | null, files: RecordFiles, log?: (line: string) => void): McpRecord {
   const url = input.url || `https://www.linkedin.com/jobs/view/${input.jobId}`;
   const source = input.source ?? DEFAULT_SOURCE;
   const job: Job = {
@@ -60,7 +62,7 @@ function write(input: McpApplicationInput, status: "applied" | "submission_unkno
     // A posting found by the search keeps the source that sent it, not the one the search gave it.
     entry.job.source = source;
     entry.status = status;
-    entry.statusReason = status === "submission_unknown" ? "the linkedin fork did not confirm the application" : null;
+    entry.statusReason = reason;
     entry.appliedAt = status === "applied" ? input.appliedAt : null;
     entry.updatedAt = new Date().toISOString();
     entry.applyable = false;
@@ -81,10 +83,19 @@ function write(input: McpApplicationInput, status: "applied" | "submission_unkno
 
 /** Records that a send is about to be attempted. Written before the fork's submit tool is called. */
 export function recordMcpSubmission(input: McpApplicationInput, files: RecordFiles = {}, log?: (line: string) => void): McpRecord {
-  return write(input, "submission_unknown", files, log);
+  return write(input, "submission_unknown", "the linkedin fork did not confirm the application", files, log);
 }
 
 /** Promotes a confirmed application to applied. Leaves the time null when it is unknown. */
 export function recordMcpApplication(input: McpApplicationInput, files: RecordFiles = {}, log?: (line: string) => void): McpRecord {
-  return write(input, "applied", files, log);
+  return write(input, "applied", null, files, log);
+}
+
+/**
+ * Sets aside a posting the fork proved it did not send. `needs_review` carries the fork's own
+ * words; `skipped` is for a closed posting. Neither is a send, so the entry is not left
+ * unconfirmed and a later run may take the posting again.
+ */
+export function recordMcpOutcome(input: McpApplicationInput, status: "needs_review" | "skipped", reason: string | null, files: RecordFiles = {}, log?: (line: string) => void): McpRecord {
+  return write(input, status, reason, files, log);
 }
