@@ -133,6 +133,8 @@ export const MCP = {
   startupMs: 90_000,
   /** Longest wait for one tool call. */
   callMs: 30_000,
+  /** Longest wait for an Easy Apply walk, which fills every page of the wizard and presses submit. */
+  applyCallMs: 240_000,
   /** The most listings one hourly search or apply pass asks the servers about. */
   maxPerRun: 30,
   /** A listing the servers had no employer link for is not asked about again for this long. */

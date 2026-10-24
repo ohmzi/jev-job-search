@@ -44,6 +44,19 @@ describe("the MCP client", () => {
     }
   });
 
+  it("bounds a call by the timeout it is given", async () => {
+    const callTool = vi.fn(async () => "{}");
+    const started = vi.spyOn(McpClient, "start").mockResolvedValueOnce({ callTool, close: () => {} } as unknown as McpClient);
+    const caller = mcpCaller();
+    try {
+      await caller.call("linkedin", "apply_to_job", { job_id: "4252026496" }, MCP.applyCallMs);
+      expect(callTool).toHaveBeenCalledWith("apply_to_job", { job_id: "4252026496" }, MCP.applyCallMs);
+    } finally {
+      caller.close();
+      started.mockRestore();
+    }
+  });
+
   it("asks each board for its read tool", async () => {
     const cacheFile = path.join(mkdtempSync(path.join(os.tmpdir(), "jev-mcp-")), "links.json");
     const asked: { board: string; tool: string }[] = [];

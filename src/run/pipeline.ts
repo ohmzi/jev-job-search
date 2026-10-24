@@ -5,7 +5,7 @@
  * Fills run side by side and paced per site, the writer takes a few forms at
  * a time, and submissions go one at a time with a pause per site.
  */
-import { ACCOUNTS, PROTECTIONS, RUN } from "../config.js";
+import { ACCOUNTS, MCP, PROTECTIONS, RUN } from "../config.js";
 import { accountGate, adapterFor, capabilityFor } from "../accounts/capability.js";
 import { signedInNow } from "../accounts/gate.js";
 import { ensureBrowser, sleep } from "../browser/cdp.js";
@@ -22,7 +22,10 @@ import { applyUrlFor, hostIs, type Job } from "../jobs/normalize.js";
 import { loadQueue, mutateQueue, RUN_OWNED, sortEntries, updateEntry, type QueueEntry } from "../jobs/queue.js";
 import { appliedKey } from "../jobs/keys.js";
 import { followListings } from "./followListings.js";
-import type { Caller } from "../sources/listingLink.js";
+import { listingOf, mcpCaller, type Caller, type ToolCall } from "../sources/listingLink.js";
+import { applyOnLinkedIn, type McpApplyResult } from "../sources/linkedinApply.js";
+import { addLearned } from "../answers/learned.js";
+import { FieldKind } from "../forms/fields.js";
 import { recentFirst } from "../jobs/recency.js";
 import { withStore } from "../util/store.js";
 import { rememberWalledHost } from "../jobs/walled.js";
@@ -695,6 +698,71 @@ async function settle(jev: JevClient, r: FillReport, o: RunOptions): Promise<boo
   return outcome.action === "applied";
 }
 
+/** True for a LinkedIn Easy Apply posting: it keeps its board link, and the LinkedIn MCP sends it. */
+export function isMcpApply(e: QueueEntry): boolean {
+  return !!e.applyable && listingOf(e.job.url)?.board === "linkedin";
+}
+
+/** The control kind a question the walk could not answer is reported as. */
+const walkedKind = (kind: string): FieldKind => (FieldKind.safeParse(kind).success ? (kind as FieldKind) : "text");
+
+/**
+ * Sends one Easy Apply application through the LinkedIn MCP and records what came back. The job is
+ * recorded unconfirmed before the call, because from then on the application may reach the
+ * employer: an answer that cannot be read, or none at all, leaves it unconfirmed, never to be sent
+ * again by a later run. Called only by a run that was asked to send.
+ */
+async function applyViaMcp(entry: QueueEntry, call: ToolCall, o: RunOptions): Promise<boolean> {
+  const id = entry.job.id;
+  record(id, "submission_unknown", "sent to the LinkedIn MCP; waiting for its answer");
+  let result: McpApplyResult;
+  try {
+    result = await applyOnLinkedIn(id, { call, callMs: MCP.applyCallMs });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.log(`${id}  not confirmed: ${message}. Check the posting on LinkedIn before applying again`);
+    return false;
+  }
+  if (!o.quiet) console.log(`${id}  ${result.status}: ${result.message}`);
+  let sent = false;
+  switch (result.status) {
+    case "applied":
+    case "already_applied":
+      record(id, "applied", result.message);
+      sent = true;
+      break;
+    case "blocked":
+    case "failed":
+    case "not_easy_apply":
+    case "external": {
+      // The walk did not send it. The job is set aside with the walk's own words, and the questions
+      // it could not answer become the ones the dashboard asks, through the report file.
+      record(id, "needs_review", result.message);
+      const report = blockedReport(entry.job, result.message);
+      report.reviews = result.unanswered.map((q, i) => ({
+        id: `mcp${i}`,
+        selector: "",
+        kind: walkedKind(q.kind),
+        label: q.label,
+        options: q.options,
+        why: "the easy apply walk could not answer this",
+      }));
+      saveReport(report);
+      break;
+    }
+    case "closed":
+      record(id, "skipped", "the posting is closed");
+      break;
+    case "outcome_unknown":
+      // The walk could not say whether the application went through: it stays unconfirmed.
+      break;
+  }
+  if (result.learned.length) {
+    addLearned(result.learned.map((l) => ({ jobId: id, company: entry.job.company, title: entry.job.title, question: l.question, answer: l.answer, options: l.options })));
+  }
+  return sent;
+}
+
 export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ reports: FillReport[]; sent: string[] }> {
   const profile = loadProfile();
   // An Indeed or LinkedIn listing is taken to the employer's own form first, when its board's MCP server has the link.
@@ -704,6 +772,10 @@ export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ 
   const writer = limiter(RUN.writerConcurrency);
   const reports = new Array<FillReport>(entries.length);
   const sent: string[] = [];
+  // An Easy Apply posting keeps its board link: it opens no page, so it is sent through the board's
+  // own server instead of the fill loop. Everything else goes through Chrome as before.
+  const mcp = entries.filter(isMcpApply);
+  const formJobs = entries.filter((e) => !isMcpApply(e));
   const after: Promise<void>[] = [];
   /** Jobs to fill once more when the rest are done, each with the window to itself. */
   const again: QueueEntry[] = [];
@@ -714,13 +786,23 @@ export async function pipeline(entries: QueueEntry[], o: RunOptions): Promise<{ 
   };
   // The documents for the next job are written while this one is being filled, so one job at a time stays quick.
   const prefetch = (i: number) => {
-    const next = entries[i + 1];
+    const next = formJobs[i + 1];
     const policy = documentPolicy();
     if (!next || !(policy.resume || policy.cover) || o.dry) return;
     tailorJob(profile, next, { cover: policy.cover }).catch(() => undefined);
   };
-  await paced(entries, (e) => hostOf(applyUrlFor(asJob(e))), async (e) => {
-    prefetch(entries.indexOf(e));
+  // An MCP application is a submission, so it is made only when this run was asked to send. A
+  // rehearsal and a fill-only run leave the job alone. One server serves the loop and is stopped after it.
+  if (mcp.length && !o.dry && o.submit && !o.fillOnly) {
+    const caller = mcpCaller(o.quiet ? () => {} : (line) => console.log(line));
+    try {
+      for (const e of mcp) if (await applyViaMcp(e, caller.call, o)) sent.push(e.job.id);
+    } finally {
+      caller.close();
+    }
+  }
+  await paced(formJobs, (e) => hostOf(applyUrlFor(asJob(e))), async (e) => {
+    prefetch(formJobs.indexOf(e));
     let first = await fillOnce(jev, profile, e, o.dry);
     // Signed in by the person, the form is opened again and filled.
     if (o.waitAtSignIn && (await waitedAtSignIn(e, first, o.signInWaitMs ? { waitMs: o.signInWaitMs } : {}))) first = await fillOnce(jev, profile, e, o.dry);

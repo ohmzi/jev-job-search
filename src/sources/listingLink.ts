@@ -19,8 +19,11 @@ export type Listing = { board: Board; id: string };
 /** What a board's server said about one posting: the employer's link and how the posting takes applications. */
 export type ResolvedListing = { url: string | null; applyType: string | null };
 
-/** Asks one board's server about one listing with the named tool and returns the text of its reply. */
-export type ToolCall = (board: Board, tool: string, args: Record<string, unknown>) => Promise<string>;
+/**
+ * Asks one board's server about one listing with the named tool and returns the text of its reply.
+ * `timeoutMs` bounds the call; left out, the server's reading bound applies.
+ */
+export type ToolCall = (board: Board, tool: string, args: Record<string, unknown>, timeoutMs?: number) => Promise<string>;
 export type Caller = { call: ToolCall; close: () => void };
 
 /** Which board and which posting a link is, or null when it is neither Indeed nor LinkedIn. */
@@ -149,10 +152,10 @@ export function mcpCaller(log: (line: string) => void = () => {}): Caller {
     return p;
   };
   return {
-    async call(board, tool, args) {
+    async call(board, tool, args, timeoutMs) {
       const client = await clientFor(board);
       if (!client) throw new NotAvailable(board);
-      return client.callTool(tool, args, MCP.callMs);
+      return client.callTool(tool, args, timeoutMs ?? MCP.callMs);
     },
     close() {
       for (const p of clients.values()) void p.then((c) => c?.close());

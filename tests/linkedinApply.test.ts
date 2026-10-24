@@ -4,9 +4,9 @@ import { applyOnLinkedIn, McpApplyError, type McpApplyResult } from "../src/sour
 import type { ToolCall } from "../src/sources/listingLink.js";
 
 const caller = (reply: string | (() => Promise<string>)) => {
-  const calls: { board: string; tool: string; args: Record<string, unknown> }[] = [];
-  const call = async (board: string, tool: string, args: Record<string, unknown>) => {
-    calls.push({ board, tool, args });
+  const calls: { board: string; tool: string; args: Record<string, unknown>; timeoutMs: number | undefined }[] = [];
+  const call = async (board: string, tool: string, args: Record<string, unknown>, timeoutMs?: number) => {
+    calls.push({ board, tool, args, timeoutMs });
     return typeof reply === "string" ? reply : reply();
   };
   return { calls, call: call as ToolCall };
@@ -24,7 +24,7 @@ describe("applying through the LinkedIn MCP", () => {
     });
     const c = caller(reply);
     const result = await applyOnLinkedIn("4252026496", { call: c.call });
-    expect(c.calls).toEqual([{ board: "linkedin", tool: MCP.linkedin.tools.apply, args: { job_id: "4252026496" } }]);
+    expect(c.calls).toEqual([{ board: "linkedin", tool: MCP.linkedin.tools.apply, args: { job_id: "4252026496" }, timeoutMs: undefined }]);
     expect(result).toEqual({
       status: "applied",
       message: "Application sent",
@@ -69,8 +69,11 @@ describe("applying through the LinkedIn MCP", () => {
 
   it("gives up on a call that runs past callMs", async () => {
     const never = () => new Promise<string>(() => {});
-    const err = await applyOnLinkedIn("4252026496", { call: caller(never).call, callMs: 20 }).catch((e: unknown) => e);
+    const c = caller(never);
+    const err = await applyOnLinkedIn("4252026496", { call: c.call, callMs: 20 }).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(McpApplyError);
     expect((err as Error).message).toMatch(/did not answer/);
+    // The same bound reaches the transport, which otherwise cuts every call at its own default.
+    expect(c.calls[0]?.timeoutMs).toBe(20);
   });
 });
