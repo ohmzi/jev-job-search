@@ -94,11 +94,13 @@ doctor` says what is in place and what to do next.
   wait for a person, but it does make the one attempt; what it cannot pass
   is left for the person and the board is left alone. A challenge that
   stands where the form should be is reported and the job is set aside. A
-  plain checkbox that only states the applicant is a person, or accepts a
-  privacy notice or agreement, is a form field like any other and is
-  ticked from the model's answer; a marketing or newsletter box is never
-  ticked and a signature is never typed (`MARKETING_Q`, `HUMAN_CONFIRM_Q`
-  in `src/forms/mapForm.ts`). A code a board emails to confirm an application is
+  plain checkbox that only states the applicant is a person, or an "I agree"
+  or "I consent" box on the application form, is ticked (`LEADING_AGREE` and
+  `HUMAN_CONFIRM_Q` in `src/forms/mapForm.ts`); a marketing, newsletter or
+  job-alert box is never ticked; an agreement about a criminal record, a
+  background, credit or a legal waiver is left to the person; and a signature
+  is never typed (`MARKETING_Q`, `SENSITIVE_AGREEMENT` in
+  `src/forms/mapForm.ts`). A code a board emails to confirm an application is
   different. With the person's consent it is read from their mailbox and
   entered by `node bin/jev.js code <id>` (`src/run/code.ts`): the code
   arrives on standard input, goes into the one box the form has for it,

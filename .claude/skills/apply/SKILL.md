@@ -66,6 +66,7 @@ updated to match.
 - **Never sign in, and never touch a password or a token.** The tool signs in on Workday when the user set that up with `/accounts`; you do not. Never ask for, read, type or repeat a password or a token. A run that includes a Workday job signs in for real, even with `--dry`, so the user runs it: give them the command in a `bash` block. Runs on the other boards are yours to run as before.
 - **Never solve a CAPTCHA, and never press a widget twice.** The tool makes its own one attempt: it presses a reCAPTCHA or Turnstile checkbox once, waits out a managed Cloudflare page, and gives DataDome or Akamai their moment. Anything it cannot pass is the user's. The form stays open; `resume` records it when they finish. A code a board emails is different: read it with the Gmail MCP and give it to `code <id>` on standard input, as above. The code enters no argument, no reply and no record.
 - **Never sign for the user.** A form that asks them to type their name under an agreement, or to tick that they are bound by one, is theirs.
+- **An "I agree" consent box is ticked.** The tool ticks an "I agree" or "I consent" box on the application form. A marketing, newsletter or job-alert box is never ticked, and an agreement about a criminal record, a background or credit check, or a legal waiver is left to the user.
 - **Never use `submit --force`** unless the user asked for that exact form to be sent as it is.
 - Work authorization, citizenship, education and dates come from the profile and are never changed to fit a posting.
 

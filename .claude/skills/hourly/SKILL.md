@@ -88,7 +88,9 @@ page is opened and tried too.
 - **Never type a password, make an account or read mail** as part of the
   hourly run, and never solve a picture or puzzle challenge or press a widget
   twice. The run itself makes the one checkbox attempt; what is left is for the
-  person. It may open a sign-in page, put it in front and
+  person. It ticks an "I agree" consent box on the application form, never a
+  marketing or job-alert box, and leaves a criminal, background, credit or
+  waiver agreement to the person. It may open a sign-in page, put it in front and
   wait for the person; they sign in themselves. A code, sign-in or challenge is
   left for them. The hourly run may fill and send a fresh job, because the
   person turned `/hourly install` on and wrote the policy.
