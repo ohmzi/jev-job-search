@@ -124,9 +124,11 @@ export const DEEPSEEK = {
 
 /**
  * Finding the employer's own form behind an Indeed or LinkedIn listing. Each board's MCP server is
- * started as a child process and asked for the posting's apply link. Neither server applies for
- * anyone: they read the posting. What they give back is a link, and the existing Chrome flow fills it.
- * An MCP that fails or has no link leaves the listing to Chrome, which follows the page's Apply button.
+ * started as a child process and asked for the posting's apply link. The Indeed server only reads
+ * the posting. The LinkedIn fork reads it too, and its apply tool walks LinkedIn's own wizard and
+ * sends an Easy Apply application. Otherwise what comes back is a link, and the existing Chrome
+ * flow fills it. An MCP that fails or has no link leaves the listing to Chrome, which follows the
+ * page's Apply button.
  */
 export const MCP = {
   /** Longest wait for a server to start and answer its handshake. The first start pulls an image or a package. */
@@ -139,8 +141,13 @@ export const MCP = {
   maxPerRun: 30,
   /** A listing the servers had no employer link for is not asked about again for this long. */
   retryAfterHours: 6,
-  /** LinkedIn: the local fork, whose read tool says how a posting takes applications and whose apply tool sends one. */
-  linkedin: { command: "uv", args: ["run", "--directory", "/home/ohmz/StudioProjects/linkedin-mcp-server", "-m", "linkedin_mcp_server"], tools: { read: "get_job_apply_url", apply: "apply_to_job" } },
+  /**
+   * LinkedIn: the local fork, whose read tool says how a posting takes applications and whose apply
+   * tool sends one. `--project` installs and imports the fork, but unlike `--directory` it leaves the
+   * child's working directory alone, so the fork resolves the apply identity for this project's
+   * folder rather than always falling back to its default.
+   */
+  linkedin: { command: "uv", args: ["run", "--project", "/home/ohmz/StudioProjects/linkedin-mcp-server", "python", "-m", "linkedin_mcp_server"], tools: { read: "get_job_apply_url", apply: "apply_to_job" } },
   /** Indeed: the openings-mcp image, whose read tool returns a posting's details. */
   indeed: { command: "docker", args: ["run", "-i", "--rm", "ghcr.io/amikai/openings-mcp"], tools: { read: "indeed_get_job_detail" } },
   /** The openings-mcp Indeed tools want a country name. The profile keeps JobSpy's spelling. */

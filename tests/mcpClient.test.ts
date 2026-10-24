@@ -15,6 +15,17 @@ vi.mock("node:child_process", async (importOriginal) => {
 
 const fake = (mode: string) => ({ command: process.execPath, args: [fileURLToPath(new URL("./helpers/fakeMcpServer.mjs", import.meta.url)), mode] });
 
+describe("the LinkedIn fork's start command", () => {
+  it("uses --project and python -m so the child keeps the caller's working directory", () => {
+    const args = [...MCP.linkedin.args];
+    expect(args).toContain("--project");
+    expect(args).not.toContain("--directory");
+    expect(args.indexOf("python")).toBeGreaterThan(-1);
+    expect(args.indexOf("python")).toBeLessThan(args.indexOf("-m"));
+    expect(args[args.indexOf("-m") + 1]).toBe("linkedin_mcp_server");
+  });
+});
+
 describe("the MCP client", () => {
   beforeEach(() => {
     vi.mocked(spawn).mockClear();
