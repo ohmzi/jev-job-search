@@ -240,7 +240,7 @@ async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, 
     trace(`${job.company}: put back ${wiped.length - still.length} of ${wiped.length} wiped value(s) after ${wait}ms`);
   }
   failedRaw = [...(await secondLook(page, jev, profile, job, d, plan, failedRaw)), ...uploadFailures];
-  failedRaw = await followUp(page, jev, profile, job, d, plan, failedRaw);
+  failedRaw = await followUp(page, jev, profile, job, d, plan, failedRaw, uploaded);
   // An attempt that ran out of time was replaced by another: it must not write over that one's plan or report.
   at.signal?.throwIfAborted();
   savePlan(job.id, d, plan);
@@ -256,7 +256,7 @@ async function fillPage(page: Page, jev: JevClient, profile: Profile, job: Job, 
  * selector, and controls that are new are mapped and filled like the rest. The dump and the plan are
  * updated in place, so every later step sees the page as it is.
  */
-async function followUp(page: Page, jev: JevClient, profile: Profile, job: Job, d: FieldsDump, plan: FillPlan, failed: Failure[]): Promise<Failure[]> {
+async function followUp(page: Page, jev: JevClient, profile: Profile, job: Job, d: FieldsDump, plan: FillPlan, failed: Failure[], uploaded: Set<string> = new Set(plan.uploads.map((u) => u.selector))): Promise<Failure[]> {
   let out = failed;
   for (let round = 0; round < FORM.followUpRounds; round++) {
     const now = await dump(page);
@@ -274,6 +274,18 @@ async function followUp(page: Page, jev: JevClient, profile: Profile, job: Job, 
     await readDropdownOptions(page, added);
     const more = await mapForm(jev, profile, job, { ...now, fields: added });
     out = [...out, ...(await applyFills(page, more.fills, profile, guideFor({ ...now, fields: added })))];
+    // A file box that only appeared after the first pass (TeamViewer's upload widget does this)
+    // is given the document it asks for, exactly like a box that was on the page from the start.
+    for (const u of more.uploads) {
+      if (uploaded.has(u.selector)) continue;
+      const why = (await uploadFile(page, u.selector, u.path)) ?? null;
+      if (why) out.push({ selector: u.selector, why });
+      else {
+        uploaded.add(u.selector);
+        plan.uploads.push(u);
+        trace(`${job.company}: upload ${path.basename(u.path)} to a box that appeared late`);
+      }
+    }
     d.fields.push(...added);
     plan.fields.push(...more.fields);
     plan.fills.push(...more.fills);
