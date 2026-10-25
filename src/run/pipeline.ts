@@ -754,7 +754,8 @@ async function applyViaMcp(entry: QueueEntry, call: ToolCall, o: RunOptions): Pr
     case "blocked":
     case "failed":
     case "not_easy_apply":
-    case "external": {
+    case "external":
+    case "wizard_not_opened": {
       // The walk did not send it. The job is set aside with the walk's own words, and the questions
       // it could not answer become the ones the dashboard asks, through the report file.
       record(id, "needs_review", result.message);
@@ -773,6 +774,12 @@ async function applyViaMcp(entry: QueueEntry, call: ToolCall, o: RunOptions): Pr
     case "closed":
       record(id, "skipped", "the posting is closed");
       report = mcpReport(entry, "blocked", "the posting is closed");
+      break;
+    case "wizard_open":
+      // The open-only probe found the dialog but did not fill it. This path does not pass
+      // open_only, so it is here only so the reply is never left as an unconfirmed send.
+      record(id, "needs_review", "the wizard opened but was not filled");
+      report = mcpReport(entry, "blocked", "the wizard opened but was not filled");
       break;
     case "outcome_unknown":
       // The walk could not say whether the application went through: it stays unconfirmed.

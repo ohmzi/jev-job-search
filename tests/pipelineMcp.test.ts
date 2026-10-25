@@ -352,6 +352,27 @@ describe("Easy Apply jobs through the LinkedIn MCP", () => {
     expect(result.reports[0]).toMatchObject({ jobId: jobId(URL_ONE), state: "blocked", reason: "the posting is closed" });
   });
 
+  it("a wizard that did not open is needs_review, not unconfirmed", async () => {
+    fake.call = service(async () => reply("wizard_not_opened"));
+
+    const result = await pipeline(taken(), base());
+
+    expect(loadQueue().entries[0]).toMatchObject({ status: "needs_review", statusReason: "the server said wizard_not_opened", appliedAt: null });
+    expect(loadQueue().entries[0]?.status).not.toBe("submission_unknown");
+    expect(result.sent).toEqual([]);
+    expect(result.reports[0]).toMatchObject({ jobId: jobId(URL_ONE), state: "blocked", reason: "the server said wizard_not_opened" });
+  });
+
+  it("a wizard that opened but was not filled is needs_review", async () => {
+    fake.call = service(async () => reply("wizard_open"));
+
+    const result = await pipeline(taken(), base());
+
+    expect(loadQueue().entries[0]).toMatchObject({ status: "needs_review", statusReason: "the wizard opened but was not filled", appliedAt: null });
+    expect(result.sent).toEqual([]);
+    expect(result.reports[0]).toMatchObject({ jobId: jobId(URL_ONE), state: "blocked", reason: "the wizard opened but was not filled" });
+  });
+
   it("an unknown outcome leaves the job unconfirmed", async () => {
     fake.call = service(async () => reply("outcome_unknown"));
 

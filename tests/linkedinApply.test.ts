@@ -57,6 +57,13 @@ describe("applying through the LinkedIn MCP", () => {
     expect("project" in result).toBe(false);
   });
 
+  it("understands the wizard statuses the fork returns", async () => {
+    for (const status of ["wizard_open", "wizard_not_opened"]) {
+      const result = await applyOnLinkedIn("4252026496", { call: caller(JSON.stringify({ status, message: status })).call });
+      expect(result.status).toBe(status);
+    }
+  });
+
   it("an unreadable reply is a failure, not an application", async () => {
     await expect(applyOnLinkedIn("4252026496", { call: caller("not json").call })).rejects.toThrow(McpApplyError);
   });

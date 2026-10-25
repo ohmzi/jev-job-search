@@ -548,7 +548,7 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
           return summary;
         }
         log(`[easy] ${label} skipped: the posting is closed`);
-      } else if (status === "blocked" || status === "failed" || status === "not_easy_apply" || status === "external") {
+      } else if (status === "blocked" || status === "failed" || status === "not_easy_apply" || status === "external" || status === "wizard_not_opened") {
         // The fork returns these before its submit control is clicked, so nothing was sent. The
         // pre-send record is replaced by needs_review, which a later run may take again.
         summary.left++;
@@ -565,6 +565,24 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
           return summary;
         }
         log(`[easy] ${label} ${status}: ${message}`);
+      } else if (status === "wizard_open") {
+        // The open-only probe found the dialog but did not fill it. It is not a send, and this
+        // step does not pass open_only, so this is only here so the reply is never mistaken for one.
+        summary.left++;
+        const reason = "the wizard opened but was not filled";
+        try {
+          const written = recordMcpOutcome({ ...recordInput, appliedAt: null }, "needs_review", reason, o.files, log);
+          if (!written.rowsWritten) {
+            summary.reason = "the posting was recorded in the queue but the sheet could not be written; reconcile them";
+            log(`[easy] ${summary.reason}`);
+            return summary;
+          }
+        } catch (err) {
+          summary.reason = `the opened wizard could not be recorded: ${err instanceof Error ? err.message : String(err)}`;
+          log(`[easy] ${summary.reason}`);
+          return summary;
+        }
+        log(`[easy] ${label} ${reason}`);
       } else {
         // outcome_unknown may have been sent: the entry stays unconfirmed.
         log(`[easy] ${label} ${status}: ${message}`);

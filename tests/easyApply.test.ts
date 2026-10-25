@@ -358,6 +358,7 @@ describe("the hourly Easy Apply step", () => {
   it.each([
     ["blocked", "needs_review", "Needs you"],
     ["external", "needs_review", "Needs you"],
+    ["wizard_not_opened", "needs_review", "Needs you"],
     ["closed", "skipped", "Skipped: the posting is closed"],
   ] as const)("restores a %s posting the fork proved it did not send", async (status, queueStatus, csvStatus) => {
     const f = files();
@@ -387,6 +388,32 @@ describe("the hourly Easy Apply step", () => {
     const two = await applyEasyApply(profile, { session: sessionOptions, policy, call: second.call, close: second.close, now: NOW, sleep: second.sleep, files: f });
     expect(two.scanned).toBe(1);
     expect(second.calls.some((c) => c.tool === "get_job_apply_url")).toBe(true);
+  });
+
+  it("sets aside a wizard that opened but was not filled and retries it later", async () => {
+    const f = files();
+    const first = harness({
+      search_jobs: () => searchReply(["111111"]),
+      get_job_apply_url: () => readReply("111111", "easy_apply"),
+      get_job_details: () => detailsReply("5 hours ago"),
+      apply_to_job: () => applyReply("wizard_open"),
+    });
+    const one = await applyEasyApply(profile, { session: sessionOptions, policy, call: first.call, close: first.close, now: NOW, sleep: first.sleep, files: f });
+
+    expect(one.applied).toEqual([]);
+    const queue = loadQueue(f.queue).entries;
+    expect(queue[0]).toMatchObject({ status: "needs_review", statusReason: "the wizard opened but was not filled", appliedAt: null });
+    expect(countToday(queue, localDay(NOW)).unconfirmed).toBe(0);
+
+    const second = harness({
+      search_jobs: () => searchReply(["111111"]),
+      get_job_apply_url: () => readReply("111111", "easy_apply"),
+      get_job_details: () => detailsReply("5 hours ago"),
+      apply_to_job: () => applyReply(),
+    });
+    const two = await applyEasyApply(profile, { session: sessionOptions, policy, call: second.call, close: second.close, now: NOW, sleep: second.sleep, files: f });
+    expect(two.scanned).toBe(1);
+    expect(two.applied).toHaveLength(1);
   });
 
   it("writes the shared list even when the local record fails after a confirmed send", async () => {

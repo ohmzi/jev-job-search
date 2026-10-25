@@ -12,7 +12,7 @@ import { z } from "zod";
 import { MCP } from "../config.js";
 import type { ToolCall } from "./listingLink.js";
 
-export const McpApplyStatus = z.enum(["applied", "already_applied", "blocked", "failed", "not_easy_apply", "closed", "external", "outcome_unknown"]);
+export const McpApplyStatus = z.enum(["applied", "already_applied", "blocked", "failed", "not_easy_apply", "closed", "external", "outcome_unknown", "wizard_open", "wizard_not_opened"]);
 
 const LearnedReply = z.object({ question: z.string(), answer: z.string(), options: z.array(z.string()), required: z.boolean() });
 const UnansweredReply = z.object({ label: z.string(), kind: z.string(), options: z.array(z.string()), required: z.boolean() });
