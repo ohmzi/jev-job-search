@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { addLearned, type NewPending } from "../src/answers/learned.js";
 import { buildNeeds } from "../src/report/needs.js";
+import { clearLoginRequired, markLoginRequired } from "../src/run/linkedinSession.js";
 
 const QUESTION = "Which area of engineering are you most interested in?";
 
@@ -46,5 +47,19 @@ describe("the needs you section", () => {
   it("has nothing to confirm before an answer is learned", () => {
     const f = files();
     expect(buildNeeds([], { learnedFile: f.learned, inboxFile: f.inbox }).answers).toEqual([]);
+  });
+
+  it("exposes the login flag a run left, and nothing when there is none", () => {
+    const f = files();
+    const dataDir = path.join(path.dirname(f.learned), "data");
+    expect(buildNeeds([], { learnedFile: f.learned, inboxFile: f.inbox, dataDir }).login).toBeNull();
+
+    markLoginRequired("no li_at cookie in cookies.json", dataDir);
+    const needs = buildNeeds([], { learnedFile: f.learned, inboxFile: f.inbox, dataDir });
+    expect(needs.login).toMatchObject({ reason: "no li_at cookie in cookies.json" });
+    expect(typeof needs.login?.at).toBe("string");
+
+    clearLoginRequired(dataDir);
+    expect(buildNeeds([], { learnedFile: f.learned, inboxFile: f.inbox, dataDir }).login).toBeNull();
   });
 });

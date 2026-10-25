@@ -156,6 +156,24 @@ export const MCP = {
   boardHosts: ["linkedin.com", "licdn.com", "lnkd.in", "indeed.com", "indeedapps.com", "indeed.net", "indeedcdn.com"],
 } as const;
 
+/** The local LinkedIn fork's saved session, and the known-good copy kept beside it. */
+const linkedinForkDir = (() => {
+  const args: readonly string[] = MCP.linkedin.args;
+  const at = args.indexOf("--project");
+  const dir = at >= 0 ? args[at + 1] : undefined;
+  if (!dir) throw new Error("MCP.linkedin.args must name a --project directory");
+  return dir;
+})();
+
+export const LINKEDIN_SESSION = {
+  /** Where the MCP keeps its saved session: cookies.json, source-state.json, profile/. */
+  authRoot: path.join(os.homedir(), ".linkedin-mcp"),
+  /** The known-good copy, written after a successful login. */
+  backupRoot: path.join(os.homedir(), ".linkedin-mcp-backup"),
+  /** The fork's checkout, read from MCP.linkedin.args' --project value. */
+  forkDir: linkedinForkDir,
+} as const;
+
 export const DISCOVER = {
   /** Only postings this fresh are considered. */
   maxAgeDays: 14,

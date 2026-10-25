@@ -25,6 +25,7 @@ import type { Profile } from "../profile/schema.js";
 import { applyOnLinkedIn } from "../sources/linkedinApply.js";
 import { applyTypeIn, mcpCaller, type Caller, type ToolCall } from "../sources/listingLink.js";
 import { countToday, localDay } from "./daily.js";
+import { clearLoginRequired, markLoginRequired, restoreSessionIfMissing, sessionStatus } from "./linkedinSession.js";
 import type { Policy } from "./policy.js";
 import { recordSharedApplied, sharedAppliedKeys } from "./shared.js";
 
@@ -39,6 +40,8 @@ export type EasyApplyOptions = {
   /** Injected in tests so pacing is checked without waiting. */
   sleep?: (ms: number) => Promise<void>;
   files?: { queue?: string; rows?: string };
+  /** Where the fork keeps its session and where the login flag goes. Injected in tests. */
+  session?: { authRoot?: string; backupRoot?: string; dataDir?: string };
 };
 
 export type EasyApplySummary = {
@@ -86,6 +89,45 @@ export function noticeIn(text: string | undefined | null): string | null {
   if (!text) return null;
   const hit = NOTICE.exec(text);
   return hit ? hit[0] : null;
+}
+
+/**
+ * The fork's own words when it needs a person to sign in. Only an error field is read: a posting's
+ * description may say "sign in" as ordinary prose and must not stop a run.
+ */
+const LOGIN_NOTICE = /login window|login required|authentication started|sign in/i;
+
+export function loginNoticeIn(text: string | undefined | null): string | null {
+  if (!text) return null;
+  let json: unknown;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    const hit = LOGIN_NOTICE.exec(text);
+    return hit ? hit[0] : null;
+  }
+  if (!json || typeof json !== "object") return null;
+  const fields: (string | undefined)[] = [];
+  const parsed = ErrorReply.safeParse(json);
+  if (parsed.success) {
+    fields.push(parsed.data.error_type, parsed.data.error_message, parsed.data.message);
+    for (const value of Object.values(parsed.data.section_errors ?? {})) {
+      const error = SectionError.safeParse(value);
+      if (error.success) fields.push(error.data.error_type, error.data.error_message, error.data.message);
+    }
+  }
+  // Only top-level error words are read, never a posting's own text under `sections`.
+  const object = json as Record<string, unknown>;
+  for (const key of ["error", "error_type", "error_message", "message", "detail", "reason"]) {
+    const value = object[key];
+    if (typeof value === "string") fields.push(value);
+  }
+  for (const field of fields) {
+    if (!field) continue;
+    const hit = LOGIN_NOTICE.exec(field);
+    if (hit) return hit[0];
+  }
+  return null;
 }
 
 /**
@@ -226,6 +268,20 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
     summary.reason = "the easy apply step is off";
     return summary;
   }
+  const session = o.session ?? {};
+  let loginFlagged = false;
+  const requireLogin = (notice: string) => {
+    loginFlagged = true;
+    markLoginRequired(notice, session.dataDir);
+    summary.reason = `LinkedIn login required: ${notice}`;
+    log(`[easy] ${summary.reason}`);
+    return summary;
+  };
+  // A session the fork cannot use is the person's to renew. Asking the MCP anyway opens a login
+  // window nobody is watching and quarantines the auth state, so the step stops before it calls.
+  restoreSessionIfMissing(session.authRoot, session.backupRoot);
+  const state = sessionStatus(session.authRoot);
+  if (!state.ok) return requireLogin(state.reason ?? "the saved session is not usable");
   const search = profile.search;
   const keywords = search?.terms[0];
   const location = search?.locations[0]?.query;
@@ -262,9 +318,14 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
     try {
       searchText = await read(MCP.linkedin.tools.search, { keywords, location, easy_apply: true, date_posted: cfg.datePosted, max_pages: cfg.pages });
     } catch (err) {
-      summary.reason = `the linkedin search tool did not answer: ${err instanceof Error ? err.message : String(err)}`;
+      const message = err instanceof Error ? err.message : String(err);
+      const login = loginNoticeIn(message);
+      if (login) return requireLogin(login);
+      summary.reason = `the linkedin search tool did not answer: ${message}`;
       return summary;
     }
+    const searchLogin = loginNoticeIn(searchText);
+    if (searchLogin) return requireLogin(searchLogin);
     const searchNotice = challengeIn(searchText);
     if (searchNotice) {
       summary.stopped = searchNotice;
@@ -312,10 +373,15 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
       try {
         readText = await read(MCP.linkedin.tools.read, { job_id: id });
       } catch (err) {
-        log(`[easy] ${id}: ${err instanceof Error ? err.message : String(err)}`);
+        const message = err instanceof Error ? err.message : String(err);
+        const login = loginNoticeIn(message);
+        if (login) return requireLogin(login);
+        log(`[easy] ${id}: ${message}`);
         continue;
       }
       summary.scanned++;
+      const readLogin = loginNoticeIn(readText);
+      if (readLogin) return requireLogin(readLogin);
       const readNotice = challengeIn(readText);
       if (readNotice) {
         summary.stopped = readNotice;
@@ -335,10 +401,15 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
       try {
         detailsText = await read(MCP.linkedin.tools.details, { job_id: id });
       } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        const login = loginNoticeIn(message);
+        if (login) return requireLogin(login);
         summary.tooOld++;
-        log(`[easy] ${id} skipped: its posted date could not be read (${err instanceof Error ? err.message : String(err)})`);
+        log(`[easy] ${id} skipped: its posted date could not be read (${message})`);
         continue;
       }
+      const detailsLogin = loginNoticeIn(detailsText);
+      if (detailsLogin) return requireLogin(detailsLogin);
       const detailsNotice = challengeIn(detailsText);
       if (detailsNotice) {
         summary.stopped = detailsNotice;
@@ -396,10 +467,15 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
         status = result.status;
         message = result.message;
       } catch (err) {
+        const reason = err instanceof Error ? err.message : String(err);
+        const login = loginNoticeIn(reason);
+        if (login) return requireLogin(login);
         summary.left++;
-        log(`[easy] ${label} left unconfirmed: ${err instanceof Error ? err.message : String(err)}`);
+        log(`[easy] ${label} left unconfirmed: ${reason}`);
         continue;
       }
+      const applyLogin = loginNoticeIn(message);
+      if (applyLogin) return requireLogin(applyLogin);
       const applyNotice = noticeIn(message);
       if (applyNotice) {
         summary.stopped = applyNotice;
@@ -503,6 +579,9 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
     }
     return summary;
   } finally {
+    // The fork answered a real search or sent something: the session is good, so a stale flag goes.
+    // A run that just found the login error keeps its flag.
+    if (!loginFlagged && (summary.found > 0 || summary.applied.length > 0)) clearLoginRequired(session.dataDir);
     caller.close();
   }
 }

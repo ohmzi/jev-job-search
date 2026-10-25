@@ -38,7 +38,7 @@ export function reportPage(snapshot: Report | null, token = ""): string {
   .item input[type=text], .item input[type=number], .item input[type=time], .item textarea, .item select { width: 100%; max-width: 640px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; }
   .btn { border: 1px solid var(--accent); background: var(--accent); color: #fff; padding: 7px 14px; border-radius: 8px; cursor: pointer; font: inherit; margin: 8px 8px 0 0; } .btn.quiet { background: none; color: var(--accent); } .btn:disabled { opacity: .5; cursor: default; }
   .line { font-size: 20px; font-weight: 600; margin: 4px 0 12px; } h2 { font-size: 15px; margin: 22px 0 10px; } .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 20px; } .grid2 label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
-  .note { color: var(--muted); font-size: 13px; } .warn { color: var(--warn); }
+  .note { color: var(--muted); font-size: 13px; } .warn { color: var(--warn); } .item.alert { border-left: 4px solid var(--warn); }
   @media (max-width: 700px) { header, main { padding-left: 16px; padding-right: 16px; } .bar { grid-template-columns: 100px 1fr 32px; } }
 </style></head>
 <body>
@@ -86,7 +86,7 @@ ${embedded}
   const startScreen = location.hash.replace(/^#/, "");
   let data = null, needs = null, auto = null, screen = SCREENS.some(([k]) => k === startScreen) ? startScreen : "today", tab = "applied", sortKey = "applied_on", sortDir = -1, q = "";
   const post = (path, body) => fetch(path, { method: "POST", headers: { "content-type": "application/json", "x-jev-token": TOKEN }, body: JSON.stringify(body) });
-  const needCount = () => needs ? needs.waiting.length + needs.questions.length + needs.unconfirmed.length + needs.answers.length + needs.mail.length : 0;
+  const needCount = () => needs ? needs.waiting.length + needs.questions.length + needs.unconfirmed.length + needs.answers.length + needs.mail.length + (needs.login ? 1 : 0) : 0;
   const recentCount = () => data && data.recent ? data.recent.length : 0;
   function renderNav() {
     const count = (k) => (k === "needs" && needCount() ? " (" + needCount() + ")" : "") + (k === "recent" && recentCount() ? " (" + recentCount() + ")" : "");
@@ -98,6 +98,7 @@ ${embedded}
     if (!needs) return;
     const out = [];
     if (!needCount()) out.push('<p class="note">Nothing needs you right now.</p>');
+    if (needs.login) out.push('<div class="item alert"><h4 class="warn">LinkedIn login required: ' + esc(needs.login.reason) + '.</h4><p>Run: <code>node bin/jev.js session relogin</code></p><p class="note">Since ' + esc(new Date(needs.login.at).toLocaleString()) + '</p></div>');
     if (needs.answers.length) out.push("<h2>Answers to confirm</h2>");
     for (const a of needs.answers) out.push('<div class="item" data-learned="' + esc(a.id) + '"><h4>' + esc(a.company) + '</h4><p class="note">' + esc(a.title) + ", filled in by the Easy Apply walk without you.</p>" +
       '<p class="q">' + esc(a.question) + '</p>' +

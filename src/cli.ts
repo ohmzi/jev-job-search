@@ -18,7 +18,7 @@ import { acquireRun, currentRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
 import { checkJob, SECURITY_CODE } from "./browser/submit.js";
-import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
+import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, loadEnv, DISCOVER, LINKEDIN_SESSION, PATHS, REPORT, ROOT, RUN } from "./config.js";
 import { accountGate } from "./accounts/capability.js";
 import { clearStop, dailyRun, formatDaily, localDay, requestStop, saveDaily, stopRequested, type Outcome } from "./run/daily.js";
 import { loadPolicy } from "./run/policy.js";
@@ -29,6 +29,7 @@ import { hourlyScheduleStatus, installHourlySchedule, installSchedule, removeHou
 import { runHourly } from "./run/hourly.js";
 import { applyFresh, type HourlyApplySummary } from "./run/hourlyApply.js";
 import { applyEasyApply, type EasyApplySummary } from "./run/easyApply.js";
+import { backupSession, clearLoginRequired, readLoginRequired, restoreSessionIfMissing, sessionStatus } from "./run/linkedinSession.js";
 import { acquireGlobalRun, recordSharedApplied, sharedAppliedKeys } from "./run/shared.js";
 import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule, useBrowserPassword } from "./accounts/commands.js";
 import { adapterFor } from "./accounts/capability.js";
@@ -274,7 +275,7 @@ program
 
 program
   .command("hourly")
-  .description("Find jobs posted recently, queue them, send fresh Easy Apply postings through the LinkedIn fork, and move held jobs to Needs you after twelve hours. The fork signs in itself; this run never drives the tool's Chrome")
+  .description("Find jobs posted recently, queue them, send fresh Easy Apply postings through the LinkedIn fork, and move held jobs to Needs you after twelve hours. It stops when the LinkedIn session needs a new login: run `node bin/jev.js session relogin`. This run never drives the tool's Chrome")
   .option("--dry", "search and show what would be added, without writing or applying")
   .option("--json")
   .action(async (o: { dry?: boolean; json?: boolean }) => {
@@ -339,6 +340,46 @@ program
       }
     }
     console.log(o.dry ? "Nothing was written (--dry)." : "Open /report for the Last 12 hours page. To run this every hour: node bin/jev.js schedule install --hourly");
+  });
+
+program
+  .command("session <action>")
+  .description("The LinkedIn session the local fork uses: status | relogin | backup | restore. A run that finds no usable session stops and asks for `relogin`")
+  .action(async (action: string) => {
+    if (action === "status") {
+      const s = sessionStatus();
+      const flag = readLoginRequired();
+      console.log(s.ok ? `The LinkedIn session is usable: ${LINKEDIN_SESSION.authRoot}` : `The LinkedIn session is not usable: ${s.reason}.`);
+      console.log(flag ? `Login required since ${flag.at}: ${flag.reason}. Run: node bin/jev.js session relogin` : "No run has left a login-required flag.");
+      return;
+    }
+    if (action === "backup") {
+      const ok = backupSession();
+      console.log(ok ? `Backed up the LinkedIn session to ${LINKEDIN_SESSION.backupRoot}.` : `Nothing was backed up: cookies.json, source-state.json or profile/ is missing from ${LINKEDIN_SESSION.authRoot}.`);
+      return;
+    }
+    if (action === "restore") {
+      const ok = restoreSessionIfMissing();
+      console.log(ok ? `Restored the LinkedIn session from ${LINKEDIN_SESSION.backupRoot}.` : "Nothing was restored: the live cookies.json exists, or the backing copy has no li_at cookie.");
+      return;
+    }
+    if (action === "relogin") {
+      console.log(`Sign in to LinkedIn in the window that opens. The session is kept in ${LINKEDIN_SESSION.authRoot}.`);
+      const code = await new Promise<number | null>((resolve, reject) => {
+        const child = spawn("uv", ["run", "--project", LINKEDIN_SESSION.forkDir, "python", "-m", "linkedin_mcp_server", "--login"], { cwd: ROOT, stdio: "inherit", env: childEnv() });
+        child.once("error", reject);
+        child.once("exit", (status) => resolve(status));
+      });
+      if (code !== 0) {
+        process.exitCode = 1;
+        return console.log(`The login did not finish (exit ${code ?? "unknown"}). Nothing was backed up and the flag is unchanged.`);
+      }
+      const backed = backupSession();
+      clearLoginRequired();
+      console.log(backed ? `Logged in. The session is backed up to ${LINKEDIN_SESSION.backupRoot} and the login flag is cleared.` : `Logged in, but cookies.json, source-state.json or profile/ was not found, so nothing was backed up. Run: node bin/jev.js session status`);
+      return;
+    }
+    console.log("The actions are: status, relogin, backup, restore");
   });
 
 program

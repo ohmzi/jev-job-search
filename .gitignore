@@ -18,6 +18,7 @@ data/queue.json.bak
 data/accounts.json
 data/policy.json
 data/gmail.json
+data/login-required.json
 data/cache/
 data/runs/
 documents/*
