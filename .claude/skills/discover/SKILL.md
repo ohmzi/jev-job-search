@@ -26,6 +26,11 @@ Options:
 - `--no-boards` skips polling company boards (faster, fewer fresh postings).
 - `--limit N` rates only N new jobs, for a quick check.
 
+To keep the search to some US states, set `preferences.searchStates` in
+`data/profile.json` (two-letter codes) with `/profile`. Jobs only in other
+states are skipped with "outside your states"; remote and nationwide jobs
+stay.
+
 To include the user's own tracking sheet, they export it as CSV into
 `data/imports/` first; every file there is read on the next discover.
 

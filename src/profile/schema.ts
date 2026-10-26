@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { PATHS } from "../config.js";
+import { isStateCode } from "../jobs/states.js";
 
 const YesNo = z.enum(["yes", "no"]);
 /** A voluntary self-identification question may be declined. */
@@ -123,6 +124,12 @@ export const ProfileSchema = z.object({
     willingToRelocate: YesNo,
     remote: z.enum(["preferred", "open", "no"]),
     preferredLocations: z.array(z.string()),
+    /**
+     * Two-letter codes of the US states this search covers, such as ["NJ", "NY", "PA"]. A US
+     * posting is kept when one of its places is in one of them, is remote, or names no state.
+     * Empty covers every state. It limits the search only; nothing on a form comes from it.
+     */
+    searchStates: z.array(z.string().trim().toUpperCase().refine(isStateCode, (s) => ({ message: `"${s}" is not a two-letter US state code` }))).default([]),
     howDidYouHear: z.string(),
     /** What to do when a form requires references. "skip" logs and moves on. */
     references: z.enum(["skip"]),

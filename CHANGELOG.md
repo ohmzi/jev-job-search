@@ -11,6 +11,13 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+### Added
+- `preferences.searchStates` in the profile keeps a search to some US
+  states, by two-letter code. A US job only in other states is skipped with
+  "outside your states"; remote jobs, jobs open anywhere in the United
+  States, and jobs the tool cannot place are kept. Empty, the default,
+  searches every state.
+
 ### Changed
 - A run takes at most three roles from one employer, never two in a row, and
   waits eight minutes between two applications to the same employer.
