@@ -10,7 +10,7 @@ import type { Job } from "../jobs/normalize.js";
 import { mutateQueue, type QueueEntry } from "../jobs/queue.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import type { Profile } from "../profile/schema.js";
-import { listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
+import { easyApplyFromApplyType, listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller, type ListingAnswer } from "../sources/listingLink.js";
 import { withStore } from "../util/store.js";
 
 export type FollowOptions = {
@@ -34,9 +34,9 @@ export async function followListings(entries: QueueEntry[], profile: Profile, o:
   const now = o.now ?? new Date();
   const log = o.quiet ? () => {} : (line: string) => console.log(line);
   const caller = o.listings ?? mcpCaller(log);
-  let links: Map<string, string>;
+  let answers: Map<string, ListingAnswer>;
   try {
-    links = await resolveListings(held.map((e) => e.job), {
+    answers = await resolveListings(held.map((e) => e.job), {
       call: caller.call,
       country: profile.search?.countryIndeed ?? "USA",
       now,
@@ -47,24 +47,36 @@ export async function followListings(entries: QueueEntry[], profile: Profile, o:
   } finally {
     caller.close();
   }
-  if (!links.size) return 0;
-  const move = (e: QueueEntry, url: string) => {
-    e.job = withEmployerLink(e.job, url);
-    e.applyable = canFill(e.job as unknown as Job);
-    if (e.applyable) e.holdUntil = null;
+  if (!answers.size) return 0;
+  /** Applies one board answer: the employer's link when there is one, the method always. */
+  const applyAnswer = (e: QueueEntry, answer: ListingAnswer): boolean => {
+    // An Easy Apply posting has no employer link to take; its method is the answer.
+    if (answer.url && answer.applyType !== "easy_apply") {
+      e.job = withEmployerLink(e.job, answer.url);
+      e.applyable = canFill(e.job as unknown as Job);
+      if (e.applyable) e.holdUntil = null;
+      return true;
+    }
+    const easyApply = easyApplyFromApplyType(answer.applyType, e.job.easyApply);
+    if (easyApply !== e.job.easyApply) e.job = { ...e.job, easyApply };
+    return false;
   };
+  let moved = 0;
+  let easy = 0;
   for (const e of held) {
-    const url = links.get(e.job.id);
-    if (url) move(e, url);
+    const answer = answers.get(e.job.id);
+    if (!answer) continue;
+    if (applyAnswer(e, answer)) moved++;
+    else if (answer.applyType === "easy_apply") easy++;
   }
   if (!o.dry) {
     withStore(() => {
       const changed = mutateQueue((q) => {
         const out: QueueEntry[] = [];
         for (const x of q.entries) {
-          const url = links.get(x.job.id);
-          if (!url || x.status === "applied" || x.status === "submission_unknown" || !listingOf(x.job.url)) continue;
-          move(x, url);
+          const answer = answers.get(x.job.id);
+          if (!answer || x.status === "applied" || x.status === "submission_unknown" || !listingOf(x.job.url)) continue;
+          applyAnswer(x, answer);
           x.updatedAt = now.toISOString();
           out.push(x);
         }
@@ -75,6 +87,6 @@ export async function followListings(entries: QueueEntry[], profile: Profile, o:
       saveRows(rows, o.rowsFile);
     });
   }
-  log(`${links.size} of ${held.length} board listing(s) led to the employer's own form`);
-  return links.size;
+  log(`${answers.size} of ${held.length} board listing(s) read: ${moved} led to the employer's own form${easy ? `, ${easy} Easy Apply` : ""}`);
+  return moved;
 }

@@ -5,7 +5,7 @@
  */
 import { readFileSync } from "node:fs";
 import { parseCsv } from "../log/csv.js";
-import { atsFromUrl, canonicalUrl, jobId, type Job } from "../jobs/normalize.js";
+import { atsFromUrl, canonicalUrl, easyApplyFromUrl, jobId, type Job } from "../jobs/normalize.js";
 
 export function parseSheetCsv(text: string): Job[] {
   const [header, ...rows] = parseCsv(text);
@@ -37,6 +37,7 @@ export function parseSheetCsv(text: string): Job[] {
       sponsorship: "unknown",
       degrees: [],
       category: null,
+      easyApply: easyApplyFromUrl(url),
     });
   }
   return out;

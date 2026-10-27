@@ -21,7 +21,7 @@ import { appliedKey, hourlyKey } from "../jobs/keys.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import { usStatus, type Profile, type Search } from "../profile/schema.js";
 import { searchJobspy, type JobspyRunner } from "../sources/jobspy.js";
-import { listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
+import { easyApplyFromApplyType, listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
 import { withStore, writeAtomic } from "../util/store.js";
 
 export { appliedKey, hourlyKey };
@@ -87,6 +87,8 @@ export function mergeHourly(
             : {
                 ...existing.job,
                 ...job,
+                // A null from a source that does not know must not erase a board's answer.
+                easyApply: job.easyApply ?? existing.job.easyApply,
                 // A posting read again without a description keeps the one the writer may still need.
                 ...(!job.description && existing.job.description ? { description: existing.job.description, descriptionSource: existing.job.descriptionSource } : {}),
               },
@@ -235,13 +237,22 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
   if (unresolved.length && listings !== false) {
     const caller = listings ?? mcpCaller(log);
     try {
-      const links = await resolveListings(unresolved, { call: caller.call, country: search.countryIndeed, now, log, ...(o.dry ? { dry: true } : {}), ...(o.linksFile ? { cacheFile: o.linksFile } : {}) });
-      if (links.size) {
+      const answers = await resolveListings(unresolved, { call: caller.call, country: search.countryIndeed, now, log, ...(o.dry ? { dry: true } : {}), ...(o.linksFile ? { cacheFile: o.linksFile } : {}) });
+      if (answers.size) {
+        let moved = 0;
+        let easy = 0;
         result.jobs = result.jobs.map((j) => {
-          const url = links.get(j.id);
-          return url ? withEmployerLink(j, url) : j;
+          const answer = answers.get(j.id);
+          if (!answer) return j;
+          // An Easy Apply posting has no employer link; its method is the answer.
+          if (answer.url && answer.applyType !== "easy_apply") {
+            moved++;
+            return withEmployerLink(j, answer.url);
+          }
+          if (answer.applyType === "easy_apply") easy++;
+          return { ...j, easyApply: easyApplyFromApplyType(answer.applyType, j.easyApply) };
         });
-        log(`[hourly] ${links.size} of ${unresolved.length} board listing(s) led to the employer's own form`);
+        log(`[hourly] ${answers.size} of ${unresolved.length} board listing(s) read: ${moved} led to the employer's own form${easy ? `, ${easy} Easy Apply` : ""}`);
       }
     } finally {
       caller.close();

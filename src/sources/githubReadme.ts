@@ -8,7 +8,7 @@
 import { DISCOVER } from "../config.js";
 import { getText } from "../util/http.js";
 import { decodeEntities } from "../util/text.js";
-import { atsFromUrl, canonicalUrl, jobId, parseLooseDate, type Job, type Sponsorship } from "../jobs/normalize.js";
+import { atsFromUrl, canonicalUrl, easyApplyFromUrl, jobId, parseLooseDate, type Job, type Sponsorship } from "../jobs/normalize.js";
 
 export function parseReadmeTable(markdown: string, source: string, now = new Date()): Job[] {
   const out: Job[] = [];
@@ -63,6 +63,7 @@ export function parseReadmeTable(markdown: string, source: string, now = new Dat
       sponsorship,
       degrees,
       category: null,
+      easyApply: easyApplyFromUrl(canonical),
     });
   }
   return out;

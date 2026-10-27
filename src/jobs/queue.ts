@@ -57,6 +57,8 @@ const JobSchema = z.object({
   sponsorship: z.string(),
   degrees: z.array(z.string()),
   category: z.string().nullable(),
+  /** true: Easy Apply, false: the employer's own form, null: a board listing not read yet. */
+  easyApply: z.boolean().nullable().default(null),
   description: z.string().optional(),
   descriptionSource: z.enum(["api", "html", "none"]).optional(),
 });

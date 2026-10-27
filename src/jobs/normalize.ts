@@ -27,6 +27,12 @@ export type Job = {
   sponsorship: Sponsorship;
   degrees: string[];
   category: string | null;
+  /**
+   * Whether the posting takes applications on the board itself (LinkedIn Easy Apply and
+   * the like). `true` is confirmed, `false` is an employer's own form, and `null` is a
+   * board listing the search has not asked about yet.
+   */
+  easyApply: boolean | null;
   description?: string;
   descriptionSource?: "api" | "html" | "none";
 };
@@ -110,6 +116,23 @@ export function atsFromUrl(url: string): Ats {
   return "other";
 }
 
+/**
+ * What a source knows about Easy Apply before the board is read. A board listing is
+ * unknown until its MCP server confirms it; an employer's own form is never Easy Apply.
+ * Every source sets the field through this, so the job always carries an answer.
+ */
+export function easyApplyFromUrl(url: string): boolean | null {
+  if (atsFromUrl(url) === "linkedin") return null;
+  try {
+    // Indeed is not an Ats above: it links to the employer's form or to its own
+    // application, and only a read of the posting can tell which.
+    if (/(^|\.)indeed\.[a-z.]+$/.test(new URL(url).hostname.toLowerCase())) return null;
+  } catch {
+    /* not a URL: not a board */
+  }
+  return false;
+}
+
 export function ageDays(job: Pick<Job, "postedAt">, now = new Date()): number | null {
   if (!job.postedAt) return null;
   const t = new Date(job.postedAt + "T00:00:00Z").getTime();
@@ -162,6 +185,9 @@ export function dedupe(jobs: Job[]): Job[] {
       sponsorship: existing.sponsorship !== "unknown" ? existing.sponsorship : j.sponsorship,
       degrees: existing.degrees.length ? existing.degrees : j.degrees,
       category: existing.category ?? j.category,
+      // A confirmed Easy Apply answer outranks an unknown one; two sources that disagree
+      // are the same posting reached by different links, which the id already keeps apart.
+      easyApply: existing.easyApply === true || j.easyApply === true ? true : existing.easyApply ?? j.easyApply,
       source: existing.source.includes(j.source) ? existing.source : `${existing.source}+${j.source}`,
     };
     seen.set(j.id, merged);

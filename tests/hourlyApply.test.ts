@@ -25,6 +25,7 @@ const job = (over: Partial<Job> = {}): Job => ({
   sponsorship: "unknown",
   degrees: [],
   category: null,
+  easyApply: false,
   ...over,
 });
 

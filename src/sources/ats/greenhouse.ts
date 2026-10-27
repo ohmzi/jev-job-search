@@ -2,7 +2,7 @@
 import { z } from "zod";
 import { getJson } from "../../util/http.js";
 import { htmlToText } from "../../util/text.js";
-import { canonicalUrl, jobId, type Job } from "../../jobs/normalize.js";
+import { canonicalUrl, easyApplyFromUrl, jobId, type Job } from "../../jobs/normalize.js";
 
 const GhJob = z.object({
   id: z.number(),
@@ -57,6 +57,7 @@ export async function fetchGreenhouseBoard(slug: string, companyFallback: string
       sponsorship: "unknown",
       degrees: [],
       category: null,
+      easyApply: easyApplyFromUrl(url),
       description: j.content ? htmlToText(j.content) : "",
       descriptionSource: j.content ? "api" : "none",
     });

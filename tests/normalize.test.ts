@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ageDays, atsFromUrl, canonicalUrl, dedupe, hostIs, jobId, parseLooseDate, postingKey, type Job } from "../src/jobs/normalize.js";
+import { ageDays, atsFromUrl, canonicalUrl, dedupe, easyApplyFromUrl, hostIs, jobId, parseLooseDate, postingKey, type Job } from "../src/jobs/normalize.js";
 
 describe("postingKey", () => {
   it("gives one id to every way a list links the same posting", () => {
@@ -83,7 +83,7 @@ describe("parseLooseDate", () => {
 });
 
 describe("ageDays and dedupe", () => {
-  const base: Job = { id: "x", source: "a", company: "C", title: "T", url: "https://x", ats: "other", locations: [], postedAt: "2026-09-30", terms: [], sponsorship: "unknown", degrees: [], category: null };
+  const base: Job = { id: "x", source: "a", company: "C", title: "T", url: "https://x", ats: "other", locations: [], postedAt: "2026-09-30", terms: [], sponsorship: "unknown", degrees: [], category: null, easyApply: false };
   it("computes whole days", () => {
     expect(ageDays(base, new Date("2026-10-02T23:00:00Z"))).toBe(2);
     expect(ageDays({ postedAt: null })).toBeNull();
@@ -96,6 +96,19 @@ describe("ageDays and dedupe", () => {
     expect(m?.postedAt).toBe("2026-09-30");
     expect(m?.sponsorship).toBe("offers");
     expect(m?.source).toBe("a+b");
+  });
+  it("keeps a confirmed Easy Apply answer over an unknown one", () => {
+    const unknown = { ...base, easyApply: null };
+    const confirmed = { ...base, source: "b", easyApply: true };
+    expect(dedupe([unknown, confirmed])[0]?.easyApply).toBe(true);
+  });
+});
+
+describe("Easy Apply from the link alone", () => {
+  it("leaves a board listing unknown and marks an employer's own form false", () => {
+    expect(easyApplyFromUrl("https://www.linkedin.com/jobs/view/1")).toBeNull();
+    expect(easyApplyFromUrl("https://ca.indeed.com/viewjob?jk=1")).toBeNull();
+    expect(easyApplyFromUrl("https://boards.greenhouse.io/acme/jobs/1")).toBe(false);
   });
 });
 

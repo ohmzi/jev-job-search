@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { DISCOVER } from "../config.js";
 import { getJson } from "../util/http.js";
-import { atsFromUrl, canonicalUrl, jobId, toIsoDate, type Job, type Sponsorship } from "../jobs/normalize.js";
+import { atsFromUrl, canonicalUrl, easyApplyFromUrl, jobId, toIsoDate, type Job, type Sponsorship } from "../jobs/normalize.js";
 
 const Listing = z.object({
   category: z.string().nullable().optional(),
@@ -60,6 +60,7 @@ export function parseSimplify(raw: unknown, source: string): Job[] {
       sponsorship: sponsorshipFrom(l.sponsorship),
       degrees: l.degrees ?? [],
       category: l.category ?? null,
+      easyApply: easyApplyFromUrl(url),
     });
   }
   return out;

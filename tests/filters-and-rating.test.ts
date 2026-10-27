@@ -9,7 +9,7 @@ import type { Answer } from "../src/jev/types.js";
 const now = new Date("2026-10-02T12:00:00Z");
 const job = (over: Partial<Job> = {}): Job => ({
   id: "j", source: "t", company: "Acme", title: "Software Engineer Intern", url: "https://job-boards.greenhouse.io/acme/jobs/1", ats: "greenhouse",
-  locations: ["Toronto, ON, Canada"], postedAt: "2026-10-01", terms: ["Summer 2027"], sponsorship: "unknown", degrees: [], category: null, ...over,
+  locations: ["Toronto, ON, Canada"], postedAt: "2026-10-01", terms: ["Summer 2027"], sponsorship: "unknown", degrees: [], category: null, easyApply: false, ...over,
 });
 
 describe("locationTier", () => {

@@ -9,7 +9,7 @@ import type { Profile } from "../src/profile/schema.js";
 
 const NOW = new Date("2026-10-22T12:00:00");
 const entry = (_name: string, url: string, over: Partial<QueueEntry> = {}): QueueEntry => ({
-  job: { id: jobId(url), source: "jobspy linkedin", company: "Delta", title: "Android Engineer", url, ats: url.includes("linkedin") ? "linkedin" : "other", locations: ["Jersey City, NJ"], postedAt: "2026-10-22", terms: [], sponsorship: "unknown", degrees: [], category: null } as QueueEntry["job"],
+  job: { id: jobId(url), source: "jobspy linkedin", company: "Delta", title: "Android Engineer", url, ats: url.includes("linkedin") ? "linkedin" : "other", locations: ["Jersey City, NJ"], postedAt: "2026-10-22", terms: [], sponsorship: "unknown", degrees: [], category: null, easyApply: url.includes("greenhouse") ? false : null } as QueueEntry["job"],
   fit: null,
   preFilterReason: null,
   applyable: false,
@@ -54,6 +54,22 @@ describe("the apply step following a listing to the employer", () => {
     expect(a.job.id).toBe(jobId("https://boards.greenhouse.io/delta/jobs/777"));
     expect(saved.find((e) => e.job.id === a.job.id)).toMatchObject({ applyable: true, holdUntil: null, status: "in_progress", job: { url: "https://boards.greenhouse.io/delta/jobs/777" } });
     expect(saved.find((e) => e.job.id === b.job.id)?.applyable).toBe(false);
+  });
+
+  it("marks an Easy Apply listing without moving it", async () => {
+    const f = files();
+    const a = entry("a", "https://www.linkedin.com/jobs/view/4252026496");
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [a] }, f.queueFile);
+    const moved = await followListings([a], profile, {
+      ...f,
+      now: NOW,
+      quiet: true,
+      listings: caller(() => JSON.stringify({ url: null, apply: { type: "easy_apply" } })) as never,
+    });
+    expect(moved).toBe(0);
+    expect(a.job.url).toBe("https://www.linkedin.com/jobs/view/4252026496");
+    expect(a.job.easyApply).toBe(true);
+    expect(loadQueue(f.queueFile).entries[0]?.job.easyApply).toBe(true);
   });
 
   it("changes nothing on disk in a rehearsal", async () => {

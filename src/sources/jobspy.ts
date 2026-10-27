@@ -7,7 +7,7 @@ import { spawnSync } from "node:child_process";
 import { z } from "zod";
 import { childEnv, HOURLY } from "../config.js";
 import { canFill } from "../jobs/fillable.js";
-import { atsFromUrl, canonicalUrl, dedupe, jobId, toIsoDate, type Job } from "../jobs/normalize.js";
+import { atsFromUrl, canonicalUrl, dedupe, easyApplyFromUrl, jobId, toIsoDate, type Job } from "../jobs/normalize.js";
 import type { Search } from "../profile/schema.js";
 
 /** One row as JobSpy's pandas frame writes it: snake_case, with plenty of optional columns. */
@@ -23,6 +23,8 @@ export const JobspyRow = z
     date_posted: z.union([z.string(), z.number()]).nullish(),
     description: z.string().nullish(),
     is_remote: z.boolean().nullish(),
+    /** JobSpy does not always write this; when it does, it is the board's own answer. */
+    easy_apply: z.boolean().nullish(),
   })
   .passthrough();
 export type JobspyRow = z.infer<typeof JobspyRow>;
@@ -87,6 +89,7 @@ export function mapJobspy(row: JobspyRow): Job | null {
     sponsorship: "unknown",
     degrees: [],
     category: null,
+    easyApply: row.easy_apply ?? easyApplyFromUrl(url),
     ...(row.description && row.description.trim().length >= 200 ? { description: row.description.trim(), descriptionSource: "api" as const } : {}),
   };
 }

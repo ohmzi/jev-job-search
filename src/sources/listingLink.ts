@@ -17,6 +17,13 @@ import { withStore, writeAtomic } from "../util/store.js";
 export type Board = "linkedin" | "indeed";
 export type Listing = { board: Board; id: string };
 
+/** LinkedIn's own answer for how a posting takes applications. */
+export type ApplyType = "easy_apply" | "external" | "applied" | "closed" | "unknown";
+const APPLY_TYPES: readonly ApplyType[] = ["easy_apply", "external", "applied", "closed", "unknown"];
+
+/** One board's answer about a listing: where the employer's form is, and how the board takes it. */
+export type ListingAnswer = { url: string | null; applyType: ApplyType | null };
+
 /** Asks one board's server about one listing and returns the text of its reply. */
 export type ToolCall = (board: Board, args: Record<string, unknown>) => Promise<string>;
 export type Caller = { call: ToolCall; close: () => void };
@@ -89,6 +96,10 @@ export function employerLinkIn(text: string): string | null {
         const named = typeof value === "string" ? linksIn(value)[0] : undefined;
         if (named) return named;
       }
+      // The LinkedIn server nests the employer's link under apply: {type, url}.
+      const nested = (data as { apply?: { url?: unknown } }).apply?.url;
+      const named = typeof nested === "string" ? linksIn(nested)[0] : undefined;
+      if (named) return named;
     }
   } catch {
     /* not JSON: read it as text */
@@ -99,15 +110,50 @@ export function employerLinkIn(text: string): string | null {
   return links.find((l) => LOOKS_LIKE_APPLY.test(new URL(l).pathname + new URL(l).search)) ?? null;
 }
 
+/** The board's answer for how a posting takes applications, from the JSON reply, or null. */
+export function applyTypeIn(text: string): ApplyType | null {
+  try {
+    const data: unknown = JSON.parse(text);
+    if (!data || typeof data !== "object") return null;
+    const apply = (data as { apply?: unknown }).apply;
+    if (!apply || typeof apply !== "object") return null;
+    const type = (apply as { type?: unknown }).type;
+    return typeof type === "string" && (APPLY_TYPES as readonly string[]).includes(type) ? (type as ApplyType) : null;
+  } catch {
+    /* not JSON: the caller may still have a link to use */
+    return null;
+  }
+}
+
+/**
+ * What a board's apply type means for a job's easyApply field. Only the board's own two
+ * methods answer the question; `applied` and `closed` no longer show one, so they keep
+ * what the source already knew instead of guessing.
+ */
+export function easyApplyFromApplyType(type: ApplyType | null, current: boolean | null): boolean | null {
+  if (type === "easy_apply") return true;
+  if (type === "external") return false;
+  return current;
+}
+
 /**
  * The same job at the employer's link. A job's id is derived from its link and is recomputed every
  * time the queue is read, so the id moves with the link: the record and the sheet row are keyed by it.
  */
 export function withEmployerLink<T extends { id: string; url: string; ats: string }>(job: T, url: string): T {
-  return { ...job, id: jobId(url), url, ats: atsFromUrl(url) } as T;
+  // The employer's own form is never the board's Easy Apply.
+  return { ...job, id: jobId(url), url, ats: atsFromUrl(url), easyApply: false } as T;
 }
 
-const Cache = z.record(z.object({ url: z.string().nullable(), at: z.string() }));
+const ApplyTypeSchema = z.enum(["easy_apply", "external", "applied", "closed", "unknown"]);
+const Cache = z.record(
+  z.object({
+    url: z.string().nullable(),
+    /** Absent in files written before the field existed; that answer is still usable. */
+    applyType: ApplyTypeSchema.nullable().default(null),
+    at: z.string(),
+  }),
+);
 type CacheFile = z.infer<typeof Cache>;
 
 export function loadListingLinks(file = PATHS.listingLinks): CacheFile {
@@ -165,16 +211,18 @@ export type ResolveOptions = {
 };
 
 /**
- * Asks the boards' servers for the employer link of each listing, at most `limit` of them, and
- * returns job id to link for those that have one. An answer is kept: a link for good, and "no link"
- * for MCP.retryAfterHours. A server that fails is not an answer and is not kept.
+ * Asks the boards' servers how each listing takes applications, at most `limit` of them, and
+ * returns the employer link and the board's method for those that answered. An answer is kept: a
+ * link and a method for good, and "no link" for MCP.retryAfterHours. A server that fails is not an
+ * answer and is not kept. A LinkedIn answer from before the method was recorded asks once more so
+ * the job gets its Easy Apply flag.
  */
-export async function resolveListings(jobs: Pick<Job, "id" | "url">[], o: ResolveOptions): Promise<Map<string, string>> {
+export async function resolveListings(jobs: Pick<Job, "id" | "url">[], o: ResolveOptions): Promise<Map<string, ListingAnswer>> {
   const now = o.now ?? new Date();
   const log = o.log ?? (() => {});
   const cache = loadListingLinks(o.cacheFile);
   const fresh: CacheFile = {};
-  const found = new Map<string, string>();
+  const found = new Map<string, ListingAnswer>();
   const down = new Set<Board>();
   let asked = 0;
   const limit = o.limit ?? MCP.maxPerRun;
@@ -183,24 +231,38 @@ export async function resolveListings(jobs: Pick<Job, "id" | "url">[], o: Resolv
     if (!listing || down.has(listing.board)) continue;
     const key = `${listing.board}:${listing.id}`;
     const kept = cache[key];
-    if (kept?.url) {
-      found.set(job.id, kept.url);
+    // A saved LinkedIn link from before the field existed has no method yet. Ask once
+    // more within this run's budget; when the budget is spent, the link is still usable.
+    const needsType = listing.board === "linkedin" && !!kept?.url && kept.applyType === null;
+    if (kept && !needsType && (kept.url || kept.applyType)) {
+      found.set(job.id, { url: kept.url, applyType: kept.applyType });
       continue;
     }
-    if (kept && now.getTime() - Date.parse(kept.at) < MCP.retryAfterHours * 3_600_000) continue;
+    if (needsType && asked >= limit) {
+      found.set(job.id, { url: kept?.url ?? null, applyType: null });
+      continue;
+    }
+    if (kept && !kept.url && !kept.applyType && now.getTime() - Date.parse(kept.at) < MCP.retryAfterHours * 3_600_000) continue;
     if (asked >= limit) break;
     asked++;
     try {
       const args = listing.board === "linkedin" ? { job_id: listing.id } : { job_key: listing.id, country: MCP.indeedCountries[o.country] ?? o.country };
-      const url = employerLinkIn(await o.call(listing.board, args));
-      fresh[key] = { url, at: now.toISOString() };
-      if (url) {
-        found.set(job.id, url);
-        log(`[links] ${listing.board} ${listing.id} -> ${safeUrl(url)}`);
+      const reply = await o.call(listing.board, args);
+      const url = employerLinkIn(reply);
+      // The LinkedIn server names the method. A reply that does not name one is
+      // "unknown", not a reason to ask again on every run.
+      const applyType: ApplyType | null = listing.board === "linkedin" ? applyTypeIn(reply) ?? "unknown" : null;
+      fresh[key] = { url, applyType, at: now.toISOString() };
+      if (url || applyType) {
+        found.set(job.id, { url, applyType });
+        if (url) log(`[links] ${listing.board} ${listing.id} -> ${safeUrl(url)}`);
+        if (applyType === "easy_apply") log(`[links] ${listing.board} ${listing.id} is Easy Apply`);
       }
     } catch (err) {
       if (err instanceof NotAvailable) down.add(listing.board);
       else log(`[links] ${listing.board} ${listing.id}: ${err instanceof Error ? err.message : String(err)}`);
+      // A failed call still leaves the saved link usable for this run.
+      if (kept && (kept.url || kept.applyType)) found.set(job.id, { url: kept.url, applyType: kept.applyType });
     }
   }
   if (!o.dry && Object.keys(fresh).length) {

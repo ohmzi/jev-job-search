@@ -30,6 +30,7 @@ const job = (over: Partial<Job> = {}): Job => ({
   sponsorship: "unknown",
   degrees: [],
   category: null,
+  easyApply: false,
   ...over,
 });
 
@@ -148,6 +149,15 @@ describe("jobspy records", () => {
     expect(j?.ats).toBe("greenhouse");
     expect(j?.source).toBe("jobspy indeed");
     expect(j?.postedAt).toBe("2026-10-22");
+    expect(j?.easyApply).toBe(false);
+  });
+  it("takes the board's own easy_apply answer when the row carries one", () => {
+    const j = mapJobspy({ site: "linkedin", title: "Android Engineer", company: "Acme", job_url: "https://www.linkedin.com/jobs/view/1", easy_apply: true });
+    expect(j?.easyApply).toBe(true);
+  });
+  it("leaves a board listing unknown when the row does not say", () => {
+    const j = mapJobspy({ site: "linkedin", title: "Android Engineer", company: "Acme", job_url: "https://www.linkedin.com/jobs/view/1" });
+    expect(j?.easyApply).toBeNull();
   });
   it("drops a row without a title, company or link", () => {
     expect(mapJobspy({ title: "", company: "Acme", job_url: "https://x/1" })).toBeNull();
@@ -209,6 +219,11 @@ describe("putting hourly finds in the queue", () => {
     expect(r.entries[0]?.status).toBe("needs_review");
     expect(r.entries[0]?.discoveredAt).toBe("2026-10-22T11:00:00Z");
     expect(r.entries[0]?.job.company).toBe("Acme Renamed");
+  });
+  it("keeps a confirmed Easy Apply answer when the new record does not know", () => {
+    const before = entry({ job: { ...job(), easyApply: true } as QueueEntry["job"] });
+    const r = mergeHourly([before], [job({ easyApply: null })], profile(), NOW, noWalls);
+    expect(r.entries[0]?.job.easyApply).toBe(true);
   });
   it("does not queue a job that was already sent under another location", () => {
     const sent = entry({ job: { ...job(), locations: ["Newark, NJ"] } as QueueEntry["job"], status: "applied" });
@@ -315,6 +330,18 @@ describe("board listings that lead to an employer form", () => {
     expect(e?.holdUntil).toBeNull();
     expect(e?.job.url).toBe("https://boards.greenhouse.io/delta/jobs/777");
     expect(e?.job.ats).toBe("greenhouse");
+  });
+
+  it("marks a LinkedIn Easy Apply posting and holds it for the person", async () => {
+    const f = setup();
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [] }, f.queueFile);
+    const listings = { call: async () => JSON.stringify({ url: null, apply: { type: "easy_apply" } }), close: () => {} };
+    const summary = await runHourly(profile(), { now: NOW, ...f, runner: () => ({ ok: true, stdout: rows, error: "" }), linksFile: f.cacheFile, listings: listings as never });
+    expect(summary).toMatchObject({ added: 1, held: 1 });
+    const e = loadQueue(f.queueFile).entries[0];
+    expect(e?.job.easyApply).toBe(true);
+    expect(e?.job.url).toBe("https://www.linkedin.com/jobs/view/4252026496");
+    expect(e?.applyable).toBe(false);
   });
 
   it("holds the listing for the person when the MCP has no link, and Chrome gets the page later", async () => {

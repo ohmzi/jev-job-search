@@ -27,7 +27,7 @@ export const SHEET_COLUMNS = [
 ] as const;
 
 export const EXTRA_COLUMNS = [
-  "Applied On", "Fit Score", "JEV Confidence", "ATS", "Source", "Term", "Level", "Posted On", "Skip Reason", "Job ID", "Take-home", "Response", "Response On",
+  "Applied On", "Fit Score", "JEV Confidence", "ATS", "Source", "Term", "Level", "Posted On", "Skip Reason", "Job ID", "Take-home", "Response", "Response On", "Easy Apply",
 ] as const;
 
 export const COLUMNS = [...SHEET_COLUMNS, ...EXTRA_COLUMNS] as const;
@@ -232,6 +232,7 @@ export function upsertEntry(rows: Row[], e: QueueEntry, extra: Partial<Row> = {}
     "Job ID": e.job.id,
     Response: e.response?.kind ?? existing.Response ?? "",
     "Response On": e.response?.on ?? existing["Response On"] ?? "",
+    "Easy Apply": e.job.easyApply === null ? "" : e.job.easyApply ? "Yes" : "No",
     ...extra,
   };
   if (idx >= 0) rows[idx] = next;

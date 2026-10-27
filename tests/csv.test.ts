@@ -6,7 +6,7 @@ import { APPLIED_COLUMNS, COLUMNS, MANUAL_COLUMNS, SHEET_COLUMNS, appliedRecords
 import type { QueueEntry } from "../src/jobs/queue.js";
 
 const entry = (over: Partial<QueueEntry> = {}): QueueEntry => ({
-  job: { id: "abc", source: "simplify-internships", company: "Acme", title: "SWE Intern", url: "https://x/1", ats: "greenhouse", locations: ["Toronto, ON"], postedAt: "2026-10-01", terms: ["Summer 2027"], sponsorship: "unknown", degrees: [], category: null },
+  job: { id: "abc", source: "simplify-internships", company: "Acme", title: "SWE Intern", url: "https://x/1", ats: "greenhouse", locations: ["Toronto, ON"], postedAt: "2026-10-01", terms: ["Summer 2027"], sponsorship: "unknown", degrees: [], category: null, easyApply: false },
   fit: { score: 0.61, decision: "apply", skipReason: null, reasons: ["stack strong"], components: {}, locationTier: "canada", answers: { work_auth: { type: "choice", choice: "canada_ok", probabilities: {}, confidence: 0.9 }, term: { type: "choice", choice: "summer", probabilities: {}, confidence: 1 }, level: { type: "choice", choice: "internship", probabilities: {}, confidence: 1 } } },
   preFilterReason: null, applyable: true, holdUntil: null, status: "queued", statusReason: null, attempts: 0, discoveredAt: "2026-10-02T00:00:00Z", updatedAt: "2026-10-02T00:00:00Z", appliedAt: null, notes: null, waitingFor: null, answers: [], replies: [], response: null, ...over,
 });
@@ -28,6 +28,14 @@ describe("csv", () => {
     rows = upsertEntry(rows, entry({ status: "applied", appliedAt: "2026-10-02T15:00:00Z" }), { "Why You're a Fit": "fits" });
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ "App. Status": "Applied", "Applied On": "2026-10-02", "Contact #1 (Name / Role / LinkedIn)": "Jane / Recruiter / url", "Why You're a Fit": "fits" });
+  });
+  it("writes the Easy Apply answer, and leaves it empty when the board has not said", () => {
+    let rows = upsertEntry([], entry({ job: { ...entry().job, easyApply: true } }));
+    expect(rows[0]?.["Easy Apply"]).toBe("Yes");
+    rows = upsertEntry(rows, entry({ job: { ...entry().job, easyApply: null } }));
+    expect(rows[0]?.["Easy Apply"]).toBe("");
+    rows = upsertEntry(rows, entry({ job: { ...entry().job, easyApply: false } }));
+    expect(rows[0]?.["Easy Apply"]).toBe("No");
   });
   it("writes skip reasons only for non-applied rows", () => {
     const rows = upsertEntry([], entry({ status: "skipped", statusReason: "workday" }));

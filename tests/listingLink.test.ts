@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { jobId } from "../src/jobs/normalize.js";
 import { McpClient } from "../src/mcp/client.js";
-import { employerLinkIn, linksIn, listingOf, loadListingLinks, resolveListings, withEmployerLink } from "../src/sources/listingLink.js";
+import { applyTypeIn, easyApplyFromApplyType, employerLinkIn, linksIn, listingOf, loadListingLinks, resolveListings, withEmployerLink } from "../src/sources/listingLink.js";
 
 const fake = (mode: string) => ({ command: process.execPath, args: [fileURLToPath(new URL("./helpers/fakeMcpServer.mjs", import.meta.url)), mode] });
 
@@ -67,6 +67,12 @@ describe("the employer's link in a reply", () => {
     expect(employerLinkIn(reply)).toBe("https://join.acme.com/global/en/job/42/Android?utm_source=INDEED_FEED");
     expect(employerLinkIn(JSON.stringify({ apply_url: "https://www.indeed.com/applystart?jk=1" }))).toBeNull();
   });
+  it("reads the LinkedIn server's nested apply url, and ignores its own post url", () => {
+    const external = JSON.stringify({ url: "https://www.linkedin.com/jobs/view/1/", apply: { type: "external", url: "https://ars2.equest.com/?response_id=4fdd" } });
+    expect(employerLinkIn(external)).toBe("https://ars2.equest.com/?response_id=4fdd");
+    const applied = JSON.stringify({ url: "https://www.linkedin.com/jobs/view/1/", apply: { type: "applied" } });
+    expect(employerLinkIn(applied)).toBeNull();
+  });
   it("skips the board's own links and unwraps its redirect", () => {
     const text = "See https://www.linkedin.com/jobs/view/4252026496 or apply at https://www.linkedin.com/safety/go?url=https%3A%2F%2Fjobs.lever.co%2Facme%2F0a1b2c3d-0000-4000-8000-123456789abc.";
     expect(employerLinkIn(text)).toBe("https://jobs.lever.co/acme/0a1b2c3d-0000-4000-8000-123456789abc");
@@ -83,7 +89,26 @@ describe("the employer's link in a reply", () => {
   });
   it("changes the link and the board, and the id follows the link as the queue derives it", () => {
     const j = withEmployerLink({ id: "abc", url: "https://www.indeed.com/viewjob?jk=1", ats: "other" }, "https://boards.greenhouse.io/acme/jobs/123");
-    expect(j).toEqual({ id: jobId("https://boards.greenhouse.io/acme/jobs/123"), url: "https://boards.greenhouse.io/acme/jobs/123", ats: "greenhouse" });
+    expect(j).toEqual({ id: jobId("https://boards.greenhouse.io/acme/jobs/123"), url: "https://boards.greenhouse.io/acme/jobs/123", ats: "greenhouse", easyApply: false });
+  });
+});
+
+describe("the board's apply method", () => {
+  it("reads the method from the server's JSON, and ignores anything it does not name", () => {
+    expect(applyTypeIn(JSON.stringify({ url: null, apply: { type: "easy_apply" } }))).toBe("easy_apply");
+    expect(applyTypeIn(JSON.stringify({ url: "https://acme.com/jobs/1", apply: { type: "external" } }))).toBe("external");
+    expect(applyTypeIn(JSON.stringify({ apply: { type: "nonsense" } }))).toBeNull();
+    expect(applyTypeIn("apply at https://boards.greenhouse.io/acme/jobs/1")).toBeNull();
+    expect(applyTypeIn("not JSON at all")).toBeNull();
+  });
+  it("turns the method into the job's flag, and keeps what the source knew", () => {
+    expect(easyApplyFromApplyType("easy_apply", null)).toBe(true);
+    expect(easyApplyFromApplyType("external", null)).toBe(false);
+    expect(easyApplyFromApplyType("applied", null)).toBeNull();
+    expect(easyApplyFromApplyType("applied", true)).toBe(true);
+    expect(easyApplyFromApplyType("closed", null)).toBeNull();
+    expect(easyApplyFromApplyType("unknown", null)).toBeNull();
+    expect(easyApplyFromApplyType(null, true)).toBe(true);
   });
 });
 
@@ -103,7 +128,7 @@ describe("resolving listings", () => {
       return board === "linkedin" ? "apply: https://boards.greenhouse.io/acme/jobs/123" : "no application link here";
     };
     const found = await resolveListings(jobs, { call: call as never, country: "USA", cacheFile });
-    expect(found.get("li")).toBe("https://boards.greenhouse.io/acme/jobs/123");
+    expect(found.get("li")).toEqual({ url: "https://boards.greenhouse.io/acme/jobs/123", applyType: "unknown" });
     expect(found.has("in")).toBe(false);
     expect(found.has("direct")).toBe(false);
     expect(asked).toEqual([
@@ -113,9 +138,22 @@ describe("resolving listings", () => {
     // The second run asks about neither: the link is kept for good and "no link" for hours.
     asked.length = 0;
     const again = await resolveListings(jobs, { call: call as never, country: "USA", cacheFile });
-    expect(again.get("li")).toBe("https://boards.greenhouse.io/acme/jobs/123");
+    expect(again.get("li")).toEqual({ url: "https://boards.greenhouse.io/acme/jobs/123", applyType: "unknown" });
     expect(asked).toEqual([]);
     expect(Object.keys(loadListingLinks(cacheFile)).sort()).toEqual(["indeed:5f2a9c1b7d3e4a60", "linkedin:4252026496"]);
+  });
+
+  it("keeps a LinkedIn Easy Apply answer even without an employer link", async () => {
+    const cacheFile = path.join(dir(), "links.json");
+    const reply = JSON.stringify({ url: null, apply: { type: "easy_apply" } });
+    const call = async () => reply;
+    const found = await resolveListings([jobs[0] as (typeof jobs)[number]], { call: call as never, country: "USA", cacheFile });
+    expect(found.get("li")).toEqual({ url: null, applyType: "easy_apply" });
+    // The answer is kept, so the next run does not ask again.
+    let asked = 0;
+    const again = await resolveListings([jobs[0] as (typeof jobs)[number]], { call: (async () => (asked++, "nothing")) as never, country: "USA", cacheFile });
+    expect(again.get("li")).toEqual({ url: null, applyType: "easy_apply" });
+    expect(asked).toBe(0);
   });
 
   it("asks again about a listing with no link once the wait is over", async () => {

@@ -1,7 +1,7 @@
 /** Workday's public posting endpoint, the one its own careers page reads. No auth, one posting at a time. */
 import { z } from "zod";
 import { getJson } from "../../util/http.js";
-import { canonicalUrl, jobId, type Job } from "../../jobs/normalize.js";
+import { canonicalUrl, easyApplyFromUrl, jobId, type Job } from "../../jobs/normalize.js";
 import { htmlToText } from "../../util/text.js";
 
 const WorkdayPosting = z.object({
@@ -68,6 +68,7 @@ export function workdayJob(raw: unknown, url: string): Job | null {
     sponsorship: "unknown",
     degrees: [],
     category: null,
+    easyApply: easyApplyFromUrl(link),
     description,
     descriptionSource: description ? "api" : "none",
   };
