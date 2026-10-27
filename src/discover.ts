@@ -67,6 +67,8 @@ export type DiscoverOptions = {
   known?: { ats: string; url: string; company: string }[];
   /** Ask freehire for employers the tool does not know yet. Needs a portal search. */
   freehire?: boolean;
+  /** Which boards to read this time. Left out, all of them. */
+  pick?: (board: Board) => boolean;
   /** Stands in for the openings MCP server in tests. */
   freehireCall?: FreehireCall;
   /** Consider postings up to this many days old, for one search. The default is DISCOVER.maxAgeDays. */
@@ -99,7 +101,7 @@ export async function collectBoardJobs(opts: DiscoverOptions & { extra?: Job[] }
     ? await searchFreehire(opts.search, maxAgeDays, { log, ...(opts.freehireCall ? { call: opts.freehireCall } : {}) })
     : { jobs: [] as Job[], boards: [] as Board[] };
 
-  const boards = boardsFromJobs([...(opts.extra ?? []), ...found.jobs, ...(opts.known ?? [])], undefined, found.boards);
+  const boards = boardsFromJobs([...(opts.extra ?? []), ...found.jobs, ...(opts.known ?? [])], undefined, found.boards).filter((b) => !opts.pick || opts.pick(b));
   log(`[sources] polling ${boards.length} company boards`);
   const terms = opts.search?.terms ?? ATS_SEARCH.defaultTerms;
   const titleOk = (title: string) => boardTitleWanted(title, opts.search);

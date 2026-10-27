@@ -18,7 +18,8 @@ posting found by three lists is rated once.
 
 Every posting is put to the portal's own rules, and a student or new-grad
 title is never kept. The hourly search reads the same boards and takes only
-what went up in its window: by the board's exact time where it gives one
+what went up since a board's last read (a third of the boards each hour,
+`HOURLY.boardRotateHours`): by the board's exact time where it gives one
 (Greenhouse, Lever, Ashby), otherwise a posting its last scan did not show
 (`data/runs/hourly-boards.json`).
 

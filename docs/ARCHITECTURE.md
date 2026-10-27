@@ -29,7 +29,8 @@ boards: greenhouse / lever / ashby / workable  │                              
    `locationWanted`, `companyExcluded`), and a student or new-grad title
    (`ATS_SEARCH.earlyCareerTitle`) is never kept. The hourly search reads
    the same boards (`src/run/hourly.ts`) and takes only the postings that
-   went up in its window (`newBoardPostings`).
+   went up since a board's last read (`newBoardPostings`), reading a third
+   of the boards each hour (`boardThisHour`).
 2. **Dedupe** by posting (`postingKey` in `src/jobs/normalize.ts`). The
    lists and the boards link one job in several ways: a careers page with
    `gh_jid`, the board page, the embedded form, Ashby's `/application`. The

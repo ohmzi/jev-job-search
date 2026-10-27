@@ -18,9 +18,14 @@ changed for a person using the tool and what changed for a contributor.
   server, names employers the tool did not know; only postings it judges
   fresh, not freshened and rarely re-listed are kept, and their boards are
   then read directly. Boards also come from every job in the queue.
-- The hourly search reads the same boards for each portal and takes only what
-  went up in its last hour: by the board's own time, or a posting its last
-  scan did not show.
+- The hourly search reads the same boards for each portal, a third of them
+  each hour, so each board is read every three hours. It takes only what went
+  up since a board's last read: by the board's own time, or a posting its last
+  scan did not show. It polls the seed boards, freehire's and those of jobs
+  queued in the last three days.
+- Seed boards for US banks, insurers, health companies, utilities, telecoms,
+  auto makers and tech companies: 131 boards, each found through freehire
+  and checked with a live search.
 
 ### Removed
 - The SimplifyJobs internship and new-grad lists and the three GitHub

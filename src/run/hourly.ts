@@ -22,6 +22,7 @@ import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import { usStatus, type Profile, type Search } from "../profile/schema.js";
 import { dedupeJobspy, searchJobspy, type JobspyRunner } from "../sources/jobspy.js";
 import { collectBoardJobs } from "../discover.js";
+import type { Board } from "../sources/companies.js";
 import { easyApplyFromApplyType, listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
 import { withStore, writeAtomic } from "../util/store.js";
 
@@ -189,6 +190,13 @@ export function loadBoardsSeen(file = PATHS.hourlyBoardsSeen): BoardsSeen | null
   }
 }
 
+/** Whether a board is read this hour. The boards take turns, so each is read once in HOURLY.boardRotateHours. */
+export function boardThisHour(board: Board, now: Date): boolean {
+  let h = 0;
+  for (const c of `${board.ats}:${board.slug.toLowerCase()}`) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return h % HOURLY.boardRotateHours === Math.floor(now.getTime() / 3_600_000) % HOURLY.boardRotateHours;
+}
+
 /** The queued jobs whose boards the hourly search polls: those queued in the last HOURLY.boardKnownDays. */
 export function recentlyQueued(entries: QueueEntry[], now: Date): QueueEntry[] {
   const since = now.getTime() - HOURLY.boardKnownDays * 86_400_000;
@@ -197,12 +205,13 @@ export function recentlyQueued(entries: QueueEntry[], now: Date): QueueEntry[] {
 
 /**
  * Which board postings went up in this run's window. A posting with the board's exact time counts
- * when that time is inside the window. One with only a date counts when it is from today or
+ * when that time is inside the window, which is at least HOURLY.boardRotateHours since a board is
+ * read only that often. One with only a date counts when it is from today or
  * yesterday and the last scan did not show it; on the first scan (`before` is null) nothing with
  * only a date counts, since everything open would look new. Returns what to remember as well.
  */
 export function newBoardPostings(jobs: Job[], before: BoardsSeen | null, now: Date, hoursOld: number): { fresh: Job[]; seen: BoardsSeen } {
-  const cutoff = now.getTime() - hoursOld * 3_600_000;
+  const cutoff = now.getTime() - Math.max(hoursOld, HOURLY.boardRotateHours) * 3_600_000;
   const forget = now.getTime() - HOURLY.boardSeenDays * 86_400_000;
   const seen: BoardsSeen = { seen: {} };
   for (const [id, at] of Object.entries(before?.seen ?? {})) if (Date.parse(at) >= forget) seen.seen[id] = at;
@@ -289,13 +298,13 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
     try {
       const scanned = boards
         ? await boards(search, queued)
-        : await collectBoardJobs({ search, known: queued.map((e) => e.job), maxAgeDays: HOURLY.boardMaxAgeDays, now, log });
+        : await collectBoardJobs({ search, known: queued.map((e) => e.job), maxAgeDays: HOURLY.boardMaxAgeDays, now, log, pick: (b) => boardThisHour(b, now) });
       const before = loadBoardsSeen(o.boardsSeenFile);
       const { fresh, seen } = newBoardPostings(scanned, before, now, hoursOld);
       if (!o.dry) writeAtomic(o.boardsSeenFile ?? PATHS.hourlyBoardsSeen, JSON.stringify(seen) + "\n");
       // Not counted as a board call: the window below moves on only when JobSpy answered.
       if (fresh.length) result.jobs = dedupeJobspy([...fresh, ...result.jobs]);
-      log(`[hourly] employers' own boards: ${scanned.length} open postings that fit, ${fresh.length} went up in the last ${hoursOld} hour(s)${before ? "" : " (first scan: the rest are only noted)"}`);
+      log(`[hourly] employers' own boards (a third of them each hour): ${scanned.length} open postings that fit, ${fresh.length} new since their last read${before ? "" : " (first scan: the rest are only noted)"}`);
     } catch (err) {
       log(`[hourly] the employer boards failed: ${err instanceof Error ? err.message : String(err)}`);
     }

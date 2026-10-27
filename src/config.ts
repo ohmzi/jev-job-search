@@ -514,6 +514,12 @@ export const HOURLY = {
    * many days back. `discover` polls the boards of every queued job.
    */
   boardKnownDays: 3,
+  /**
+   * The hourly search reads a share of the employers' boards each hour, so every board is read once
+   * in this many hours and the boards together get a steady trickle of calls, not a burst. A posting
+   * with the board's exact time counts when it went up within this many hours. `discover` reads them all.
+   */
+  boardRotateHours: 3,
   /** A board posting is forgotten by the hourly search once no scan has shown it for this long. */
   boardSeenDays: 14,
   /** JobSpy asks each board for jobs at most this many hours old. One, because the run is hourly. */

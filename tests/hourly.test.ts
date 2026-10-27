@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { ageHeldEntries, isRecent, localDate, recentFirst } from "../src/jobs/recency.js";
 import { dedupeJobspy, locationWanted, mapJobspy, postedOf, titleWanted } from "../src/sources/jobspy.js";
-import { mergeHourly, newBoardPostings, recentlyQueued, runHourly } from "../src/run/hourly.js";
+import { boardThisHour, mergeHourly, newBoardPostings, recentlyQueued, runHourly } from "../src/run/hourly.js";
 import { buildRecent } from "../src/report/recent.js";
 import { pickJobs } from "../src/run/pipeline.js";
 import { loadQueue, saveQueue, type QueueEntry } from "../src/jobs/queue.js";
@@ -329,7 +329,7 @@ describe("an hourly run that also reads the employers' own boards", () => {
         asked = s.portal;
         return [
           job({ id: "board-1", source: "ashby:delta", company: "Delta", title: "Senior Android Engineer", url: "https://jobs.ashbyhq.com/delta/8c035d3d-081d-4c8a-914a-72f4efaad254", ats: "ashby", postedAtExact: new Date(NOW.getTime() - 20 * 60_000).toISOString() }),
-          // Up yesterday afternoon: open, but not new this hour.
+          // Up yesterday afternoon: open, but not new since the board's last turn.
           job({ id: "board-2", source: "ashby:delta", company: "Delta", title: "Staff Android Engineer", url: "https://jobs.ashbyhq.com/delta/9c035d3d-081d-4c8a-914a-72f4efaad254", ats: "ashby", postedAtExact: new Date(NOW.getTime() - 20 * 3_600_000).toISOString() }),
         ];
       },
@@ -362,12 +362,12 @@ describe("an hourly run that also reads the employers' own boards", () => {
 describe("which board postings are new this hour", () => {
   const dated = (id: string, postedAt: string) => job({ id, postedAt, postedAtExact: null, ats: "workable", url: `https://apply.workable.com/delta/j/${id}/` });
 
-  it("takes a posting by the board's exact time when it gives one", () => {
-    const inside = job({ id: "a", postedAtExact: new Date(NOW.getTime() - 30 * 60_000).toISOString() });
-    const outside = job({ id: "b", postedAtExact: new Date(NOW.getTime() - 3 * 3_600_000).toISOString() });
+  it("takes a posting by the board's exact time, within the hours a board waits for its turn", () => {
+    const inside = job({ id: "a", postedAtExact: new Date(NOW.getTime() - 150 * 60_000).toISOString() });
+    const outside = job({ id: "b", postedAtExact: new Date(NOW.getTime() - 5 * 3_600_000).toISOString() });
     expect(newBoardPostings([inside, outside], null, NOW, 1).fresh.map((j) => j.id)).toEqual(["a"]);
     // A run the machine missed widens the window.
-    expect(newBoardPostings([inside, outside], null, NOW, 4).fresh.map((j) => j.id)).toEqual(["a", "b"]);
+    expect(newBoardPostings([inside, outside], null, NOW, 6).fresh.map((j) => j.id)).toEqual(["a", "b"]);
   });
 
   it("takes a posting with only a date once, when the last scan did not show it", () => {
@@ -383,6 +383,15 @@ describe("which board postings are new this hour", () => {
     const at = (days: number) => new Date(NOW.getTime() - days * 86_400_000).toISOString();
     const kept = recentlyQueued([entry({ discoveredAt: at(1) }), entry({ discoveredAt: at(2.9) }), entry({ discoveredAt: at(4) })], NOW);
     expect(kept.map((e) => e.discoveredAt)).toEqual([at(1), at(2.9)]);
+  });
+
+  it("reads each board once every three hours, a third of them each hour", () => {
+    const sites = Array.from({ length: 30 }, (_, i) => ({ ats: i % 2 ? ("workday" as const) : ("greenhouse" as const), slug: i % 2 ? `https://t${i}.wd1.myworkdayjobs.com/Careers` : `t${i}`, company: `T${i}` }));
+    const hours = [0, 1, 2].map((h) => new Date(NOW.getTime() + h * 3_600_000));
+    const turns = sites.map((s) => hours.filter((h) => boardThisHour(s, h)).length);
+    expect(turns.every((n) => n === 1)).toBe(true);
+    const share = hours.map((h) => sites.filter((s) => boardThisHour(s, h)).length);
+    expect(Math.max(...share)).toBeLessThan(20);
   });
 
   it("forgets a posting no scan has shown for two weeks", () => {

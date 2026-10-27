@@ -39,9 +39,10 @@ is there.
 
 - **Where the jobs come from.** Indeed and LinkedIn through JobSpy, and the
   employers' own boards (Greenhouse, Lever, Ashby, Workable, Workday sites)
-  with freehire naming new ones. From the boards only what went up in the
-  last hour is taken: by the board's own time, or, for a board that gives
-  only a date, a posting the last scan did not show. The first scan after a
+  with freehire naming new ones. Each hour reads a third of the boards, so
+  every board is read once in three hours. From a board only what went up
+  since its last read is taken: by the board's own time, or, for a board
+  that gives only a date, a posting the last scan did not show. The first scan after a
   change only notes what is open. Intern and new-grad titles are never kept.
 - **A job the tool can fill** is queued. `/apply` takes these before older
   queued jobs while they are fresh. After twelve hours it leaves the page and
