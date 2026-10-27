@@ -154,6 +154,11 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
     expect(posts[3]).toEqual({ path: "/api/status", token: TOKEN, body: { id: "u1", status: "applied", was: "submission_unknown" } });
     // A job the tool cannot fill has its own place, with "I applied" and "Not applying".
     expect(text).toMatch(/Apply on the employer.s site/);
+    // Needs you has a filter too; the count on the tab stays the whole number.
+    await page.evaluate("(() => { const q = document.querySelector('#qNeeds'); q.value = 'umbrella'; q.dispatchEvent(new Event('input')); })()");
+    expect(await page.evaluate<number>("document.querySelectorAll('#needs .item').length")).toBe(1);
+    expect(await page.evaluate<string>("document.querySelector('#countNeeds').textContent")).toBe("1 of 5");
+    await page.evaluate("(() => { const q = document.querySelector('#qNeeds'); q.value = ''; q.dispatchEvent(new Event('input')); })()");
     await page.evaluate("document.querySelector('[data-set=s1][data-to=skipped]').click()");
     for (let i = 0; i < 30 && posts.length < 5; i++) await sleep(100);
     expect(posts[4]).toEqual({ path: "/api/status", token: TOKEN, body: { id: "s1", status: "skipped", was: "needs_review", reason: "you chose not to apply" } });
@@ -161,7 +166,12 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
     // Left for you: each job can be marked applied from its row, or several at once.
     await page.evaluate("(() => { document.querySelector('[data-screen=apps]').click(); document.querySelector('[data-tab=manual]').click(); })()");
     const heads = await page.evaluate<string[]>("[...document.querySelectorAll('#apps th')].map((t) => t.textContent.replace(/[▲▼]/g, '').trim())");
-    expect(heads).toEqual(["", "Job", "Fit", "Status", "Reason", "Notes", ""]);
+    expect(heads).toEqual(["", "Job", "Board", "Easy Apply", "Fit", "Status", "Reason", "Notes", ""]);
+    expect(await page.evaluate<string[]>("[...document.querySelectorAll('#apps tbody tr')].map((tr) => tr.children[2].textContent)")).toEqual(["ashby", "ashby", "ashby"]);
+    // The filter narrows the tab by anything a row shows.
+    await page.evaluate("(() => { const q = document.querySelector('#q'); q.value = 'wonka'; q.dispatchEvent(new Event('input')); })()");
+    expect(await page.evaluate<number>("document.querySelectorAll('#apps tbody tr').length")).toBe(1);
+    await page.evaluate("(() => { const q = document.querySelector('#q'); q.value = ''; q.dispatchEvent(new Event('input')); })()");
     // The page never scrolls sideways: on a narrow screen the table scrolls in its own frame.
     expect(await page.evaluate<boolean>("document.documentElement.scrollWidth <= document.documentElement.clientWidth")).toBe(true);
     // Best fit first, and a row the queue does not hold can be read but not changed.

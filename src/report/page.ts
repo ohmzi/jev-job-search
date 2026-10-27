@@ -49,7 +49,8 @@ export function reportPage(snapshot: Report | null, token = "", port?: number): 
   .wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; } th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; } tbody tr:last-child td { border-bottom: 0; } tbody tr:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); } tr.picked { background: color-mix(in srgb, var(--accent) 9%, transparent); }
   th { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } th[data-sort] { cursor: pointer; } th[data-sort]:hover { color: var(--ink); }
-  .c-pick { width: 40px; padding-right: 4px; text-overflow: clip; } .c-applied { width: 100px; } .c-fit { width: 60px; } .c-status { width: 130px; } .c-reply { width: 140px; } .c-notes { width: 190px; } .c-act { width: 200px; } .c-posted { width: 150px; } .c-found { width: 100px; } .c-reason { width: 32%; }
+  .c-pick { width: 40px; padding-right: 4px; text-overflow: clip; } .c-applied { width: 96px; } .c-board { width: 96px; } .c-easy { width: 92px; } .c-fit { width: 54px; } .c-status { width: 116px; } .c-reply { width: 130px; } .c-notes { width: 160px; } .c-act { width: 178px; } .c-posted { width: 140px; } .c-found { width: 90px; } .c-reason { width: 25%; }
+  td.ez, .meta .ez { color: var(--good); font-weight: 600; }
   td.n { white-space: nowrap; font-variant-numeric: tabular-nums; }
   .role { font-weight: 600; } .meta { color: var(--muted); font-size: 12px; margin-top: 2px; } .meta .ez { color: var(--good); font-weight: 600; }
   .clip { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; color: var(--ink); } .clip.open { display: block; } .clip:empty { display: none; }
@@ -67,7 +68,7 @@ export function reportPage(snapshot: Report | null, token = "", port?: number): 
   .more { margin: 10px 0 0; }
   .line { font-size: 20px; font-weight: 600; margin: 4px 0 12px; } h2 { font-size: 15px; margin: 22px 0 10px; } h2 .count { font-size: 12px; } .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 20px; } .grid2 label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
   .note { color: var(--muted); font-size: 13px; } .warn { color: var(--warn); }
-  @media (max-width: 800px) { header, main, nav#nav { padding-left: 16px; padding-right: 16px; } .bar { grid-template-columns: 100px 1fr 32px; } .wrap table { width: 1200px; } .c-reason { width: 260px; } .self { grid-template-columns: 1fr; } .self .btn { margin: 0 6px 0 0; } input[type=search] { min-width: 0; width: 100%; } }
+  @media (max-width: 800px) { header, main, nav#nav { padding-left: 16px; padding-right: 16px; } .bar { grid-template-columns: 100px 1fr 32px; } .wrap table { width: 1350px; } .c-reason { width: 260px; } .self { grid-template-columns: 1fr; } .self .btn { margin: 0 6px 0 0; } input[type=search] { min-width: 0; width: 100%; } }
 </style></head>
 <body>
 <div class="top">
@@ -87,8 +88,14 @@ export function reportPage(snapshot: Report | null, token = "", port?: number): 
       <div class="card chart"><h3>Every job considered, by status</h3><div id="byStatus"></div></div>
     </div>
   </section>
-  <section class="screen" id="s-recent"><div id="recent"></div></section>
-  <section class="screen" id="s-needs"><div id="needs"></div></section>
+  <section class="screen" id="s-recent">
+    <div class="toolbar"><input type="search" id="qRecent" placeholder="Filter by company, role, board, place, status"><span class="sub" id="countRecent"></span></div>
+    <div id="recent"></div>
+  </section>
+  <section class="screen" id="s-needs">
+    <div class="toolbar"><input type="search" id="qNeeds" placeholder="Filter by company, role, reason"><span class="sub" id="countNeeds"></span></div>
+    <div id="needs"></div>
+  </section>
   <section class="screen" id="s-apps">
     <div class="tabs" id="tabs"></div>
     <p class="tabnote" id="tabnote"></p>
@@ -113,18 +120,18 @@ ${embedded}
   const WAITING = ["awaiting_user_action", "awaiting_email_verification", "submission_unknown"];
   // Each tab shows the columns that matter for what is in it.
   const TABS = [
-    { key: "applied", label: "Applied", keep: (r) => r.status_key === "applied", cols: ["applied", "job", "reply", "notes", "act"], sort: ["applied_on", -1], note: "Sent and confirmed. A reply the inbox placed shows under Reply." },
-    { key: "waiting", label: "Waiting for you", keep: (r) => WAITING.includes(r.status_key), cols: ["pick", "job", "status", "reason", "notes", "act"], sort: ["company", 1], note: "A form open for you, or one that was clicked and never confirmed. If you sent it, mark it applied." },
-    { key: "manual", label: "Left for you", keep: (r) => LEFT.includes(r.status_key), cols: ["pick", "job", "fit", "status", "reason", "notes", "act"], sort: ["fit", -1], note: "The tool could not finish these. Apply on the site yourself, then mark them applied, or skip them." },
-    { key: "takehome", label: "Take-home", keep: (r) => !!r.takehome, cols: ["applied", "job", "status", "reply", "notes", "act"], sort: ["applied_on", -1], note: "Applications that came with a take-home task." },
-    { key: "queued", label: "Queued", keep: (r) => r.status_key === "queued", cols: ["pick", "job", "fit", "notes", "act"], sort: ["fit", -1], note: "Next in line for /apply, best fit first." },
-    { key: "all", label: "Everything", keep: () => true, cols: ["pick", "applied", "job", "fit", "status", "reason", "notes", "act"], sort: ["applied_on", -1], note: "Every job the tool has considered." },
+    { key: "applied", label: "Applied", keep: (r) => r.status_key === "applied", cols: ["applied", "job", "board", "easy", "reply", "notes", "act"], sort: ["applied_on", -1], note: "Sent and confirmed. A reply the inbox placed shows under Reply." },
+    { key: "waiting", label: "Waiting for you", keep: (r) => WAITING.includes(r.status_key), cols: ["pick", "job", "board", "easy", "status", "reason", "notes", "act"], sort: ["company", 1], note: "A form open for you, or one that was clicked and never confirmed. If you sent it, mark it applied." },
+    { key: "manual", label: "Left for you", keep: (r) => LEFT.includes(r.status_key), cols: ["pick", "job", "board", "easy", "fit", "status", "reason", "notes", "act"], sort: ["fit", -1], note: "The tool could not finish these. Apply on the site yourself, then mark them applied, or skip them." },
+    { key: "takehome", label: "Take-home", keep: (r) => !!r.takehome, cols: ["applied", "job", "board", "status", "reply", "notes", "act"], sort: ["applied_on", -1], note: "Applications that came with a take-home task." },
+    { key: "queued", label: "Queued", keep: (r) => r.status_key === "queued", cols: ["pick", "job", "board", "easy", "fit", "notes", "act"], sort: ["fit", -1], note: "Next in line for /apply, best fit first." },
+    { key: "all", label: "Everything", keep: () => true, cols: ["pick", "applied", "job", "board", "easy", "fit", "status", "reason", "notes", "act"], sort: ["applied_on", -1], note: "Every job the tool has considered." },
   ];
   const TOKEN = ${JSON.stringify(token)};
   const SCREENS = live ? [["today", "Today"], ["recent", "Last 12 hours"], ["needs", "Needs you"], ["apps", "Applications"], ["auto", "Automation"]] : [["today", "Today"], ["recent", "Last 12 hours"], ["apps", "Applications"]];
   // A link can open one screen directly: /#recent opens Last 12 hours.
   const startScreen = location.hash.replace(/^#/, "");
-  let data = null, needs = null, auto = null, screen = SCREENS.some(([k]) => k === startScreen) ? startScreen : "today", tab = "applied", q = "";
+  let data = null, needs = null, auto = null, screen = SCREENS.some(([k]) => k === startScreen) ? startScreen : "today", tab = "applied", q = "", qRecent = "", qNeeds = "";
   let appRows = [], recentRows = [];
   const post = (path, body) => fetch(path, { method: "POST", headers: { "content-type": "application/json", "x-jev-token": TOKEN }, body: JSON.stringify(body) });
   const needCount = () => needs ? needs.waiting.length + needs.questions.length + needs.unconfirmed.length + (needs.self || []).length + needs.mail.length : 0;
@@ -148,13 +155,18 @@ ${embedded}
   const fromApp = (r) => ({ id: r.job_id, company: r.company, role: r.role, link: r.job_link, location: r.location, board: r.ats, easy: r.easy_apply, fit: r.fit_score === "" || r.fit_score == null ? null : Number(r.fit_score), status_key: r.status_key, status: r.status.replace(/:.*$/s, ""), reason: r.skip_reason || after(r.status), applied_on: (r.applied_on || "").slice(0, 10), reply: r.response, reply_on: r.response_on, notes: r.notes, takehome: r.takehome_link, in_queue: r.in_queue !== false });
   const fromRecent = (r) => ({ id: r.id, company: r.company, role: r.title, link: r.link, location: r.location, board: r.board, easy: r.easy_apply === true ? "Yes" : r.easy_apply === false ? "No" : "", fit: r.fit_score, status_key: r.status_key, status: r.status, reason: r.why, posted: r.posted_at || r.posted_on, found_at: r.found_at, age: r.age_hours, notes: "", in_queue: true });
 
+  // A filter matches any word of what a row shows: company, role, place, board, status, reason.
+  const matches = (needle, ...parts) => !needle || parts.join(" ").toLowerCase().includes(needle.toLowerCase());
+  const rowText = (r) => [r.company, r.role, r.location, r.board, r.easy === "Yes" ? "easy apply" : "", r.status, r.reason];
   const statusClass = (k) => k === "applied" ? "applied" : k === "queued" ? "queued" : LEFT.includes(k) ? "needs" : "";
   const canChange = (r) => live && r.in_queue;
   const canPick = (r) => canChange(r) && r.status_key !== "applied";
   const COLS = {
     pick: { label: "", cls: "c-pick" },
     applied: { label: "Applied on", cls: "c-applied", sort: "applied_on", cell: (r) => '<td class="n">' + esc(r.applied_on) + "</td>" },
-    job: { label: "Job", cls: "c-job", sort: "company", cell: (r) => '<td><a class="role" href="' + esc(r.link) + '" target="_blank" rel="noopener">' + esc(r.role) + '</a><div class="meta">' + [esc(r.company), esc(r.location), esc(r.board)].filter(Boolean).join(" · ") + (r.easy === "Yes" ? ' · <span class="ez">Easy Apply</span>' : "") + (r.takehome ? ' · <a href="' + esc(r.takehome) + '" target="_blank" rel="noopener">take-home</a>' : "") + "</div></td>" },
+    job: { label: "Job", cls: "c-job", sort: "company", cell: (r) => '<td><a class="role" href="' + esc(r.link) + '" target="_blank" rel="noopener">' + esc(r.role) + '</a><div class="meta">' + [esc(r.company), esc(r.location)].filter(Boolean).join(" · ") + (r.takehome ? ' · <a href="' + esc(r.takehome) + '" target="_blank" rel="noopener">take-home</a>' : "") + "</div></td>" },
+    board: { label: "Board", cls: "c-board", sort: "board", cell: (r) => "<td>" + esc(r.board) + "</td>" },
+    easy: { label: "Easy Apply", cls: "c-easy", sort: "easy", cell: (r) => '<td class="' + (r.easy === "Yes" ? "ez" : "") + '">' + esc(r.easy) + "</td>" },
     fit: { label: "Fit", cls: "c-fit", sort: "fit", cell: (r) => '<td class="n" title="' + esc(r.fit ?? "") + '">' + (r.fit == null || isNaN(r.fit) ? "" : Math.round(r.fit * 100) + "%") + "</td>" },
     status: { label: "Status", cls: "c-status", sort: "status", cell: (r) => '<td><span class="status ' + statusClass(r.status_key) + '">' + esc(r.status) + "</span></td>" },
     reason: { label: "Reason", cls: "c-reason", sort: "reason", cell: (r) => '<td><div class="clip" title="Click to read it all">' + esc(r.reason) + "</div></td>" },
@@ -199,11 +211,19 @@ ${embedded}
   }
 
   const KINDS = { confirmation: "received your application", rejection: "said no", assessment: "sent an assessment", interview: "asked for an interview", offer: "made an offer" };
+  // Each list in Needs you, narrowed by the filter. The count in the tab stays the whole number.
   function renderNeeds() {
     if (!needs) return;
+    const shown = Object.fromEntries(Object.entries(needs).map(([k, v]) => [k, Array.isArray(v) ? v.filter((x) => matches(qNeeds, JSON.stringify(x))) : v]));
+    const total = Object.values(shown).reduce((n, v) => n + (Array.isArray(v) ? v.length : 0), 0);
+    $("#countNeeds").textContent = qNeeds ? total + " of " + needCount() : "";
+    drawNeeds(shown, total);
+  }
+  function drawNeeds(needs, total) {
     const self = needs.self || [];
     const out = [];
     if (!needCount()) out.push('<p class="note">Nothing needs you right now.</p>');
+    else if (!total) out.push('<p class="note">Nothing here matches the filter.</p>');
     if (needs.questions.length) out.push("<h2>Questions only you can answer" + badge(needs.questions.length) + "</h2>");
     for (const j of needs.questions) {
       const ask = j.items.filter((x) => x.kind === "ask");
@@ -233,10 +253,12 @@ ${embedded}
   function renderRecent() {
     if (!data) return;
     recentRows = (data.recent || []).map(fromRecent);
+    const rows = recentRows.filter((r) => matches(qRecent, ...rowText(r)));
+    $("#countRecent").textContent = recentRows.length ? (qRecent ? rows.length + " of " + recentRows.length : rows.length) + " job" + (recentRows.length === 1 ? "" : "s") : "";
     if (!recentRows.length) { $("#recent").innerHTML = '<p class="note">Nothing new in the last 12 hours.</p>'; return; }
     $("#recent").innerHTML =
       '<p class="tabnote">Jobs the tool first saw in the last 12 hours. <b>/apply</b> takes them before older queued jobs while they are fresh. A board-only listing waits here for its 12 hours, then moves to Needs you.</p>' +
-      drawTable("recent", recentRows, ["pick", "job", "posted", "found", "fit", "status", "reason", "act"], ["found_at", -1], { reason: "Why here" });
+      drawTable("recent", rows, ["pick", "job", "board", "easy", "posted", "found", "fit", "status", "reason", "act"], ["found_at", -1], { reason: "Why here" });
   }
   const list = (v) => (v || []).join(", ");
   function renderAuto() {
@@ -293,8 +315,7 @@ ${embedded}
     const t = TABS.find((x) => x.key === tab);
     $("#tabs").innerHTML = TABS.map((x) => '<button class="' + (x.key === tab ? "on" : "") + '" data-tab="' + x.key + '">' + x.label + badge(appRows.filter(x.keep).length) + "</button>").join("");
     $("#tabnote").textContent = t.note;
-    const needle = q.toLowerCase();
-    const rows = appRows.filter(t.keep).filter((r) => !needle || [r.company, r.role, r.board, r.reason, r.location, r.status].join(" ").toLowerCase().includes(needle));
+    const rows = appRows.filter(t.keep).filter((r) => matches(q, ...rowText(r)));
     $("#count").textContent = rows.length + " job" + (rows.length === 1 ? "" : "s");
     $("#apps").innerHTML = drawTable("apps-" + t.key, rows, t.cols, t.sort);
   }
@@ -353,6 +374,8 @@ ${embedded}
     const n = e.target.closest("textarea[data-notes]"); if (n) save(n, n.dataset.notes, { notes: n.value });
   });
   $("#q").addEventListener("input", (e) => { q = e.target.value; renderApps(); });
+  $("#qRecent").addEventListener("input", (e) => { qRecent = e.target.value; renderRecent(); });
+  $("#qNeeds").addEventListener("input", (e) => { qNeeds = e.target.value; renderNeeds(); });
   // A link to /#needs from inside the page, or the browser's Back button, changes the screen too.
   window.addEventListener("hashchange", () => { const k = location.hash.replace(/^#/, ""); if (SCREENS.some(([s]) => s === k) && k !== screen) { screen = k; renderNav(); renderPortals(); } });
   async function load() {
