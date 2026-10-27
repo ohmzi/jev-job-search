@@ -5,7 +5,7 @@ Read `README.md` first, then `docs/ARCHITECTURE.md`. The CLI is the product:
 `src/run/pipeline.ts` is the loop itself. The skills in `.claude/skills/`
 run it with a person in the loop: `/setup`, `/discover`, `/hourly`, `/apply`,
 `/accounts`, `/daily`, `/resume`, `/status`, `/inbox`, `/report`,
-`/profile`. A person using
+`/profile`, `/events`. A person using
 the tool types those and never `npx`: when you add a command, add the
 slash form to a skill and lead the docs with it.
 
@@ -24,7 +24,7 @@ doctor` says what is in place and what to do next.
   `applications/manual.csv`, `data/memory.json`, `data/knowledge.json`,
   `data/learned.json`, `data/queue.json` and its `.bak` copy, `data/accounts.json`,
   `data/gmail.json` and everything
-  under `data/cache/` and `data/runs/` are git-ignored. `knowledge/sites.json` is tracked on purpose: it holds site
+  under `data/cache/` and `data/runs/` (the event log among them) are git-ignored. `knowledge/sites.json` is tracked on purpose: it holds site
   names and kinds of controls, and `sanitize` keeps everything else out. Tests use `data/profile.example.json` only. Never paste real
   values into a fixture, a doc, source, or a commit message.
 - **Verify, then submit.** A value is real when it has been read back from
@@ -127,7 +127,9 @@ doctor` says what is in place and what to do next.
   It is never answered to get it through.
 - **No secrets in code or logs.** The DeepSeek key is read from `.env` by
   `src/config.ts` and nowhere else. Everything printed goes through
-  `scrub` (`src/util/redact.ts`), links are kept as `safeUrl`, and every
+  `scrub` (`src/util/redact.ts`), every event goes through `clean`
+  (`src/log/events.ts`): scrubbed, secret-named fields dropped, never a
+  form value, only field labels. Links are kept as `safeUrl`, and every
   child process is started with `childEnv()`, an allow-list that holds no
   key. A test fails on a spawn without it. Keep it that way.
 - **DeepSeek decides and writes, code acts.** Anything that is a typed

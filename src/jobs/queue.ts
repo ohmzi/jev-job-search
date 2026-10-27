@@ -7,6 +7,7 @@ import { copyFileSync, existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 import { PATHS } from "../config.js";
 import { withStore, writeAtomic } from "../util/store.js";
+import { logEvent } from "../log/events.js";
 import { Answer } from "../jev/types.js";
 import type { FitResult } from "./rate.js";
 import { jobId, type Job } from "./normalize.js";
@@ -149,10 +150,23 @@ export function saveQueue(q: QueueFile, file = PATHS.queue): void {
 export function mutateQueue<T>(fn: (q: QueueFile) => T, file = PATHS.queue): T {
   return withStore(() => {
     const q = loadQueue(file);
+    const before = new Map(q.entries.map((e) => [e.job.id, e.status]));
     const out = fn(q);
     saveQueue(q, file);
+    logChanges(before, q.entries);
     return out;
   });
+}
+
+/** Every job a change added, and every status it moved, as events: this is the one place both happen. */
+function logChanges(before: Map<string, QueueStatus>, after: QueueEntry[]): void {
+  for (const e of after) {
+    const was = before.get(e.job.id);
+    if (was === e.status) continue;
+    const job = { id: e.job.id, company: e.job.company, title: e.job.title, ats: e.job.ats, source: e.job.source };
+    if (was === undefined) logEvent("job.added", { ...job, status: e.status, reason: e.statusReason, url: e.job.url, applyable: e.applyable });
+    else logEvent("job.status", { ...job, from: was, to: e.status, reason: e.statusReason, attempts: e.attempts, waitingFor: e.waitingFor });
+  }
 }
 
 export function entryFor(job: Job, fit: FitResult | null, preFilterReason: string | null, previous?: QueueEntry): QueueEntry {

@@ -12,7 +12,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage } from "node:http";
 import path from "node:path";
 import { z } from "zod";
-import { REPORT, reportLinkKeyFile } from "../config.js";
+import { EVENTS, REPORT, reportLinkKeyFile } from "../config.js";
+import { Event } from "../log/events.js";
 
 export const LINK_HEADER = "x-jev-link";
 
@@ -70,6 +71,20 @@ async function getJson(port: number, p: string, timeoutMs: number): Promise<unkn
   const res = await fetch(`http://127.0.0.1:${port}${p}`, { signal: AbortSignal.timeout(timeoutMs) });
   if (!res.ok) throw new Error(`answered ${res.status}`);
   return res.json();
+}
+
+/**
+ * One portal's events, read through its dashboard. Printed lines (`say`) are left out unless asked
+ * for, since they are most of the volume and the structured events carry the same facts.
+ */
+export async function readPortalEvents(portal: Portal, days: number, withSay = false, timeoutMs: number = EVENTS.fetchTimeoutMs): Promise<{ portal: string; port: number; events: Event[]; error: string }> {
+  try {
+    const raw = await getJson(portal.port, `/api/events?days=${days}${withSay ? "&say=1" : ""}`, timeoutMs);
+    const parsed = z.object({ events: z.array(Event) }).parse(raw);
+    return { portal: portal.title, port: portal.port, events: parsed.events, error: "" };
+  } catch (err) {
+    return { portal: portal.title, port: portal.port, events: [], error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /** Reads one portal's records and what waits for the person there. A portal that does not answer is shown as such, not hidden. */

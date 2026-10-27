@@ -18,6 +18,7 @@ import { boardOf, countToday, employerOf, loadPauses, localDay, pauseBoard } fro
 import { employerKey, interleaveEmployers, noteApplied, pipeline, takeJobs } from "./pipeline.js";
 import { policyRefuses, type Policy } from "./policy.js";
 import { loadSharedApplied, recordSharedApplied, sharedAppliedKeys } from "./shared.js";
+import { logEvent } from "../log/events.js";
 
 const brief = (e: QueueEntry) => ({ id: e.job.id, company: e.job.company, title: e.job.title });
 
@@ -154,6 +155,26 @@ export type HourlyApplyOptions = {
 };
 
 /**
+ * Why each queued job on the Last 12 hours page was or was not taken, for the event log. The first
+ * rule that refuses a job names it; a job every rule lets through but the pass had no room for is
+ * "no room this pass".
+ */
+export function whyNotPicked(all: QueueEntry[], picked: QueueEntry[], policy: Policy, day: DayCounts, pauses: Pauses, now = new Date(), gate: (url: string) => string | null = accountGate()): Record<string, number> {
+  const taken = new Set(picked.map((e) => e.job.id));
+  const sent = sharedAppliedKeys();
+  const out: Record<string, number> = {};
+  for (const e of all) {
+    if (e.status !== "queued" || !isRecent(e, now) || taken.has(e.job.id)) continue;
+    const why =
+      sent.has(appliedKey(e.job)) ? "already sent from a portal"
+      : e.attempts >= HOURLY.maxAttempts ? "tried twice"
+      : gate(e.job.url) ?? policyRefuses(e, policy, now) ?? (!mayApplyToday(e, policy, day, pauses, now) ? "a daily limit" : "no room this pass");
+    out[why] = (out[why] ?? 0) + 1;
+  }
+  return out;
+}
+
+/**
  * Runs the apply pass. The caller holds the global apply lock and the browser run lock; this
  * function assumes Chrome is up. A failure on one job never stops the next.
  */
@@ -185,6 +206,7 @@ export async function applyFresh(profile: Profile, policy: Policy, o: HourlyAppl
       summary.reason = "no queued job passes the policy and the two-attempt cap";
     }
   }
+  logEvent("apply.pick", { dry: !!o.dry, picked: summary.picked, reason: summary.reason, notPicked: whyNotPicked(all, picked, policy, day, pauses, now), today: { sent: day.sent, unconfirmed: day.unconfirmed, target: policy.target } });
   if (o.dry) return summary;
 
   for (const e of picked) {
@@ -241,6 +263,8 @@ export async function applyFresh(profile: Profile, policy: Policy, o: HourlyAppl
       log(`[hourly] ${board} is left alone until tomorrow: it asked for a human check`);
     }
     if (after?.status === "needs_review") summary.left.push({ ...brief(after), reason: after.statusReason ?? "" });
+    logEvent("apply.result", { id: e.job.id, company: e.job.company, title: e.job.title, ats: e.job.ats, status: after?.status ?? null, reason: after?.statusReason ?? null, attempts: after?.attempts ?? null });
   }
+  logEvent("apply.pass", { picked: summary.picked.length, applied: summary.applied.length, left: summary.left.length, synced: summary.synced });
   return summary;
 }

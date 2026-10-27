@@ -35,6 +35,7 @@ import { loadProfile, type Profile } from "../profile/schema.js";
 import { limiter, paced, spacer } from "../util/pace.js";
 import { outcomeOf } from "./outcome.js";
 import { documentPolicy, tailorJob } from "../documents/tailor.js";
+import { logEvent } from "../log/events.js";
 import { printFill } from "./print.js";
 
 export type RunOptions = {
@@ -437,6 +438,7 @@ function submitAndRecordOnSite(jev: JevClient, id: string, force: boolean, keepO
           },
         });
         console.log(`${id}  ${r.needsCode ? "needs your code" : r.humanCheck ? "needs you to pass a robot check" : r.state} (${r.confidence.toFixed(2)})  ${r.url}`);
+        logEvent("submit.result", { id, state: r.state, confidence: r.confidence, needsCode: !!r.needsCode, humanCheck: !!r.humanCheck, clicked, url: r.url });
         if (r.state === "submitted") {
           recordApplied(id);
           await close();
@@ -665,6 +667,13 @@ async function walk(jev: JevClient, profile: Profile, e: QueueEntry, first: Fill
 /** Records what became of one job, and sends its form when it is ready and sending was asked for. True when the application went through. */
 async function settle(jev: JevClient, r: FillReport, o: RunOptions): Promise<boolean> {
   const outcome = outcomeOf(r, RUN.maxPages);
+  // What the form asked and what stood in the way, by label only: values are never logged.
+  logEvent("form.outcome", {
+    id: r.jobId, company: r.company, title: r.title, ats: r.ats, url: r.url, page: r.page, state: r.state, ready: r.ready,
+    action: outcome.action, reason: outcome.reason ?? r.reason, fields: r.fields.length,
+    failed: r.failed.map((f) => ({ label: f.label, why: f.why })), leftBlank: r.leftBlank.map((f) => ({ label: f.label, why: f.why })),
+    missingRequired: r.missingRequired, recalled: r.recalled ?? 0, writerCalled: !!r.writerCalled, refusals: r.refusals ?? 0, dry: !!o.dry,
+  });
   // What this form taught about its site: how many pages it has, and whether it ended ready. A rehearsal teaches the same.
   if (r.state === "filled" && !o.fillOnly) learn(r.url, { pages: r.page, form: { ready: outcome.action === "send" } });
   if (o.dry) {

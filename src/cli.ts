@@ -18,7 +18,7 @@ import { acquireRun, currentRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
 import { checkJob, SECURITY_CODE } from "./browser/submit.js";
-import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, isCombinedBoard, loadEnv, DISCOVER, LINKEDIN_SESSION, PATHS, REPORT, ROOT, RUN } from "./config.js";
+import { ACCOUNTS, childEnv, DAILY, EVENTS, GMAIL, INBOX, isCombinedBoard, loadEnv, DISCOVER, LINKEDIN_SESSION, PATHS, REPORT, ROOT, RUN } from "./config.js";
 import { accountGate } from "./accounts/capability.js";
 import { clearStop, dailyRun, formatDaily, localDay, requestStop, saveDaily, stopRequested, type Outcome } from "./run/daily.js";
 import { loadPolicy } from "./run/policy.js";
@@ -63,9 +63,13 @@ import { endIfAbandoned, noteApplied, pipeline, reconcile, recordApplied, resolv
 import { cleanCode, codeTargetIn, enterCode } from "./run/code.js";
 import { brief, printFill, printTable } from "./run/print.js";
 import { limiter } from "./util/pace.js";
+import { captureOutput, logEvent, readEvents, setEventContext, type Event } from "./log/events.js";
+import { analyzeEvents, printAnalysis } from "./log/analyze.js";
+import { readPortalEvents } from "./report/link.js";
 
 loadEnv();
 installRedaction();
+captureOutput();
 // Output piped into a command that stops reading early (head, a pager) is not an error.
 process.stdout.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EPIPE") process.exit(0);
@@ -73,10 +77,27 @@ process.stdout.on("error", (err: NodeJS.ErrnoException) => {
 const program = new Command();
 // The combined board's folder shows the four portals together and passes changes to them. It
 // never searches, applies, signs in or reads mail itself: the portals do that.
-const COMBINED_COMMANDS = ["report", "doctor"];
+const COMBINED_COMMANDS = ["report", "doctor", "events"];
+/** The portal a checkout belongs to, for the event log: its search's name, "main" for the combined board, else the folder. */
+function portalName(): string {
+  if (isCombinedBoard()) return "main";
+  try {
+    const raw = JSON.parse(readFileSync(PATHS.profile, "utf8")) as { search?: { portal?: unknown } };
+    if (typeof raw.search?.portal === "string" && raw.search.portal) return raw.search.portal;
+  } catch {
+    /* no profile yet */
+  }
+  return path.basename(PATHS.root);
+}
+
+const started = Date.now();
 program.hook("preAction", (_root, action) => {
   let top = action;
   while (top.parent && top.parent !== program) top = top.parent;
+  const cmd = top === action ? action.name() : `${top.name()} ${action.name()}`;
+  setEventContext({ portal: portalName(), cmd });
+  logEvent("cmd.start", { args: action.args, options: action.opts() });
+  process.once("exit", (code) => logEvent("cmd.exit", { code, ms: Date.now() - started }));
   if (isCombinedBoard() && !COMBINED_COMMANDS.includes(top.name())) {
     console.error(`This folder is the combined board (JEV_ROLE=combined). It shows the four portals and never searches or applies itself, so "${top.name()}" is not run here. Run it in a portal's folder.`);
     process.exit(1);
@@ -311,6 +332,7 @@ program
         } else {
           try {
             easyApply = await applyEasyApply(profile, { dry: !!o.dry, policy, log: say });
+            logEvent("easyapply.summary", { dry: !!o.dry, found: easyApply.found, scanned: easyApply.scanned, applied: easyApply.applied, tooOld: easyApply.tooOld, notEasyApply: easyApply.notEasyApply, left: easyApply.left, stopped: easyApply.stopped, reason: easyApply.reason });
             const names = easyApply.applied.map((a) => [a.company, a.title].filter(Boolean).join(" | ")).join(", ");
             const notes = [easyApply.tooOld ? `${easyApply.tooOld} skipped as older than twelve hours or undated` : "", easyApply.notEasyApply ? `${easyApply.notEasyApply} not easy apply` : "", easyApply.left ? `${easyApply.left} left for you` : ""].filter(Boolean).join("; ");
             const tail = notes ? `; ${notes}` : "";
@@ -1134,6 +1156,35 @@ program
     for (const a of current.answers) console.log(`${a.question.slice(0, 90).padEnd(90)}  ${a.value.replace(/\s+/g, " ").slice(0, 60).padEnd(60)}  (${a.company})`);
     console.log(`\n${current.answers.length} answers that hold on any form, ${Object.keys(current.forms).length} form pages remembered whole. File: ${PATHS.memory}`);
     console.log("An answer is reused only while your profile, drafts and voice guide stay as they were when it was written.");
+  });
+
+// ---------------------------------------------------------------- the event log
+
+program
+  .command("events")
+  .description("Read back what the runs did: every search, board, form and application, per portal. --all reads the four portals through their dashboards (the default on the main board)")
+  .option("--days <n>", "how many days back", (v) => parseInt(v, 10))
+  .option("--all", "read the four portals' logs too, through their dashboards")
+  .option("--json", "print the events themselves, one per line, instead of the report")
+  .option("--say", "with --json, include every printed line")
+  .option("--kind <kind>", "only events of this kind or family, e.g. board or job.status")
+  .action(async (o: { days?: number; all?: boolean; json?: boolean; say?: boolean; kind?: string }) => {
+    const days = o.days ?? EVENTS.serveDays;
+    let events: Event[] = readEvents(days);
+    const notes: string[] = [];
+    if (o.all || isCombinedBoard()) {
+      const parts = await Promise.all(REPORT.portals.filter((p) => p.title !== "Main").map((p) => readPortalEvents(p, days, !!o.say)));
+      for (const p of parts) notes.push(p.error ? `${p.portal}: not read (${p.error})` : `${p.portal}: ${p.events.length} events`);
+      events = [...events, ...parts.flatMap((p) => p.events)].sort((a, b) => a.at.localeCompare(b.at));
+    }
+    if (o.kind) events = events.filter((e) => e.kind === o.kind || e.kind.startsWith(`${o.kind}.`));
+    if (o.json) {
+      for (const e of events) if (o.say || e.kind !== "say") console.log(JSON.stringify(e));
+      return;
+    }
+    for (const n of notes) console.log(n);
+    for (const line of printAnalysis(analyzeEvents(events))) console.log(line);
+    console.log(`\nThe raw log: ${PATHS.events} (one file a day). For the events themselves: node bin/jev.js events --json${o.all || isCombinedBoard() ? " --all" : ""}`);
   });
 
 program.parseAsync(process.argv).catch((err) => {

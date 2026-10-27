@@ -35,6 +35,7 @@ import { searchFreehire, type FreehireCall } from "./sources/freehire.js";
 import { companyExcluded, locationWanted, titleWanted } from "./sources/jobspy.js";
 import { importSheet } from "./sources/sheetImport.js";
 import { mapLimit } from "./util/http.js";
+import { logEvent } from "./log/events.js";
 
 const EARLY_CAREER = new RegExp(ATS_SEARCH.earlyCareerTitle, "i");
 const DEFAULT_TITLE = new RegExp(ATS_SEARCH.defaultTitle, "i");
@@ -106,24 +107,37 @@ export async function collectBoardJobs(opts: DiscoverOptions & { extra?: Job[] }
   log(`[sources] polling ${boards.length} company boards`);
   const terms = opts.search?.terms ?? ATS_SEARCH.defaultTerms;
   const titleOk = (title: string) => boardTitleWanted(title, opts.search);
-  const results = await mapLimit(boards, DISCOVER.fetchConcurrency, (b: Board) =>
-    b.ats === "greenhouse" ? fetchGreenhouseBoard(b.slug, b.company)
-    : b.ats === "lever" ? fetchLeverBoard(b.slug, b.company)
-    : b.ats === "ashby" ? fetchAshbyBoard(b.slug, b.company)
-    : b.ats === "workable" ? fetchWorkableBoard(b.slug, b.company)
-    : searchWorkdaySite(b.slug, terms, titleOk, maxAgeDays),
-  );
   const now = opts.now ?? new Date();
   const fresh = (j: Job) => {
     const age = ageDays(j, now);
     return age === null || age <= maxAgeDays;
   };
+  // Each board's read is an event: how many postings it has open, how many fit, how long it took.
+  const results = await mapLimit(boards, DISCOVER.fetchConcurrency, async (b: Board) => {
+    const t0 = Date.now();
+    try {
+      const open = await (b.ats === "greenhouse" ? fetchGreenhouseBoard(b.slug, b.company)
+        : b.ats === "lever" ? fetchLeverBoard(b.slug, b.company)
+        : b.ats === "ashby" ? fetchAshbyBoard(b.slug, b.company)
+        : b.ats === "workable" ? fetchWorkableBoard(b.slug, b.company)
+        : searchWorkdaySite(b.slug, terms, titleOk, maxAgeDays));
+      const kept = open.filter((j) => boardJobWanted(j, opts.search) && fresh(j));
+      logEvent("board.read", { ats: b.ats, slug: b.slug, company: b.company, ok: true, open: open.length, kept: kept.length, ms: Date.now() - t0 });
+      return kept;
+    } catch (err) {
+      logEvent("board.read", { ats: b.ats, slug: b.slug, company: b.company, ok: false, ms: Date.now() - t0, error: err instanceof Error ? err.message : String(err) });
+      throw err;
+    }
+  });
   // The employer's own board comes first, so its record is the one a duplicate merges into.
   const fromBoards: Job[] = [];
   results.forEach((r) => {
-    if (r.ok) fromBoards.push(...r.value.filter((j) => boardJobWanted(j, opts.search) && fresh(j)));
+    if (r.ok) fromBoards.push(...r.value);
   });
   const fromFreehire = found.jobs.filter((j) => boardJobWanted(j, opts.search) && fresh(j));
+  const byAts: Record<string, number> = {};
+  for (const b of boards) byAts[b.ats] = (byAts[b.ats] ?? 0) + 1;
+  logEvent("boards.summary", { polled: boards.length, byAts, failed: results.filter((r) => !r.ok).length, kept: fromBoards.length, freehireFound: found.jobs.length, freehireKept: fromFreehire.length, maxAgeDays });
   log(`[sources] boards contributed ${fromBoards.length} postings, freehire ${fromFreehire.length}`);
   return dedupe([...fromBoards, ...fromFreehire]);
 }
@@ -262,6 +276,9 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
   });
 
   const queue = writeDecided(decided, now, began);
+  const reasons: Record<string, number> = {};
+  for (const d of decided) if (d.reason) reasons[d.reason] = (reasons[d.reason] ?? 0) + 1;
+  logEvent("discover.filtered", { collected, kept: kept.length, reasons });
 
   const summary: DiscoverSummary = {
     collected,
@@ -275,5 +292,6 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
     jevCostUsd: jev.usage.costUsd,
     jevCalls: jev.usage.calls,
   };
+  logEvent("discover.summary", summary);
   return { queue, summary };
 }

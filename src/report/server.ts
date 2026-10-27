@@ -9,7 +9,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { gzipSync } from "node:zlib";
 import { z } from "zod";
 import { confirmLearned, loadLearned } from "../answers/learned.js";
-import { DAILY, isCombinedBoard, PATHS, REPORT, reportPublicOrigins } from "../config.js";
+import { DAILY, EVENTS, isCombinedBoard, PATHS, REPORT, reportPublicOrigins } from "../config.js";
 import { loadQueue, mutateQueue, Response as ReplyKind, RUN_OWNED, updateEntry } from "../jobs/queue.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import { loadDaily, localDay, requestStop, stopRequested } from "../run/daily.js";
@@ -19,7 +19,8 @@ import { installSchedule, nextRun, removeSchedule, scheduleStatus } from "../run
 import { currentRun, withStore, writeAtomic } from "../util/store.js";
 import { buildReport, StatusChange } from "./data.js";
 import { buildRecent } from "./recent.js";
-import { combineData, combineNeeds, forward, hasLinkKey, isLinkedPath, portalsBut, readPortal, Routed, type Portal } from "./link.js";
+import { combineData, combineNeeds, forward, hasLinkKey, isLinkedPath, portalsBut, readPortal, readPortalEvents, Routed, type Portal } from "./link.js";
+import { eventContext, readEvents } from "../log/events.js";
 import { buildNeeds, saveAnswers, showForm, Stale } from "./needs.js";
 import { reportPage } from "./page.js";
 
@@ -150,6 +151,16 @@ export function createReportServer(port: number, o: ReportServerOptions = {}): P
         if (combined && url.pathname === "/api/data") return json(res, combineData(await readAll()));
         if (combined && url.pathname === "/api/needs") return json(res, combineNeeds(await readAll()));
         if (combined && url.pathname === "/api/automation") return send(res, 404, "text/plain", "the combined board runs nothing");
+        if (url.pathname === "/api/events") {
+          // A portal serves its own event log; the combined board serves its own and the four portals', each naming its portal.
+          const days = Math.max(1, Math.min(EVENTS.keepDays, Number(url.searchParams.get("days")) || EVENTS.serveDays));
+          const withSay = url.searchParams.get("say") === "1";
+          const own = readEvents(days).filter((e) => withSay || e.kind !== "say");
+          if (!combined) return json(res, { portal: eventContext().portal, events: own });
+          const parts = await Promise.all(portals.map((p) => readPortalEvents(p, days, withSay)));
+          const events = [...own, ...parts.flatMap((p) => p.events)].sort((a, b) => a.at.localeCompare(b.at));
+          return json(res, { portals: parts.map((p) => ({ portal: p.portal, port: p.port, events: p.events.length, error: p.error })), events });
+        }
         if (url.pathname === "/api/data") {
           const entries = loadQueue().entries;
           return json(res, { ...buildReport(loadRows(), new Date(), buildRecent(entries), new Set(entries.map((e) => e.job.id))), run: currentRun() });

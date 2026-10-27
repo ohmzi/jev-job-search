@@ -23,6 +23,7 @@ import { usStatus, type Profile, type Search } from "../profile/schema.js";
 import { dedupeJobspy, searchJobspy, type JobspyRunner } from "../sources/jobspy.js";
 import { collectBoardJobs } from "../discover.js";
 import type { Board } from "../sources/companies.js";
+import { logEvent } from "../log/events.js";
 import { easyApplyFromApplyType, listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
 import { withStore, writeAtomic } from "../util/store.js";
 
@@ -290,6 +291,7 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
   const result = await searchJobspy(search, { ...(o.runner ? { runner: o.runner } : {}), log, hoursOld });
   for (const f of result.failures) log(`[hourly] a board call failed: ${f}`);
   log(`[hourly] ${result.jobs.length} matching postings from ${result.calls} call(s)`);
+  logEvent("hourly.jobspy", { found: result.jobs.length, calls: result.calls, failures: result.failures.length, hoursOld, dry: !!o.dry });
 
   // 2b. The employers' own boards, Workday sites and freehire, under this portal's rules.
   const boards = o.boards === undefined && o.runner ? false : o.boards;
@@ -304,9 +306,11 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
       if (!o.dry) writeAtomic(o.boardsSeenFile ?? PATHS.hourlyBoardsSeen, JSON.stringify(seen) + "\n");
       // Not counted as a board call: the window below moves on only when JobSpy answered.
       if (fresh.length) result.jobs = dedupeJobspy([...fresh, ...result.jobs]);
+      logEvent("hourly.boards", { scanned: scanned.length, fresh: fresh.length, firstScan: !before, hoursOld, freshJobs: fresh.map((j) => ({ id: j.id, company: j.company, title: j.title, ats: j.ats })) });
       log(`[hourly] employers' own boards (a third of them each hour): ${scanned.length} open postings that fit, ${fresh.length} new since their last read${before ? "" : " (first scan: the rest are only noted)"}`);
     } catch (err) {
       log(`[hourly] the employer boards failed: ${err instanceof Error ? err.message : String(err)}`);
+      logEvent("hourly.boards", { ok: false, error: err instanceof Error ? err.message : String(err) });
     }
   }
 
@@ -321,6 +325,7 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
       const links = await resolveListings(unresolved, { call: caller.call, country: search.countryIndeed, now, log, ...(o.dry ? { dry: true } : {}), ...(o.linksFile ? { cacheFile: o.linksFile } : {}) });
       const withLink = [...links.values()].filter((r) => r.url !== null).length;
       const easy = [...links.values()].filter((r) => r.applyType === "easy_apply").length;
+      logEvent("hourly.listings", { asked: unresolved.length, read: links.size, withLink, easyApply: easy });
       if (links.size) {
         result.jobs = result.jobs.map((j) => {
           const resolved = links.get(j.id);
@@ -363,6 +368,7 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
   // The window advances only when at least one board answered, so a wholly failed run tries again.
   if (!o.dry && result.calls > result.failures.length) saveHourlyState({ lastRunAt: now.toISOString() }, o.stateFile);
   log(`[hourly] ${counts.added} new (${counts.held} held for you), ${counts.updated} refreshed, ${counts.skipped} skipped, ${aged} aged out`);
+  logEvent("hourly.merge", { ...counts, aged, found: result.jobs.length, dry: !!o.dry });
   return { found: result.jobs.length, ...counts, aged, calls: result.calls, failures: result.failures };
 }
 

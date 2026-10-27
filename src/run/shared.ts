@@ -10,6 +10,7 @@ import path from "node:path";
 import { HOURLY } from "../config.js";
 import { appliedKey } from "../jobs/keys.js";
 import type { Job } from "../jobs/normalize.js";
+import { logEvent } from "../log/events.js";
 import { writeAtomic } from "../util/store.js";
 
 export const sharedDir = () => process.env.JEV_SHARED_DIR?.trim() || path.join(homedir(), ".local", "state", "jev");
@@ -38,12 +39,19 @@ const readJson = <T>(file: string): T | null => {
  * the wait ran out. The searches run in parallel; this is where the portals take turns to apply.
  */
 export async function waitForGlobalRun(command: string, waitMs: number = HOURLY.applyWaitMs, pollMs: number = HOURLY.applyWaitPollMs, log: (line: string) => void = () => {}): Promise<(() => void) | null> {
-  const until = Date.now() + waitMs;
+  const t0 = Date.now();
+  const until = t0 + waitMs;
   let said = false;
   for (;;) {
     const release = acquireGlobalRun(command);
-    if (release) return release;
-    if (Date.now() + pollMs > until) return null;
+    if (release) {
+      logEvent("lock.take", { command, waitedMs: Date.now() - t0 });
+      return release;
+    }
+    if (Date.now() + pollMs > until) {
+      logEvent("lock.gaveup", { command, waitedMs: Date.now() - t0 });
+      return null;
+    }
     if (!said) log(`[hourly] another portal is applying; waiting for the browser (at most ${Math.round(waitMs / 60_000)} minutes)`);
     said = true;
     await new Promise((r) => setTimeout(r, pollMs));

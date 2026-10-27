@@ -46,6 +46,8 @@ export const PATHS = {
   /** Applications sent to a company that also wants a take-home assignment: the link and the instructions, for the person to do. */
   takehome: path.join(ROOT, "applications", "takehome.csv"),
   runs: path.join(ROOT, "data", "runs"),
+  /** The event log, one JSON-lines file per local day (src/log/events.ts). */
+  events: path.join(ROOT, "data", "runs", "events"),
   /** The person's standing instructions for the daily run. Without this file `daily` does nothing. */
   policy: path.join(ROOT, "data", "policy.json"),
   policyExample: path.join(ROOT, "data", "policy.example.json"),
@@ -639,7 +641,7 @@ export const ASSIST = {
 
 /** What a child process may inherit from the environment. Keys and passwords are not on the list, so no child ever sees one. */
 export const CHILD_ENV = {
-  allow: ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "__CF_USER_TEXT_ENCODING", "DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"],
+  allow: ["PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "LC_ALL", "LC_CTYPE", "TERM", "TZ", "CLAUDE_CONFIG_DIR", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "https_proxy", "http_proxy", "no_proxy", "SSL_CERT_FILE", "NODE_EXTRA_CA_CERTS", "__CF_USER_TEXT_ENCODING", "DISPLAY", "XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS", "JEV_EVENTS_DIR"],
 } as const;
 
 /** The environment for a child process: the allowed names only, plus what the caller adds on purpose. */
@@ -661,6 +663,22 @@ export const STORE = {
 } as const;
 
 /** The dashboard: a page on your own machine that reads the records and lets you change a status by hand. */
+/** The event log every step writes, for reading back what the runs did (src/log/events.ts). */
+export const EVENTS = {
+  /** Days of event files kept in each checkout. */
+  keepDays: 60,
+  /** Days a dashboard serves, and the analysis reads, unless asked for more. */
+  serveDays: 7,
+  /** Most events one read returns: the newest are kept. */
+  maxServe: 30_000,
+  /** How long the combined board waits for one portal's events. */
+  fetchTimeoutMs: 30_000,
+  /** A string longer than this is cut. */
+  maxString: 500,
+  /** An array longer than this is cut. */
+  maxItems: 50,
+} as const;
+
 export const REPORT = {
   port: 4545,
   /** The statuses the page lets a person set, in the order they are offered. */

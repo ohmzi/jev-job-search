@@ -6,3 +6,5 @@ import os from "node:os";
 import path from "node:path";
 
 process.env.JEV_SHARED_DIR = mkdtempSync(path.join(os.tmpdir(), "jev-test-shared-"));
+// The same for the event log: a test, and any command a test starts, writes to its own folder.
+process.env.JEV_EVENTS_DIR = mkdtempSync(path.join(os.tmpdir(), "jev-test-events-"));

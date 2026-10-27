@@ -8,6 +8,7 @@ import { z } from "zod";
 import { childEnv, HOURLY } from "../config.js";
 import { canFill } from "../jobs/fillable.js";
 import { atsFromUrl, canonicalUrl, dedupe, easyApplyFromUrl, jobId, toIsoDate, type Job } from "../jobs/normalize.js";
+import { logEvent } from "../log/events.js";
 import type { Search } from "../profile/schema.js";
 
 /** One row as JobSpy's pandas frame writes it: snake_case, with plenty of optional columns. */
@@ -209,6 +210,7 @@ export async function searchJobspy(
     ];
     const r = runner(args, HOURLY.timeoutMs);
     if (!r.ok) {
+      logEvent("jobspy.query", { term: q.term, location: q.location, ok: false, error: r.error });
       failures.push(`${q.term} in ${q.location}: ${r.error}`);
       log(`[jobspy] ${q.term} in ${q.location} failed: ${r.error}`);
       continue;
@@ -230,6 +232,7 @@ export async function searchJobspy(
       found.push(job);
       kept++;
     }
+    logEvent("jobspy.query", { term: q.term, location: q.location, ok: true, rows: rows.length, kept, hoursOld: o.hoursOld ?? search.hoursOld });
     log(`[jobspy] ${q.term} in ${q.location}: ${rows.length} rows, ${kept} kept`);
   }
   return { jobs: dedupeJobspy(found), calls, failures };

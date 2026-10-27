@@ -427,6 +427,31 @@ the request, not used before. Exactly one must fit, and its link must pass
 Requests for one account take turns. This module is never called for a
 human-check code.
 
+## The event log (`src/log/events.ts`, `src/log/analyze.ts`)
+
+Every step writes one JSON line to `data/runs/events/<local day>.jsonl` in
+its own checkout, with the portal, the run id and the command. `logEvent`
+never throws, and `clean` keeps secrets, query strings and form values out.
+
+| Kind | Written by | Holds |
+|---|---|---|
+| `cmd.start`, `cmd.exit` | `src/cli.ts` | the command, its options, exit code and time |
+| `say` | `captureOutput` | every line a run printed |
+| `jobspy.query`, `freehire.call` | the sources | rows returned and kept, failures |
+| `board.read`, `boards.summary` | `collectBoardJobs` | each board's open and kept postings, time, error |
+| `hourly.jobspy`, `hourly.boards`, `hourly.listings`, `hourly.merge` | `runHourly` | each hourly step's counts, the new board postings |
+| `job.added`, `job.status` | `mutateQueue` | every job added and every status it moved, with the reason |
+| `apply.pick`, `apply.result`, `apply.pass` | `applyFresh` | what was picked, why the rest were not (`whyNotPicked`), results |
+| `form.outcome`, `submit.result` | `pipeline` | what a form asked by label, what held it, what the click led to |
+| `lock.take`, `lock.gaveup`, `easyapply.summary` | the shared lock, Easy Apply | waits for the browser, Easy Apply results |
+| `discover.filtered`, `discover.summary` | `discover` | filter reasons and the search's totals |
+
+Each dashboard serves its log at `/api/events?days=N` (printed lines only with
+`&say=1`); the main board serves its own and the four portals' together.
+`node bin/jev.js events` (`/events`) turns them into a report with
+`analyzeEvents`; `--all` reads the four portals, `--json` prints the events.
+Files older than `EVENTS.keepDays` are removed.
+
 ## What the tool learns
 
 ### Site notes (`src/knowledge/sites.ts`)

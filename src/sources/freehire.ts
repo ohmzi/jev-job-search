@@ -12,6 +12,7 @@ import { atsFromUrl, canonicalUrl, easyApplyFromUrl, jobId, type Job } from "../
 import { McpClient } from "../mcp/client.js";
 import type { Search } from "../profile/schema.js";
 import type { Board } from "./companies.js";
+import { logEvent } from "../log/events.js";
 
 const Posting = z.object({
   title: z.string(),
@@ -115,6 +116,7 @@ export async function searchFreehire(search: Search, maxAgeDays: number, o: { ca
         if (calls > 0) await wait(FREEHIRE.gapMs);
         calls++;
         let text: string;
+        const t0 = Date.now();
         try {
           text = await call({
             q: term,
@@ -132,10 +134,12 @@ export async function searchFreehire(search: Search, maxAgeDays: number, o: { ca
         } catch (err) {
           const why = err instanceof Error ? err.message : String(err);
           failures.push(`${term}: ${why}`);
+          logEvent("freehire.call", { term, page, ok: false, ms: Date.now() - t0, error: why });
           log(`[freehire] ${term} failed: ${why}`);
           break;
         }
         const r = freehireJobs(text);
+        logEvent("freehire.call", { term, page, country, ok: true, ms: Date.now() - t0, returned: r.count, kept: r.jobs.length, boards: r.boards.length });
         jobs.push(...r.jobs);
         boards.push(...r.boards);
         if (r.count < FREEHIRE.pageSize) break;

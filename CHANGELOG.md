@@ -39,6 +39,15 @@ changed for a person using the tool and what changed for a contributor.
   applying waits for the browser (`HOURLY.applyWaitMs`) instead of giving up
   the hour; the searches themselves run in parallel.
 
+- An event log of every step, one file a day per portal
+  (`data/runs/events/`): commands, Indeed and LinkedIn queries, freehire
+  calls, every board read, every job added and status change with its
+  reason, the apply pass's picks and why the rest were passed over, browser
+  waits, each form's outcome by field label, and each submit. The main board
+  serves all four through `/api/events`, and `/events` (`node bin/jev.js
+  events`) reports on them: sources, boards that yield or fail, sends, and
+  what held jobs back.
+
 ### Removed
 - The SimplifyJobs internship and new-grad lists and the three GitHub
   internship lists. Intern, co-op and new-grad titles are never kept from a
