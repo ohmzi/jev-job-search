@@ -509,6 +509,11 @@ export const HOURLY = {
    * back (DISCOVER.maxAgeDays).
    */
   boardMaxAgeDays: 1,
+  /**
+   * Boards the hourly search polls besides the seed list and freehire's: those of jobs queued this
+   * many days back. `discover` polls the boards of every queued job.
+   */
+  boardKnownDays: 3,
   /** A board posting is forgotten by the hourly search once no scan has shown it for this long. */
   boardSeenDays: 14,
   /** JobSpy asks each board for jobs at most this many hours old. One, because the run is hourly. */

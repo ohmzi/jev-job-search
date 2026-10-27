@@ -189,6 +189,12 @@ export function loadBoardsSeen(file = PATHS.hourlyBoardsSeen): BoardsSeen | null
   }
 }
 
+/** The queued jobs whose boards the hourly search polls: those queued in the last HOURLY.boardKnownDays. */
+export function recentlyQueued(entries: QueueEntry[], now: Date): QueueEntry[] {
+  const since = now.getTime() - HOURLY.boardKnownDays * 86_400_000;
+  return entries.filter((e) => Date.parse(e.discoveredAt) >= since);
+}
+
 /**
  * Which board postings went up in this run's window. A posting with the board's exact time counts
  * when that time is inside the window. One with only a date counts when it is from today or
@@ -279,7 +285,7 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
   // 2b. The employers' own boards, Workday sites and freehire, under this portal's rules.
   const boards = o.boards === undefined && o.runner ? false : o.boards;
   if (boards !== false) {
-    const queued = loadQueue(files.queue).entries;
+    const queued = recentlyQueued(loadQueue(files.queue).entries, now);
     try {
       const scanned = boards
         ? await boards(search, queued)

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { ageHeldEntries, isRecent, localDate, recentFirst } from "../src/jobs/recency.js";
 import { dedupeJobspy, locationWanted, mapJobspy, postedOf, titleWanted } from "../src/sources/jobspy.js";
-import { mergeHourly, newBoardPostings, runHourly } from "../src/run/hourly.js";
+import { mergeHourly, newBoardPostings, recentlyQueued, runHourly } from "../src/run/hourly.js";
 import { buildRecent } from "../src/report/recent.js";
 import { pickJobs } from "../src/run/pipeline.js";
 import { loadQueue, saveQueue, type QueueEntry } from "../src/jobs/queue.js";
@@ -377,6 +377,12 @@ describe("which board postings are new this hour", () => {
     const second = newBoardPostings([dated("x", "2026-10-22"), dated("y", "2026-10-22"), dated("old", "2026-10-15")], first.seen, later, 1);
     expect(second.fresh.map((j) => j.id)).toEqual(["y"]);
     expect(newBoardPostings([dated("y", "2026-10-22")], second.seen, new Date(later.getTime() + 3_600_000), 1).fresh).toEqual([]);
+  });
+
+  it("polls only the boards of jobs queued in the last three days", () => {
+    const at = (days: number) => new Date(NOW.getTime() - days * 86_400_000).toISOString();
+    const kept = recentlyQueued([entry({ discoveredAt: at(1) }), entry({ discoveredAt: at(2.9) }), entry({ discoveredAt: at(4) })], NOW);
+    expect(kept.map((e) => e.discoveredAt)).toEqual([at(1), at(2.9)]);
   });
 
   it("forgets a posting no scan has shown for two weeks", () => {
