@@ -542,6 +542,13 @@ export const HOURLY = {
   maxAttempts: 2,
   /** How long an hourly apply pass keeps a sign-in page in front and waits for the person. */
   signInWaitMs: 2 * 60_000,
+  /**
+   * When another portal is applying, an hourly run waits this long for the browser before it gives
+   * the hour up. The portals search in parallel and take turns to apply.
+   */
+  applyWaitMs: 20 * 60_000,
+  /** How often a waiting run looks again. */
+  applyWaitPollMs: 15_000,
   /** A global apply lock older than this was left by a process that died. */
   lockStaleMs: 30 * 60_000,
   /** The prefix of the scheduled job's name. The portal id makes it unique among the four clones. */

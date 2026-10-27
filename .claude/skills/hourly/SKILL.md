@@ -75,7 +75,9 @@ page is opened and tried too.
   check, signature or unconfirmed click is left for the person on the first
   attempt and never retried.
 - The four portals share one Chrome, so a global lock lets only one apply at a
-  time. A portal that finds the lock held skips its apply pass that hour.
+  time. A portal that finds the lock held waits up to 20 minutes for its
+  turn, then skips its apply pass that hour. It applies only to jobs on its
+  Last 12 hours page.
 - A shared registry records every confirmed application by company and title. A
   job sent from one portal is marked applied in the others and is not sent
   again, including from a manual `/apply`.

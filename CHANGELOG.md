@@ -26,6 +26,14 @@ changed for a person using the tool and what changed for a contributor.
 - Seed boards for US banks, insurers, health companies, utilities, telecoms,
   auto makers and tech companies: 131 boards, each found through freehire
   and checked with a live search.
+- Seed boards for 163 employers that posted US full-stack roles in the last
+  30 days, found through freehire and checked with a live call. Recruiting
+  firms and job aggregators are left out.
+
+- The hourly apply pass takes only jobs on the portal's Last 12 hours page,
+  after the portal's whole search is done. A portal that finds another one
+  applying waits for the browser (`HOURLY.applyWaitMs`) instead of giving up
+  the hour; the searches themselves run in parallel.
 
 ### Removed
 - The SimplifyJobs internship and new-grad lists and the three GitHub

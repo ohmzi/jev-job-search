@@ -31,7 +31,7 @@ import { applyFresh, type HourlyApplySummary } from "./run/hourlyApply.js";
 import { applyEasyApply, type EasyApplySummary } from "./run/easyApply.js";
 import { backupSession, clearLoginRequired, pauseLinkedin, readLoginRequired, readPaused, restoreSessionIfMissing, resumeLinkedin, sessionStatus } from "./run/linkedinSession.js";
 import { clearReloginAttempt, readReloginAttempt } from "./run/linkedinRelogin.js";
-import { acquireGlobalRun, recordSharedApplied, sharedAppliedKeys } from "./run/shared.js";
+import { acquireGlobalRun, recordSharedApplied, sharedAppliedKeys, waitForGlobalRun } from "./run/shared.js";
 import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule, useBrowserPassword } from "./accounts/commands.js";
 import { adapterFor } from "./accounts/capability.js";
 import { signedInNow, signInFor } from "./accounts/gate.js";
@@ -124,9 +124,9 @@ program
 type ApplyOptions = { count: number; dry?: boolean; submit?: boolean; fresh?: boolean; json?: boolean; tailor?: boolean; cover?: boolean; plain?: boolean; resubmit?: boolean };
 
 /** Takes the browser for a command that drives it, tidies what an interrupted run left, and gives the lock back when the work ends. */
-async function inRun<T>(command: string, work: () => Promise<T>): Promise<T> {
-  // The four portals share one Chrome. Only one of them may drive it at a time.
-  const releaseGlobal = acquireGlobalRun(command);
+async function inRun<T>(command: string, work: () => Promise<T>, wait?: (line: string) => void): Promise<T> {
+  // The four portals share one Chrome. Only one of them may drive it at a time. An hourly run waits its turn.
+  const releaseGlobal = wait ? await waitForGlobalRun(command, undefined, undefined, wait) : acquireGlobalRun(command);
   if (!releaseGlobal) throw new Error("another portal is using the browser right now. Wait for it to finish, or run this from the portal that is working.");
   let release: (() => void) | null = null;
   try {
@@ -304,10 +304,10 @@ program
       } else {
         documentsFromOptions({ tailor: policy.documents.tailor, cover: policy.documents.cover });
         // The fork sends applications too, so it holds the same cross-portal lock as the apply
-        // pass. A held lock means another portal is applying, and this hour is skipped.
-        const releaseEasy = acquireGlobalRun("hourly easy apply");
+        // pass. The search is done by now; a portal that is applying is waited for, within a bound.
+        const releaseEasy = o.dry ? acquireGlobalRun("hourly easy apply") : await waitForGlobalRun("hourly easy apply", undefined, undefined, say);
         if (!releaseEasy) {
-          say("[hourly] easy apply skipped this hour: another portal is applying right now");
+          say("[hourly] easy apply skipped this hour: another portal kept the browser too long");
         } else {
           try {
             easyApply = await applyEasyApply(profile, { dry: !!o.dry, policy, log: say });
@@ -336,7 +336,7 @@ program
             say(`[hourly] ${preview.reason ?? "no fresh job to apply to"}`);
           } else {
             try {
-              applied = await inRun("hourly --apply", () => applyFresh(profile, policy, { log: say }));
+              applied = await inRun("hourly --apply", () => applyFresh(profile, policy, { log: say }), say);
             } catch (err) {
               say(`[hourly] the apply pass was skipped: ${err instanceof Error ? err.message : String(err)}`);
             }

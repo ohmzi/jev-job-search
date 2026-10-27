@@ -107,7 +107,7 @@ sent.
   two attempts", and is never picked again. A code, sign-in, robot check, signature or unconfirmed
   click is left for the person on the first attempt and is never retried.
 - The four portals share one Chrome, so a global lock lets only one of them apply at a time. The
-  timers are staggered, and a portal that finds the lock held skips its apply pass that hour.
+  timers are staggered, and a portal that finds the lock held waits up to 20 minutes (`HOURLY.applyWaitMs`) for its turn, then skips its apply pass that hour.
 - A shared registry records every confirmed application by company and title. A job sent from one
   portal is marked applied in the others and is not sent again. A manual `/apply` checks it too.
 

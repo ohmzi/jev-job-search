@@ -88,6 +88,28 @@ describe("the hourly apply pass", () => {
     expect(picked.map((e) => e.job.id)).toEqual(["fresh", "held"]);
   });
 
+  it("takes only jobs on the Last 12 hours page", () => {
+    const picked = pickFresh(
+      [entry({ job: { ...job(), id: "old", company: "Old" } as QueueEntry["job"], discoveredAt: old }), entry({ job: { ...job(), id: "fresh" } as QueueEntry["job"] })],
+      Policy.parse({ minScore: 0, admitRecent: true }),
+      NOW,
+      5,
+      () => null,
+    );
+    expect(picked.map((e) => e.job.id)).toEqual(["fresh"]);
+  });
+
+  it("waits its turn for the browser while another portal applies, within a bound", async () => {
+    const { acquireGlobalRun, waitForGlobalRun } = await import("../src/run/shared.js");
+    const held = acquireGlobalRun("another portal");
+    expect(held).not.toBeNull();
+    expect(await waitForGlobalRun("hourly --apply", 60, 20)).toBeNull();
+    setTimeout(() => held?.(), 40);
+    const mine = await waitForGlobalRun("hourly --apply", 2_000, 20);
+    expect(mine).not.toBeNull();
+    mine?.();
+  });
+
   it("takes one role per employer in one pass", () => {
     const picked = pickFresh(
       [

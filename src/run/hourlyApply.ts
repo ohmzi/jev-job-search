@@ -10,7 +10,7 @@ import { accountGate } from "../accounts/capability.js";
 import { DAILY, HOURLY, RUN } from "../config.js";
 import { appliedKey } from "../jobs/keys.js";
 import { loadQueue, mutateQueue, sortEntries, type QueueEntry } from "../jobs/queue.js";
-import { recentFirst } from "../jobs/recency.js";
+import { isRecent } from "../jobs/recency.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import type { Profile } from "../profile/schema.js";
 import { withStore } from "../util/store.js";
@@ -45,9 +45,11 @@ export function pickFresh(
   gate: (url: string) => string | null = accountGate(),
 ): QueueEntry[] {
   const seen = sharedAppliedKeys();
+  // Only what is on the Last 12 hours page: older queued jobs are for `/apply` and the daily run.
   const eligible = entries.filter(
     (e) =>
       e.status === "queued" &&
+      isRecent(e, now) &&
       e.attempts < HOURLY.maxAttempts &&
       !seen.has(appliedKey(e.job)) &&
       gate(e.job.url) === null &&
@@ -55,8 +57,8 @@ export function pickFresh(
   );
   // Fillable links first; a board-only page still gets its turn, because it may open on a form.
   const ordered = [
-    ...recentFirst(sortEntries(eligible.filter((e) => e.applyable !== false)), now),
-    ...recentFirst(sortEntries(eligible.filter((e) => e.applyable === false)), now),
+    ...sortEntries(eligible.filter((e) => e.applyable !== false)),
+    ...sortEntries(eligible.filter((e) => e.applyable === false)),
   ];
   const perEmployer = new Map<string, number>();
   const picked: QueueEntry[] = [];
