@@ -237,22 +237,18 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
   if (unresolved.length && listings !== false) {
     const caller = listings ?? mcpCaller(log);
     try {
-      const answers = await resolveListings(unresolved, { call: caller.call, country: search.countryIndeed, now, log, ...(o.dry ? { dry: true } : {}), ...(o.linksFile ? { cacheFile: o.linksFile } : {}) });
-      if (answers.size) {
-        let moved = 0;
-        let easy = 0;
+      const links = await resolveListings(unresolved, { call: caller.call, country: search.countryIndeed, now, log, ...(o.dry ? { dry: true } : {}), ...(o.linksFile ? { cacheFile: o.linksFile } : {}) });
+      const withLink = [...links.values()].filter((r) => r.url !== null).length;
+      const easy = [...links.values()].filter((r) => r.applyType === "easy_apply").length;
+      if (links.size) {
         result.jobs = result.jobs.map((j) => {
-          const answer = answers.get(j.id);
-          if (!answer) return j;
-          // An Easy Apply posting has no employer link; its method is the answer.
-          if (answer.url && answer.applyType !== "easy_apply") {
-            moved++;
-            return withEmployerLink(j, answer.url);
-          }
-          if (answer.applyType === "easy_apply") easy++;
-          return { ...j, easyApply: easyApplyFromApplyType(answer.applyType, j.easyApply) };
+          const resolved = links.get(j.id);
+          if (!resolved) return j;
+          // The employer's own form is not Easy Apply; an Easy Apply posting has no link to take.
+          if (resolved.url) return withEmployerLink(j, resolved.url);
+          return { ...j, easyApply: easyApplyFromApplyType(resolved.applyType, j.easyApply) };
         });
-        log(`[hourly] ${answers.size} of ${unresolved.length} board listing(s) read: ${moved} led to the employer's own form${easy ? `, ${easy} Easy Apply` : ""}`);
+        log(`[hourly] ${links.size} of ${unresolved.length} board listing(s) read: ${withLink} led to the employer's own form${easy ? `, ${easy} Easy Apply` : ""}`);
       }
     } finally {
       caller.close();

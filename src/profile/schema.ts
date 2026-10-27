@@ -34,7 +34,7 @@ const SearchSchema = z.object({
   resultsWanted: z.number().int().min(1).max(100).default(50),
   hoursOld: z.number().int().min(1).max(24).default(1),
   /** A run stops asking after this many calls, whatever the terms and places add up to. */
-  maxQueries: z.number().int().min(1).max(30).default(12),
+  maxQueries: z.number().int().min(1).max(60).default(12),
   /** Pause between two calls. */
   gapMs: z.number().int().min(0).max(60_000).default(4_000),
   /** The minute past each hour this portal's timer starts, so the four clones do not ask at once. */

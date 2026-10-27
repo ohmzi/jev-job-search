@@ -248,6 +248,14 @@ Each job goes through the same loop on its own, and its result is printed the mo
 
 The longer version, with what it handles and what it leaves to you, is in [docs/USAGE.md](docs/USAGE.md).
 
+### LinkedIn Easy Apply
+
+A LinkedIn posting whose Apply button opens LinkedIn's own wizard is sent by the local LinkedIn MCP fork, not by Chrome. JEV starts the fork with `uv --project` but leaves its own working directory in place (`MCP.linkedin` in `src/config.ts`), so the fork resolves the profile for this project's folder: the phone number and the saved resume it keeps for this copy. The fork walks the wizard, fills each step, answers an open question from your standing answers or from the facts in your profile, and sends the application. A posting whose Apply button leaves LinkedIn is followed to the employer and filled in Chrome as before.
+
+JEV records the job as `submission_unknown` before it asks the fork to send, because from that moment the application may already be with the employer. A call that fails, times out or returns something the tool cannot read leaves the job unconfirmed, and no later run fills or sends it again. Read the posting on LinkedIn first, then settle the job on the **Needs you** page, or with `node bin/jev.js mark <job id> --status applied` if the application went through, or `--status queued` if it did not. `reconcile` does not help for an Easy Apply job: it reads an open Chrome tab, and this path opens none.
+
+The questions the walk answered are listed on the **Needs you** page. When you keep one, it becomes a standing answer in `profile.answers` in `data/profile.json`, and the next run answers the same question without the model.
+
 ## A resume and a cover letter written for the job
 
 Off by default: your applications carry the resume file in your profile.

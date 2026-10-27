@@ -50,9 +50,9 @@ export class McpClient {
   }
 
   /** Starts the server and completes the handshake, or throws. */
-  static async start(server: McpServer, o: { startupMs: number; name?: string }): Promise<McpClient> {
+  static async start(server: McpServer, o: { startupMs: number; name?: string; cwd?: string }): Promise<McpClient> {
     const label = o.name ?? server.command;
-    const child = spawn(server.command, [...server.args], { stdio: ["pipe", "pipe", "pipe"], env: childEnv() });
+    const child = spawn(server.command, [...server.args], { stdio: ["pipe", "pipe", "pipe"], env: childEnv(), cwd: o.cwd });
     const client = new McpClient(child, label);
     try {
       await client.request("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "jev-job-search", version: "1" } }, o.startupMs);

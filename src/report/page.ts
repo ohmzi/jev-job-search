@@ -68,7 +68,7 @@ export function reportPage(snapshot: Report | null, token = "", port?: number): 
   .btn.sm { padding: 4px 10px; font-size: 13px; margin: 0 6px 4px 0; } select.sm { font-size: 13px; padding: 3px 4px; max-width: 100%; }
   .more { margin: 10px 0 0; }
   .line { font-size: 20px; font-weight: 600; margin: 4px 0 12px; } h2 { font-size: 15px; margin: 22px 0 10px; } h2 .count { font-size: 12px; } .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 20px; } .grid2 label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
-  .note { color: var(--muted); font-size: 13px; } .warn { color: var(--warn); }
+  .note { color: var(--muted); font-size: 13px; } .warn { color: var(--warn); } .item.alert { border-left: 4px solid var(--warn); }
   @media (max-width: 800px) { header, main, nav#nav { padding-left: 16px; padding-right: 16px; } .bar { grid-template-columns: 100px 1fr 32px; } .wrap table { width: 1350px; } .c-reason { width: 260px; } .self { grid-template-columns: 1fr; } .self .btn { margin: 0 6px 0 0; } input[type=search] { min-width: 0; width: 100%; } }
 </style></head>
 <body>
@@ -137,7 +137,7 @@ ${embedded}
   let data = null, needs = null, auto = null, screen = SCREENS.some(([k]) => k === startScreen) ? startScreen : "today", tab = "applied", q = "", qRecent = "", qNeeds = "";
   let appRows = [], recentRows = [];
   const post = (path, body) => fetch(path, { method: "POST", headers: { "content-type": "application/json", "x-jev-token": TOKEN }, body: JSON.stringify(body) });
-  const needCount = () => needs ? needs.waiting.length + needs.questions.length + needs.unconfirmed.length + (needs.self || []).length + needs.mail.length + (needs.elsewhere || []).length : 0;
+  const needCount = () => needs ? needs.waiting.length + needs.questions.length + needs.unconfirmed.length + (needs.self || []).length + (needs.answers || []).length + needs.mail.length + (needs.elsewhere || []).length + (needs.login ? 1 : 0) : 0;
   // On the combined board every job and card belongs to a portal: its key names the portal too,
   // and a change made here is sent with that portal's port, so the portal makes it.
   const keyOf = (x) => (x.port ? x.port + ":" : "") + x.id;
@@ -238,6 +238,14 @@ ${embedded}
     const out = [];
     if (!needCount()) out.push('<p class="note">Nothing needs you right now.</p>');
     else if (!total) out.push('<p class="note">Nothing here matches the filter.</p>');
+    if (needs.login) out.push('<div class="item alert"><h4 class="warn">LinkedIn login required: ' + esc(needs.login.reason) + '.</h4><p>Run: <code>node bin/jev.js session relogin</code></p><p class="note">Since ' + esc(new Date(needs.login.at).toLocaleString()) + '</p></div>');
+    if ((needs.answers || []).length) out.push("<h2>Answers to confirm" + badge(needs.answers.length) + "</h2>");
+    for (const a of needs.answers || []) out.push('<div class="item" data-learned="' + esc(a.id) + '"><h4>' + esc(a.company) + '</h4><p class="note">' + esc(a.title) + ", filled in by the Easy Apply walk without you.</p>" +
+      '<p class="q">' + esc(a.question) + '</p>' +
+      '<p class="note">The walk answered "' + esc(a.answer) + '".' + (a.options.length ? " Options it saw: " + esc(a.options.join(", ")) + "." : "") + "</p>" +
+      '<textarea data-la="' + esc(a.id) + '">' + esc(a.answer) + "</textarea>" +
+      '<button class="btn" data-confirm="' + esc(a.id) + '">Keep this answer for future applications</button><span class="saved" id="saved-learned-' + esc(a.id) + '"></span>' +
+      '<p class="note">Nothing is saved until you press it. A kept answer goes into your profile as a standing answer.</p></div>');
     if (needs.questions.length) out.push("<h2>Questions only you can answer" + badge(needs.questions.length) + "</h2>");
     for (const j of needs.questions) {
       const ask = j.items.filter((x) => x.kind === "ask");
@@ -384,6 +392,12 @@ ${embedded}
       const answers = [...box.querySelectorAll("[data-q]")].map((el) => ({ question: job.items[Number(el.dataset.q)].question, answer: el.value.trim(), remember: !!box.querySelector('[data-keep="' + el.dataset.q + '"]').checked })).filter((a) => a.answer);
       if (!answers.length) { document.getElementById("saved-" + ans.dataset.answer).textContent = "type an answer first"; return; }
       await act("/api/answer", routed(job, { id: job.id, answers }), "saved-" + ans.dataset.answer);
+      return;
+    }
+    const conf = t.closest("[data-confirm]");
+    if (conf) {
+      const box = conf.closest("[data-learned]");
+      await act("/api/confirm-answer", { id: conf.dataset.confirm, answer: box.querySelector("[data-la]").value }, "saved-learned-" + conf.dataset.confirm);
       return;
     }
     const mok = t.closest("[data-mail-ok]"); if (mok) { const m = items.get(mok.dataset.mailOk); const box = mok.closest("[data-mail]"); const jobId = box.querySelector("[data-mjob]").value; if (!jobId) return; await act("/api/mail", routed(m, { id: m.id, jobId, kind: box.querySelector("[data-mkind]").value })); return; }

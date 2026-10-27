@@ -8,6 +8,7 @@ import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { gzipSync } from "node:zlib";
 import { z } from "zod";
+import { confirmLearned, loadLearned } from "../answers/learned.js";
 import { DAILY, isCombinedBoard, PATHS, REPORT, reportPublicOrigins } from "../config.js";
 import { loadQueue, mutateQueue, Response as ReplyKind, RUN_OWNED, updateEntry } from "../jobs/queue.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
@@ -118,13 +119,22 @@ export function hasToken(req: Pick<IncomingMessage, "headers">, token: string): 
 }
 
 const Answers = z.object({ id: z.string().min(1).max(64), answers: z.array(z.object({ question: z.string().min(1).max(700), answer: z.string().min(1).max(4000), remember: z.boolean().default(false) })).min(1).max(30) });
+const ConfirmAnswer = z.object({ id: z.string().min(1).max(64), answer: z.string().trim().min(1, "type the answer before saving it").max(4000) });
 const Show = z.object({ id: z.string().min(1).max(64) });
 const Schedule = z.object({ on: z.boolean(), at: z.string().max(5).optional() });
 const MailAnswer = z.object({ id: z.string().min(1).max(128), jobId: z.string().max(64).optional(), kind: ReplyKind.optional() });
 
-/** Starts the server and returns the address it listens on. A test may name the portals a combined board reads. */
-export function startReportServer(port: number = REPORT.port, o: { portals?: Portal[] } = {}): Promise<string> {
-  const token = randomBytes(24).toString("hex");
+/** A started dashboard: where it listens, the token it gave its page, and how to stop it. */
+export type ReportServer = { address: string; token: string; close: () => Promise<void> };
+
+/** The token and the two files a test may point elsewhere. Without them the server makes its own token and uses the real files. */
+export type ReportServerOptions = { token?: string; learned?: string; profile?: string; portals?: Portal[] };
+
+/** Starts the server and returns it, so a test can point it at made-up files and stop it again. */
+export function createReportServer(port: number, o: ReportServerOptions = {}): Promise<ReportServer> {
+  const token = o.token ?? randomBytes(24).toString("hex");
+  // With port 0 the machine picks one: the Host check must then use the port it picked.
+  let boundPort = port;
   const json = (res: ServerResponse, body: unknown, status = 200) => send(res, status, "application/json", JSON.stringify(body));
   const combined = isCombinedBoard();
   const portals = o.portals ?? portalsBut(port);
@@ -133,9 +143,9 @@ export function startReportServer(port: number = REPORT.port, o: { portals?: Por
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
       // Only this machine's own page may talk to the server: a web page elsewhere must not be able to read the records or change anything.
-      if (!fromThisPage(req, port)) return send(res, 403, "text/plain", "forbidden");
+      if (!fromThisPage(req, boundPort)) return send(res, 403, "text/plain", "forbidden");
       if (req.method === "GET") {
-        if (url.pathname === "/") return send(res, 200, "text/html; charset=utf-8", reportPage(null, token, port));
+        if (url.pathname === "/") return send(res, 200, "text/html; charset=utf-8", reportPage(null, token, boundPort));
         // The combined board has no records of its own: it reads the four portals' dashboards.
         if (combined && url.pathname === "/api/data") return json(res, combineData(await readAll()));
         if (combined && url.pathname === "/api/needs") return json(res, combineNeeds(await readAll()));
@@ -183,6 +193,15 @@ export function startReportServer(port: number = REPORT.port, o: { portals?: Por
         console.log(`${saved.company} | ${saved.title} → answered, back in the queue${saved.kept ? ` (${saved.kept} kept for other forms)` : ""}`);
         return json(res, { ok: true });
       }
+      if (url.pathname === "/api/confirm-answer") {
+        const p = ConfirmAnswer.safeParse(body);
+        if (!p.success) return bad(p.error);
+        // The page may be old: an answer that is no longer waiting is refused with words, not a stack trace.
+        if (!loadLearned(o.learned).pending.some((row) => row.id === p.data.id)) return json(res, { error: "That answer is no longer waiting. Reload the page." }, 404);
+        const kept = confirmLearned(p.data.id, p.data.answer, { ...(o.learned ? { pending: o.learned } : {}), ...(o.profile ? { profile: o.profile } : {}) });
+        console.log(`learned answer confirmed: ${kept.question}`);
+        return json(res, kept);
+      }
       if (url.pathname === "/api/show") {
         const p = Show.safeParse(body);
         if (!p.success) return bad(p.error);
@@ -225,6 +244,19 @@ export function startReportServer(port: number = REPORT.port, o: { portals?: Por
   });
   return new Promise((resolve, reject) => {
     server.on("error", reject);
-    server.listen(port, "127.0.0.1", () => resolve(`http://127.0.0.1:${port}`));
+    server.listen(port, "127.0.0.1", () => {
+      const address = server.address();
+      boundPort = typeof address === "object" && address ? address.port : port;
+      resolve({
+        address: `http://127.0.0.1:${boundPort}`,
+        token,
+        close: () => new Promise<void>((done, fail) => server.close((err) => (err ? fail(err) : done()))),
+      });
+    });
   });
+}
+
+/** Starts the server and returns the address it listens on. */
+export async function startReportServer(port: number = REPORT.port, o: ReportServerOptions = {}): Promise<string> {
+  return (await createReportServer(port, o)).address;
 }

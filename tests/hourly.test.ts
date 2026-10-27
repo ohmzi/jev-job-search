@@ -320,7 +320,7 @@ describe("board listings that lead to an employer form", () => {
     const f = setup();
     saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [] }, f.queueFile);
     const asked: unknown[] = [];
-    const listings = { call: async (board: string, args: Record<string, unknown>) => (asked.push([board, args]), "apply at https://boards.greenhouse.io/delta/jobs/777"), close: () => {} };
+    const listings = { call: async (board: string, _tool: string, args: Record<string, unknown>) => (asked.push([board, args]), "apply at https://boards.greenhouse.io/delta/jobs/777"), close: () => {} };
     const summary = await runHourly(profile(), { now: NOW, ...f, runner: () => ({ ok: true, stdout: rows, error: "" }), linksFile: f.cacheFile, listings: listings as never });
     expect(asked).toEqual([["linkedin", { job_id: "4252026496" }]]);
     expect(summary).toMatchObject({ added: 1, held: 0 });
@@ -330,6 +330,19 @@ describe("board listings that lead to an employer form", () => {
     expect(e?.holdUntil).toBeNull();
     expect(e?.job.url).toBe("https://boards.greenhouse.io/delta/jobs/777");
     expect(e?.job.ats).toBe("greenhouse");
+    expect(e?.job.easyApply).toBe(false);
+  });
+
+  it("marks a LinkedIn Easy Apply posting and holds it for the person", async () => {
+    const f = setup();
+    saveQueue({ version: 1, generatedAt: NOW.toISOString(), entries: [] }, f.queueFile);
+    const listings = { call: async () => JSON.stringify({ apply: { type: "easy_apply" } }), close: () => {} };
+    const summary = await runHourly(profile(), { now: NOW, ...f, runner: () => ({ ok: true, stdout: rows, error: "" }), linksFile: f.cacheFile, listings: listings as never });
+    expect(summary).toMatchObject({ added: 1, held: 1 });
+    const e = loadQueue(f.queueFile).entries[0];
+    expect(e?.job.easyApply).toBe(true);
+    expect(e?.job.url).toBe("https://www.linkedin.com/jobs/view/4252026496");
+    expect(e?.applyable).toBe(false);
   });
 
   it("marks a LinkedIn Easy Apply posting and holds it for the person", async () => {
@@ -353,6 +366,7 @@ describe("board listings that lead to an employer form", () => {
     const e = loadQueue(f.queueFile).entries[0];
     expect(e?.applyable).toBe(false);
     expect(e?.job.url).toBe("https://www.linkedin.com/jobs/view/4252026496");
+    expect(e?.job.easyApply).toBeNull();
     expect(e?.holdUntil).not.toBeNull();
   });
 

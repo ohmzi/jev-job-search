@@ -26,7 +26,7 @@
   // LinkedIn's Easy Apply is a dialog on the posting, not a page of its own. Its controls are the
   // application. A sign-in dialog can wear the same frame: it is only the application when a Next,
   // Review or Submit control leads further into the form, and it never speaks of signing in.
-  const EASY_APPLY = (() => {
+  const EASY_DIALOG = (() => {
     const forward = /^\s*(next|review|submit application|continue)\s*$/i;
     const signIn = /\b(sign in|sign up|log in|join now|join linkedin|create an? account|new to linkedin)\b/i;
     const buttons = "button, [role=button], input[type=submit]";
@@ -41,6 +41,21 @@
     }
     return null;
   })();
+  // LinkedIn's own apply view is a panel on the posting: a step counter, the contact fields, and a
+  // footer button. It has no easy-apply class and no <form>. The posting marks it in its URL.
+  const NATIVE_APPLY = (() => {
+    if (!/[?&]applicantTrackingSystemName=LinkedIn\b/i.test(location.href)) return null;
+    const forward = /^\s*(next|review|submit application)\s*$/i;
+    for (const b of document.querySelectorAll("button, [role=button], input[type=submit]")) {
+      if (!visible(b) || !forward.test(text(b))) continue;
+      // The panel is the nearest box above the button that holds the form's controls, not the whole page.
+      for (let c = b.parentElement; c && c !== document.body; c = c.parentElement) {
+        if (c.querySelectorAll("input, select, textarea").length) return c;
+      }
+    }
+    return null;
+  })();
+  const EASY_APPLY = EASY_DIALOG || NATIVE_APPLY;
   // An attribute value inside a quoted CSS selector: backslashes and quotes escaped.
   const attr = (v) => v.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   const cssEscape = (s) => (window.CSS && CSS.escape ? CSS.escape(s) : s.replace(/([^\w-])/g, "\\$1"));

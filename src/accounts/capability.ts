@@ -4,6 +4,7 @@
  * was, a job for the person.
  */
 import { ACCOUNTS } from "../config.js";
+import { readPaused } from "../run/linkedinSession.js";
 import { accountId } from "./auth.js";
 import { dayOf, loadAccounts, loadState, stateOf, type Account } from "./config.js";
 import type { Adapter } from "./provider.js";
@@ -60,11 +61,23 @@ export function capabilityFor(url: string, files: Files = {}, now = new Date()):
  * counts the new accounts the jobs already taken will make, so one run never plans more than the
  * day allows, and it takes one job per new employer.
  */
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+};
+
 export function accountGate(files: Files = {}, now = new Date()): (url: string) => string | null {
   const planned = new Set<string>();
   const made = loadState(files.state).created[dayOf(now)] ?? 0;
   const limit = loadAccounts(files.accounts).providers.workday?.maxNewAccountsPerDay ?? ACCOUNTS.maxNewAccountsPerDay;
+  const linkedinPaused = readPaused() !== null;
   return (url) => {
+    // While the LinkedIn MCP is paused a LinkedIn listing is not taken by any run. Chrome has no LinkedIn
+    // login of its own, so opening one would only show a sign-in page.
+    if (linkedinPaused && /(^|\.)linkedin\.com$/i.test(hostOf(url))) return "the LinkedIn MCP is paused (node bin/jev.js session resume)";
     const c = capabilityFor(url, files, now);
     if (!c) return null;
     if (c.verdict !== "can") return c.reason;

@@ -43,6 +43,8 @@ const needs: Needs = {
   ],
   unconfirmed: [{ id: "u1", company: "Initech", title: "New Grad Engineer", link: "https://jobs.example.com/initech/2" }],
   self: [{ id: "s1", company: "Umbrella", title: "Platform Engineer", link: "https://jobs.example.com/umbrella/3", reason: "jobspy indeed listing: this board is not one the tool fills" }],
+  answers: [],
+  login: null,
   mail: [{ id: "m1", from: "Hooli Careers", subject: "An update on your application", on: "2026-10-03", kind: null, why: "the tool could not tell what it says", jobs: [{ id: "h1", company: "Hooli", title: "SWE Intern" }] }],
 };
 const automation = { running: true, stopAsked: false, policy: null, policyError: "", defaults: Policy.parse({}), limits: { maxTarget: DAILY.maxTarget, perBoard: DAILY.perBoard, perEmployerPerDay: DAILY.perEmployerPerDay, gapMinutes: [3, 6], maxMinutes: DAILY.maxMinutes }, schedule: { on: false, at: "09:00", next: null }, timezone: "America/Vancouver", today: [] };

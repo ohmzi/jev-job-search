@@ -22,7 +22,8 @@ doctor` says what is in place and what to do next.
 - **No PII in git.** `data/profile.json`, `data/bank.json`,
   `data/voice.local.md`, the resume, `applications/all.csv`, `applications/applied.csv`,
   `applications/manual.csv`, `data/memory.json`, `data/knowledge.json`,
-  `data/queue.json` and its `.bak` copy, `data/accounts.json`, `data/gmail.json` and everything
+  `data/learned.json`, `data/queue.json` and its `.bak` copy, `data/accounts.json`,
+  `data/gmail.json` and everything
   under `data/cache/` and `data/runs/` are git-ignored. `knowledge/sites.json` is tracked on purpose: it holds site
   names and kinds of controls, and `sanitize` keeps everything else out. Tests use `data/profile.example.json` only. Never paste real
   values into a fixture, a doc, source, or a commit message.
@@ -174,19 +175,39 @@ doctor` says what is in place and what to do next.
   against the job as it is now, under the lock (`saveAnswers`,
   `applyStatusChange`). A question about the right to work is never
   answered there: that is one answer per country, in the profile.
-- **A board listing is followed to the employer through its MCP, then Chrome.**
-  An Indeed or LinkedIn listing is not a form. `src/sources/listingLink.ts`
-  starts the board's MCP server (`MCP` in `src/config.ts`) as a child process
-  with `childEnv()`, asks it about the one posting, and takes from the reply
-  only an https link that is not the board's own and is either a known
-  application board or looks like an application. The servers read postings;
-  they apply for no one, and nothing in a reply is run or followed. A server that
-  fails is not an answer and is not cached. A listing with no link is left to
-  Chrome, which follows the page's Apply button (`openForm`), and what Chrome
-  cannot open is held for the person. The lookup runs at the start of
-  `pipeline` (`src/run/followListings.ts`), so every way of applying has it. A
-  job's id follows its link, because the queue derives it on every read. Never
-  type into a board for this.
+- **A board listing is followed to the employer through its MCP, then Chrome; a
+  LinkedIn Easy Apply posting is sent by the local LinkedIn fork.** An Indeed
+  or LinkedIn listing is not a form. `src/sources/listingLink.ts` starts the board's MCP
+  server (`MCP` in `src/config.ts`) as a child process with `childEnv()`, asks
+  it about the one posting, and takes from the reply only an https link that is
+  not the board's own and is either a known application board or looks like an
+  application. The read tools apply for no one, and nothing in a read reply is
+  run or followed. A server that fails is not an answer and is not cached. A
+  LinkedIn posting that takes Easy Apply has no employer link: it keeps its
+  board link, and `applyViaMcp` (`src/run/pipeline.ts`) records it
+  `submission_unknown` before asking the fork's apply tool to walk the wizard.
+  That reply is parsed as data. The questions the walk answered are shown on
+  the Needs you page, and one becomes a standing answer in `profile.answers`
+  only when the person keeps it. A listing with no link is left to Chrome,
+  which follows the page's Apply button (`openForm`), and what Chrome cannot
+  open is held for the person. The lookup runs at the start of `pipeline`
+  (`src/run/followListings.ts`), so every way of applying has it. A job's id
+  follows its link, because the queue derives it on every read. Never type into
+  a board for this lookup: its read tools only read, and Chrome fills the
+  employer's form.
+  When the saved LinkedIn session is gone, the Easy Apply step starts the fork's
+  own `--login` once (`src/run/linkedinRelogin.ts`): the fork signs in with the
+  credentials file the person made for it (`~/.linkedin-mcp/credentials.env`)
+  and falls back to a window on a challenge. This tool never opens that file,
+  never sees the email or the password, and starts the login through
+  `childEnv()`. A login that fails, times out or meets a challenge is not
+  repeated: the person runs `session relogin`. When the fork says LinkedIn asked
+  for a check only a person can pass, its window stays open for
+  `LINKEDIN_SESSION.autoRelogin.personWaitMs` and the person is notified. What the
+  fork prints goes, scrubbed, to `data/runs/linkedin-relogin.log`. A login that worked is followed
+  by a wait (`LINKEDIN_SESSION.autoRelogin.minHoursBetween`). You, working in
+  this repo, never start that login or run `session relogin`: show the command
+  in a `bash` block and let the person click Run.
 - **Pace every site.** Job boards drop or refuse bursts. Concurrency and
   gaps per host are in `RUN`; do not remove them to go faster.
 - **The tool learns by keeping notes, and reads them before it acts.** Site

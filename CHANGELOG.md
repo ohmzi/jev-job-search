@@ -54,6 +54,40 @@ changed for a person using the tool and what changed for a contributor.
 
 ### Fixed
 
+- A LinkedIn login that was rejected is no longer tried again every hour. A run
+  that finds the session unusable leaves a flag, and while it stands no run asks
+  the LinkedIn server anything (the Easy Apply step, the link lookups and the
+  apply pass alike) until you sign in again with `session relogin`. A backup of
+  a login the fork already moved aside (`invalid-state-*`) is never put back,
+  which had made each run restore the dead session, ask the fork, and have it
+  moved aside again. A sign-in reply to a link lookup now sets the flag and is
+  no longer kept as "no link".
+- When the saved LinkedIn session is gone, the Easy Apply step now signs in again
+  by itself, once per outage, by starting the fork's own `--login`. The fork uses
+  the credentials file you made for it and falls back to a window if LinkedIn asks
+  for a check; this tool never reads that file. A login that fails or times out is
+  not repeated until you run `session relogin`, a login that worked is followed by
+  a six-hour wait, and a notification tells you when it did not work. `session
+  status` shows the last automatic try.
+  What the fork prints during that sign-in is kept in `data/runs/linkedin-relogin.log`
+  (scrubbed), the reason it gives when it did not work says what LinkedIn asked for,
+  and when LinkedIn asks for a check only a person can pass the window stays open for
+  up to ten minutes and a notification says so.
+- `node bin/jev.js session pause` stops every use of the LinkedIn MCP in all four
+  portals at once (one shared file, `~/.local/state/jev/linkedin-paused.json`): no
+  Easy Apply step, no link lookups, no automatic sign-in, and no apply run takes a
+  LinkedIn listing, so Chrome no longer opens LinkedIn's sign-in page for one. The
+  searches and every other way of applying go on. `session resume` undoes it, and
+  `hourly --easy-apply-only` runs just the Easy Apply step.
+- The four portals now cover the whole country between them, split by whether a
+  state is nearer Dallas or Newark: the Texas portals ask once for each of 28
+  states plus Texas and its three cities, the New Jersey portals once for each of
+  21 states plus their three home areas. Each portal asks one plain phrase per place
+  ("android developer", "full stack"), because an `OR` between phrases found fewer
+  postings on LinkedIn. `HOURLY.maxQueries` is now 40 and the profile accepts up to
+  60. Tests now start with their own empty shared folder, so a pause or a lock on
+  this machine cannot change them.
+
 - A cover letter no longer brings a tailored resume with it. `--cover` (and the
   profile's `when_asked`) writes cover letters and sends your own resume; only
   `--tailor` swaps in a resume written for the job.

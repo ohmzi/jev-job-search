@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -67,12 +67,6 @@ describe("the employer's link in a reply", () => {
     expect(employerLinkIn(reply)).toBe("https://join.acme.com/global/en/job/42/Android?utm_source=INDEED_FEED");
     expect(employerLinkIn(JSON.stringify({ apply_url: "https://www.indeed.com/applystart?jk=1" }))).toBeNull();
   });
-  it("reads the LinkedIn server's nested apply url, and ignores its own post url", () => {
-    const external = JSON.stringify({ url: "https://www.linkedin.com/jobs/view/1/", apply: { type: "external", url: "https://ars2.equest.com/?response_id=4fdd" } });
-    expect(employerLinkIn(external)).toBe("https://ars2.equest.com/?response_id=4fdd");
-    const applied = JSON.stringify({ url: "https://www.linkedin.com/jobs/view/1/", apply: { type: "applied" } });
-    expect(employerLinkIn(applied)).toBeNull();
-  });
   it("skips the board's own links and unwraps its redirect", () => {
     const text = "See https://www.linkedin.com/jobs/view/4252026496 or apply at https://www.linkedin.com/safety/go?url=https%3A%2F%2Fjobs.lever.co%2Facme%2F0a1b2c3d-0000-4000-8000-123456789abc.";
     expect(employerLinkIn(text)).toBe("https://jobs.lever.co/acme/0a1b2c3d-0000-4000-8000-123456789abc");
@@ -91,15 +85,18 @@ describe("the employer's link in a reply", () => {
     const j = withEmployerLink({ id: "abc", url: "https://www.indeed.com/viewjob?jk=1", ats: "other" }, "https://boards.greenhouse.io/acme/jobs/123");
     expect(j).toEqual({ id: jobId("https://boards.greenhouse.io/acme/jobs/123"), url: "https://boards.greenhouse.io/acme/jobs/123", ats: "greenhouse", easyApply: false });
   });
-});
-
-describe("the board's apply method", () => {
-  it("reads the method from the server's JSON, and ignores anything it does not name", () => {
-    expect(applyTypeIn(JSON.stringify({ url: null, apply: { type: "easy_apply" } }))).toBe("easy_apply");
-    expect(applyTypeIn(JSON.stringify({ url: "https://acme.com/jobs/1", apply: { type: "external" } }))).toBe("external");
-    expect(applyTypeIn(JSON.stringify({ apply: { type: "nonsense" } }))).toBeNull();
-    expect(applyTypeIn("apply at https://boards.greenhouse.io/acme/jobs/1")).toBeNull();
-    expect(applyTypeIn("not JSON at all")).toBeNull();
+  it("reads the LinkedIn server's nested apply url, and ignores its own post url", () => {
+    const external = JSON.stringify({ url: "https://www.linkedin.com/jobs/view/1/", apply: { type: "external", url: "https://ars2.equest.com/?response_id=4fdd" } });
+    expect(employerLinkIn(external)).toBe("https://ars2.equest.com/?response_id=4fdd");
+    const applied = JSON.stringify({ url: "https://www.linkedin.com/jobs/view/1/", apply: { type: "applied" } });
+    expect(employerLinkIn(applied)).toBeNull();
+  });
+  it("reads the apply type from a JSON reply and nothing else", () => {
+    expect(applyTypeIn('{"apply":{"type":"easy_apply"}}')).toBe("easy_apply");
+    expect(applyTypeIn('{"apply":{"type":"external","url":"https://acme.com/jobs/1"}}')).toBe("external");
+    expect(applyTypeIn("apply: https://boards.greenhouse.io/acme/jobs/123")).toBeNull();
+    expect(applyTypeIn('{"apply":{"type":7}}')).toBeNull();
+    expect(applyTypeIn('{"url":"https://acme.com/jobs/1"}')).toBeNull();
   });
   it("turns the method into the job's flag, and keeps what the source knew", () => {
     expect(easyApplyFromApplyType("easy_apply", null)).toBe(true);
@@ -123,12 +120,12 @@ describe("resolving listings", () => {
   it("asks the right server with the right arguments, and keeps the answers", async () => {
     const cacheFile = path.join(dir(), "links.json");
     const asked: { board: string; args: Record<string, unknown> }[] = [];
-    const call = async (board: string, args: Record<string, unknown>) => {
+    const call = async (board: string, _tool: string, args: Record<string, unknown>) => {
       asked.push({ board, args });
       return board === "linkedin" ? "apply: https://boards.greenhouse.io/acme/jobs/123" : "no application link here";
     };
     const found = await resolveListings(jobs, { call: call as never, country: "USA", cacheFile });
-    expect(found.get("li")).toEqual({ url: "https://boards.greenhouse.io/acme/jobs/123", applyType: "unknown" });
+    expect(found.get("li")).toEqual({ url: "https://boards.greenhouse.io/acme/jobs/123", applyType: null });
     expect(found.has("in")).toBe(false);
     expect(found.has("direct")).toBe(false);
     expect(asked).toEqual([
@@ -138,22 +135,30 @@ describe("resolving listings", () => {
     // The second run asks about neither: the link is kept for good and "no link" for hours.
     asked.length = 0;
     const again = await resolveListings(jobs, { call: call as never, country: "USA", cacheFile });
-    expect(again.get("li")).toEqual({ url: "https://boards.greenhouse.io/acme/jobs/123", applyType: "unknown" });
+    expect(again.get("li")).toEqual({ url: "https://boards.greenhouse.io/acme/jobs/123", applyType: null });
     expect(asked).toEqual([]);
     expect(Object.keys(loadListingLinks(cacheFile)).sort()).toEqual(["indeed:5f2a9c1b7d3e4a60", "linkedin:4252026496"]);
   });
 
-  it("keeps a LinkedIn Easy Apply answer even without an employer link", async () => {
+  it("keeps easy apply as an answer with no link", async () => {
     const cacheFile = path.join(dir(), "links.json");
-    const reply = JSON.stringify({ url: null, apply: { type: "easy_apply" } });
-    const call = async () => reply;
-    const found = await resolveListings([jobs[0] as (typeof jobs)[number]], { call: call as never, country: "USA", cacheFile });
+    const one = [{ id: "li", url: "https://www.linkedin.com/jobs/view/4252026496" }];
+    const t0 = new Date("2026-10-22T08:00:00Z");
+    const found = await resolveListings(one, { call: (async () => '{"apply":{"type":"easy_apply"}}') as never, country: "USA", cacheFile, now: t0 });
     expect(found.get("li")).toEqual({ url: null, applyType: "easy_apply" });
-    // The answer is kept, so the next run does not ask again.
+    // The type is kept beside the link, so the next run reads it back without asking the server.
     let asked = 0;
-    const again = await resolveListings([jobs[0] as (typeof jobs)[number]], { call: (async () => (asked++, "nothing")) as never, country: "USA", cacheFile });
-    expect(again.get("li")).toEqual({ url: null, applyType: "easy_apply" });
+    const counting = async () => (asked++, '{"apply":{"type":"easy_apply"}}');
+    const again = await resolveListings(one, { call: counting as never, country: "USA", cacheFile, now: new Date(t0.getTime() + 3_600_000) });
     expect(asked).toBe(0);
+    expect(again.get("li")).toEqual({ url: null, applyType: "easy_apply" });
+    expect(loadListingLinks(cacheFile)["linkedin:4252026496"]).toMatchObject({ url: null, applyType: "easy_apply" });
+  });
+
+  it("an old cache entry loads without an apply type", () => {
+    const cacheFile = path.join(dir(), "links.json");
+    writeFileSync(cacheFile, JSON.stringify({ "linkedin:123": { url: null, at: "2026-10-22T08:00:00Z" } }));
+    expect(loadListingLinks(cacheFile)).toEqual({ "linkedin:123": { url: null, applyType: null, at: "2026-10-22T08:00:00Z" } });
   });
 
   it("asks again about a listing with no link once the wait is over", async () => {

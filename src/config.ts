@@ -26,6 +26,8 @@ export const PATHS = {
   applied: path.join(ROOT, "applications", "applied.csv"),
   /** Answers the writer has given before, kept so the same question is not paid for twice. */
   memory: path.join(ROOT, "data", "memory.json"),
+  /** Answers the LinkedIn Easy Apply walk filled in on its own, kept until a person confirms them. */
+  learned: path.join(ROOT, "data", "learned.json"),
   cache: path.join(ROOT, "data", "cache"),
   /** What every user's runs have taught the tool about sites. Shipped with the repository. */
   knowledgeShipped: path.join(ROOT, "knowledge", "sites.json"),
@@ -122,27 +124,69 @@ export const DEEPSEEK = {
 
 /**
  * Finding the employer's own form behind an Indeed or LinkedIn listing. Each board's MCP server is
- * started as a child process and asked for the posting's apply link. Neither server applies for
- * anyone: they read the posting. What they give back is a link, and the existing Chrome flow fills it.
- * An MCP that fails or has no link leaves the listing to Chrome, which follows the page's Apply button.
+ * started as a child process and asked for the posting's apply link. The Indeed server only reads
+ * the posting. The LinkedIn fork reads it too, and its apply tool walks LinkedIn's own wizard and
+ * sends an Easy Apply application. Otherwise what comes back is a link, and the existing Chrome
+ * flow fills it. An MCP that fails or has no link leaves the listing to Chrome, which follows the
+ * page's Apply button.
  */
 export const MCP = {
   /** Longest wait for a server to start and answer its handshake. The first start pulls an image or a package. */
   startupMs: 90_000,
   /** Longest wait for one tool call. */
   callMs: 30_000,
+  /** Longest wait for an Easy Apply walk, which fills every page of the wizard and presses submit. */
+  applyCallMs: 240_000,
   /** The most listings one hourly search or apply pass asks the servers about. */
   maxPerRun: 30,
   /** A listing the servers had no employer link for is not asked about again for this long. */
   retryAfterHours: 6,
-  /** LinkedIn: the mcp-server-linkedin package, whose tool reads how a posting takes applications. */
-  linkedin: { command: "uvx", args: ["mcp-server-linkedin@latest"], tool: "get_job_apply_url" },
-  /** Indeed: the openings-mcp image, whose Indeed tool returns a posting's details. */
-  indeed: { command: "docker", args: ["run", "-i", "--rm", "ghcr.io/amikai/openings-mcp"], tool: "indeed_get_job_detail" },
+  /**
+   * LinkedIn: the local fork, whose read tool says how a posting takes applications and whose apply
+   * tool sends one. `--project` installs and imports the fork, but unlike `--directory` it leaves the
+   * child's working directory alone, so the fork resolves the apply identity for this project's
+   * folder rather than always falling back to its default.
+   */
+  linkedin: { command: "uv", args: ["run", "--project", "/home/ohmz/StudioProjects/linkedin-mcp-server", "python", "-m", "linkedin_mcp_server"], tools: { search: "search_jobs", read: "get_job_apply_url", details: "get_job_details", apply: "apply_to_job" } },
+  /** Indeed: the openings-mcp image, whose read tool returns a posting's details. */
+  indeed: { command: "docker", args: ["run", "-i", "--rm", "ghcr.io/amikai/openings-mcp"], tools: { read: "indeed_get_job_detail" } },
   /** The openings-mcp Indeed tools want a country name. The profile keeps JobSpy's spelling. */
   indeedCountries: { USA: "United States", US: "United States", UK: "United Kingdom", Canada: "Canada", Australia: "Australia", Ireland: "Ireland", India: "India", Germany: "Germany", France: "France", Netherlands: "Netherlands", Singapore: "Singapore" } as Record<string, string>,
   /** Hosts that are the board itself, not an employer. A link on one of these is not the employer's form. */
   boardHosts: ["linkedin.com", "licdn.com", "lnkd.in", "indeed.com", "indeedapps.com", "indeed.net", "indeedcdn.com"],
+} as const;
+
+/** The local LinkedIn fork's saved session, and the known-good copy kept beside it. */
+const linkedinForkDir = (() => {
+  const args: readonly string[] = MCP.linkedin.args;
+  const at = args.indexOf("--project");
+  const dir = at >= 0 ? args[at + 1] : undefined;
+  if (!dir) throw new Error("MCP.linkedin.args must name a --project directory");
+  return dir;
+})();
+
+export const LINKEDIN_SESSION = {
+  /** Where the MCP keeps its saved session: cookies.json, source-state.json, profile/. */
+  authRoot: path.join(os.homedir(), ".linkedin-mcp"),
+  /** The known-good copy, written after a successful login. */
+  backupRoot: path.join(os.homedir(), ".linkedin-mcp-backup"),
+  /** The fork's checkout, read from MCP.linkedin.args' --project value. */
+  forkDir: linkedinForkDir,
+  /**
+   * Signing in again without the person. The fork's own `--login` signs in with the email and password
+   * in the credentials file the person made for it, and falls back to a window on a challenge. This
+   * tool never opens that file: it only starts the fork's login, at most once per outage.
+   */
+  autoRelogin: {
+    enabled: true,
+    credentialsFile: path.join(os.homedir(), ".linkedin-mcp", "credentials.env"),
+    /** Longest the fork's login may run before it is stopped. */
+    timeoutMs: 240_000,
+    /** When the fork says LinkedIn asked for a check only a person can pass, its window stays open this long for them. */
+    personWaitMs: 10 * 60_000,
+    /** After a login that worked, the next automatic one waits this long: a session LinkedIn revokes again at once is the person's. */
+    minHoursBetween: 6,
+  },
 } as const;
 
 export const DISCOVER = {
@@ -444,8 +488,8 @@ export const HOURLY = {
   timeoutMs: 90_000,
   /** Pause between two JobSpy calls, so a portal does not burst a board. */
   gapMs: 4_000,
-  /** A run stops asking after this many calls, whatever the profile allows. */
-  maxQueries: 12,
+  /** A run stops asking after this many calls, whatever the profile allows. A portal that covers half the country asks once per state. */
+  maxQueries: 40,
   /** The reason a job held for the person gets when its 12 hours are over. */
   staleReason: "posted more than 12 hours ago; apply on the employer's site yourself",
   /** How many fresh fillable jobs one portal may apply to in one hourly pass. */
@@ -458,6 +502,26 @@ export const HOURLY = {
   lockStaleMs: 30 * 60_000,
   /** The prefix of the scheduled job's name. The portal id makes it unique among the four clones. */
   labelPrefix: "jev-hourly",
+  /**
+   * The Easy Apply step that runs between the search and the apply pass: it searches LinkedIn
+   * through the local fork for postings this portal's profile wants, reads each one, and sends the
+   * Easy Apply ones through the fork. Few, paced, and stopped at the first sign of a bot check.
+   */
+  easyApply: {
+    enabled: true,
+    /** Most applications this step sends in one hourly run. */
+    count: 3,
+    /** Most search results it reads looking for Easy Apply. */
+    scan: 30,
+    pages: 2,
+    /** Between reads, inside the fork's rate guidance. */
+    readGapMs: 6_000,
+    /** Between submissions. */
+    gapMs: 300_000,
+    /** LinkedIn has no twelve-hour filter, so the search asks for a day and the code keeps the last twelve hours. */
+    datePosted: "past_24_hours",
+    maxAgeHours: 12,
+  },
 } as const;
 
 /** Signing in to job boards the person has an account on, and making an account where they allowed it (`src/accounts/`). */

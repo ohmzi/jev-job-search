@@ -5,6 +5,7 @@
  * answer, and bring a form to the front.
  */
 import { readFileSync } from "node:fs";
+import { loadLearned, type Pending } from "../answers/learned.js";
 import { BROWSER, PATHS } from "../config.js";
 import { loadReport } from "../browser/report.js";
 import { loadSession } from "../browser/session.js";
@@ -14,6 +15,7 @@ import { loadRows, saveRows, statusLabel, upsertEntry } from "../log/csv.js";
 import { loadInbox } from "../mail/status.js";
 import { ProfileSchema } from "../profile/schema.js";
 import { mailSearchUrl, waitingWords } from "../run/assist.js";
+import { readLoginRequired } from "../run/linkedinSession.js";
 import { withStore, writeAtomic } from "../util/store.js";
 
 /** ask: the person can answer it here. profile: it comes from the profile and is changed there. sign: it is theirs to do by hand, on the form. */
@@ -26,6 +28,10 @@ export type Needs = {
   /** Jobs the tool cannot fill and that have no question to answer: the person applies on the site, then says so. */
   self: { id: string; company: string; title: string; link: string; reason: string }[];
   mail: { id: string; from: string; subject: string; on: string; kind: string | null; why: string; jobs: { id: string; company: string; title: string }[] }[];
+  /** Answers the Easy Apply walk gave that a person has not confirmed yet, one per question. */
+  answers: Pending[];
+  /** The LinkedIn session needs the person, as a run left it; null when no run has found that. */
+  login: { at: string; reason: string } | null;
 };
 
 const PLACEHOLDER = /^(select|select\.\.\.|select an option|select one|please select|choose|choose one|-+)?$/i;
@@ -41,11 +47,11 @@ export function questionFor(label: string, kind: string, options: string[], why:
   return { question: label, kind: "ask", options: choices, canRemember: true, note: "" };
 }
 
-export function buildNeeds(entries: QueueEntry[], o: { report?: typeof loadReport; inboxFile?: string } = {}): Needs {
+export function buildNeeds(entries: QueueEntry[], o: { report?: typeof loadReport; inboxFile?: string; learnedFile?: string; dataDir?: string } = {}): Needs {
   const report = o.report ?? loadReport;
   const session = loadSession();
   const brief = (e: QueueEntry) => ({ id: e.job.id, company: e.job.company, title: e.job.title });
-  const needs: Needs = { waiting: [], questions: [], unconfirmed: [], self: [], mail: [] };
+  const needs: Needs = { waiting: [], questions: [], unconfirmed: [], self: [], mail: [], answers: loadLearned(o.learnedFile).pending, login: readLoginRequired(o.dataDir) };
   for (const e of entries) {
     if (e.status === "awaiting_user_action" || e.status === "awaiting_email_verification") {
       const w = e.waitingFor ?? (e.status === "awaiting_email_verification" ? "email_link" : "unknown");

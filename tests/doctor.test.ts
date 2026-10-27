@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { MemoryStore } from "../src/accounts/secrets.js";
-import { checkAccounts, checkKey, checkNode, checkProfile, checkResume, formatChecks, isReadyToRun, nextStep, type Check } from "../src/doctor.js";
+import { checkAccounts, checkKey, checkListingServers, checkNode, checkProfile, checkResume, formatChecks, isReadyToRun, nextStep, type Check } from "../src/doctor.js";
 
 const ok = (name: string): Check => ({ name, ok: true, detail: "fine", fix: "" });
 const bad = (name: string, fix: string, optional = false): Check => ({ name, ok: false, detail: "missing", fix, optional });
@@ -40,6 +40,32 @@ describe("doctor", () => {
     expect(isReadyToRun(checks)).toBe(true);
     expect(nextStep(checks)).toBe("run discover");
     expect(nextStep([ok("Node.js")])).toMatch(/Everything is in place/);
+  });
+  it("names the fork it will start, and says when the fork is not there", () => {
+    const found = checkListingServers({ has: () => true, isDirectory: () => true, exists: () => false });
+    expect(found.ok).toBe(true);
+    expect(found.optional).toBe(true);
+    expect(found.detail).toContain("/linkedin-mcp-server");
+    const missing = checkListingServers({ has: () => true, isDirectory: () => false, exists: () => false });
+    expect(missing.ok).toBe(false);
+    expect(missing.detail).toContain("/linkedin-mcp-server");
+    expect(missing.fix).toContain("/linkedin-mcp-server");
+  });
+  it("reports whether the fork's profile table names this folder", () => {
+    const table = (projects: Record<string, unknown>) => JSON.stringify({ projects });
+    const named = checkListingServers({ has: () => true, isDirectory: () => true, exists: () => true, read: () => table({ "jev-android-tx": { phone: "555-0100", resume: "Example_Resume" } }), folder: "jev-android-tx" });
+    expect(named.ok).toBe(true);
+    expect(named.detail).toContain("applies as that identity");
+    const other = checkListingServers({ has: () => true, isDirectory: () => true, exists: () => true, read: () => table({ "another-project": { phone: "555-0100", resume: "Example_Resume" } }), folder: "jev-android-tx" });
+    expect(other.ok).toBe(true);
+    expect(other.detail).toContain("default identity");
+    // A table that is absent, unreadable or malformed changes nothing: the row still passes on the default.
+    const absent = checkListingServers({ has: () => true, isDirectory: () => true, exists: () => false });
+    expect(absent.ok).toBe(true);
+    expect(absent.detail).not.toMatch(/null/);
+    const malformed = checkListingServers({ has: () => true, isDirectory: () => true, exists: () => true, read: () => "not json" });
+    expect(malformed.ok).toBe(true);
+    expect(malformed.detail).toContain("default identity");
   });
   it("treats job-board accounts as optional, and says how each part works", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "jev-doctor-"));

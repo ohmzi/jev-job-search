@@ -18,7 +18,7 @@ import { acquireRun, currentRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
 import { checkJob, SECURITY_CODE } from "./browser/submit.js";
-import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, isCombinedBoard, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
+import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, isCombinedBoard, loadEnv, DISCOVER, LINKEDIN_SESSION, PATHS, REPORT, ROOT, RUN } from "./config.js";
 import { accountGate } from "./accounts/capability.js";
 import { clearStop, dailyRun, formatDaily, localDay, requestStop, saveDaily, stopRequested, type Outcome } from "./run/daily.js";
 import { loadPolicy } from "./run/policy.js";
@@ -28,6 +28,9 @@ import { gmailClient } from "./mail/gmail.js";
 import { hourlyScheduleStatus, installHourlySchedule, installSchedule, removeHourlySchedule, removeSchedule, scheduleStatus } from "./run/schedule.js";
 import { runHourly } from "./run/hourly.js";
 import { applyFresh, type HourlyApplySummary } from "./run/hourlyApply.js";
+import { applyEasyApply, type EasyApplySummary } from "./run/easyApply.js";
+import { backupSession, clearLoginRequired, pauseLinkedin, readLoginRequired, readPaused, restoreSessionIfMissing, resumeLinkedin, sessionStatus } from "./run/linkedinSession.js";
+import { clearReloginAttempt, readReloginAttempt } from "./run/linkedinRelogin.js";
 import { acquireGlobalRun, recordSharedApplied, sharedAppliedKeys } from "./run/shared.js";
 import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule, useBrowserPassword } from "./accounts/commands.js";
 import { adapterFor } from "./accounts/capability.js";
@@ -284,21 +287,46 @@ program
 
 program
   .command("hourly")
-  .description("Find jobs posted recently, queue them, and move held jobs to Needs you after twelve hours. Read-only: no browser, no sign-in, no sending")
+  .description("Find jobs posted recently, queue them, send fresh Easy Apply postings through the LinkedIn fork, and move held jobs to Needs you after twelve hours. It stops when the LinkedIn session needs a new login: run `node bin/jev.js session relogin`. This run never drives the tool's Chrome")
   .option("--dry", "search and show what would be added, without writing or applying")
+  .option("--easy-apply-only", "run only the LinkedIn Easy Apply step: no job search, no apply pass, nothing opened in Chrome")
   .option("--json")
-  .action(async (o: { dry?: boolean; json?: boolean }) => {
+  .action(async (o: { dry?: boolean; json?: boolean; easyApplyOnly?: boolean }) => {
     const say = (line: string) => { if (!o.json) console.error(line); };
     const profile = loadProfile();
-    const summary = await runHourly(profile, { dry: !!o.dry, log: say });
+    const summary = o.easyApplyOnly ? { found: 0, added: 0, updated: 0, held: 0, skipped: 0, aged: 0, calls: 0, failures: [] as string[] } : await runHourly(profile, { dry: !!o.dry, log: say });
     let applied: HourlyApplySummary | null = null;
+    let easyApply: EasyApplySummary | null = null;
     if (profile.search?.apply) {
       const policy = loadPolicy();
       if (!policy) {
         say("[hourly] no data/policy.json, so the fresh jobs were queued but not applied to");
       } else {
         documentsFromOptions({ tailor: policy.documents.tailor, cover: policy.documents.cover });
-        if (o.dry) {
+        // The fork sends applications too, so it holds the same cross-portal lock as the apply
+        // pass. A held lock means another portal is applying, and this hour is skipped.
+        const releaseEasy = acquireGlobalRun("hourly easy apply");
+        if (!releaseEasy) {
+          say("[hourly] easy apply skipped this hour: another portal is applying right now");
+        } else {
+          try {
+            easyApply = await applyEasyApply(profile, { dry: !!o.dry, policy, log: say });
+            const names = easyApply.applied.map((a) => [a.company, a.title].filter(Boolean).join(" | ")).join(", ");
+            const notes = [easyApply.tooOld ? `${easyApply.tooOld} skipped as older than twelve hours or undated` : "", easyApply.notEasyApply ? `${easyApply.notEasyApply} not easy apply` : "", easyApply.left ? `${easyApply.left} left for you` : ""].filter(Boolean).join("; ");
+            const tail = notes ? `; ${notes}` : "";
+            const stop = easyApply.stopped ? `; stopped: ${easyApply.stopped}` : "";
+            if (easyApply.applied.length) say(`[hourly] easy apply: ${easyApply.applied.length} applied (${names})${tail}${stop}`);
+            else if (easyApply.stopped) say(`[hourly] easy apply stopped: ${easyApply.stopped}${tail}`);
+            else say(`[hourly] easy apply: ${easyApply.reason ?? `nothing applied (${easyApply.found} found, ${easyApply.scanned} read)`}${tail}`);
+          } catch (err) {
+            say(`[hourly] the easy apply step was skipped: ${err instanceof Error ? err.message : String(err)}`);
+          } finally {
+            releaseEasy();
+          }
+        }
+        if (o.easyApplyOnly) {
+          // Only the Easy Apply step was asked for.
+        } else if (o.dry) {
           applied = await applyFresh(profile, policy, { dry: true, log: say });
         } else {
           // Do not open Chrome for a pass that has nothing to take.
@@ -316,7 +344,11 @@ program
         }
       }
     }
-    if (o.json) return console.log(JSON.stringify({ ...summary, apply: applied }, null, 2));
+    if (o.json) return console.log(JSON.stringify({ ...summary, easyApply, apply: applied }, null, 2));
+    if (o.easyApplyOnly) {
+      console.log(easyApply ? `\nEasy Apply: ${easyApply.applied.length} applied, ${easyApply.found} found, ${easyApply.scanned} read${easyApply.reason ? `. ${easyApply.reason}` : ""}.` : "\nEasy Apply did not run (no policy, or the profile has search.apply off).");
+      return;
+    }
     console.log(`\n${summary.found} matching postings. ${summary.added} new (${summary.held} held for you), ${summary.updated} refreshed, ${summary.skipped} skipped, ${summary.aged} aged out. ${summary.calls} board call(s)${summary.failures.length ? `, ${summary.failures.length} failed` : ""}.`);
     if (applied) {
       if (applied.picked.length) {
@@ -327,6 +359,61 @@ program
       }
     }
     console.log(o.dry ? "Nothing was written (--dry)." : "Open /report for the Last 12 hours page. To run this every hour: node bin/jev.js schedule install --hourly");
+  });
+
+program
+  .command("session <action>")
+  .description("The LinkedIn session the local fork uses: status | relogin | backup | restore | pause | resume. `pause` stops every use of the LinkedIn MCP in all four portals. A run that finds no usable session stops and asks for `relogin`")
+  .action(async (action: string) => {
+    if (action === "pause") {
+      pauseLinkedin();
+      return console.log("The LinkedIn MCP is paused in every portal: no Easy Apply, no link lookups, and no LinkedIn listing is taken by an apply run. Searches and every other way of applying go on. To undo: node bin/jev.js session resume");
+    }
+    if (action === "resume") {
+      resumeLinkedin();
+      return console.log("The LinkedIn MCP is no longer paused.");
+    }
+    if (action === "status") {
+      const paused = readPaused();
+      if (paused) console.log(`The LinkedIn MCP is paused since ${paused.at}. To undo: node bin/jev.js session resume`);
+      const s = sessionStatus();
+      const flag = readLoginRequired();
+      console.log(s.ok ? `The LinkedIn session is usable: ${LINKEDIN_SESSION.authRoot}` : `The LinkedIn session is not usable: ${s.reason}.`);
+      console.log(flag ? `Login required since ${flag.at}: ${flag.reason}. Run: node bin/jev.js session relogin` : "No run has left a login-required flag.");
+      const attempt = readReloginAttempt();
+      const creds = existsSync(LINKEDIN_SESSION.autoRelogin.credentialsFile);
+      console.log(`Automatic sign-in: ${LINKEDIN_SESSION.autoRelogin.enabled ? (creds ? "on, the fork has a credentials file" : "on, but the fork has no credentials file") : "off"}${attempt ? `; last try ${attempt.at}: ${attempt.outcome.replace("_", " ")}` : "; no try yet"}.`);
+      return;
+    }
+    if (action === "backup") {
+      const ok = backupSession();
+      console.log(ok ? `Backed up the LinkedIn session to ${LINKEDIN_SESSION.backupRoot}.` : `Nothing was backed up: cookies.json, source-state.json or profile/ is missing from ${LINKEDIN_SESSION.authRoot}.`);
+      return;
+    }
+    if (action === "restore") {
+      const ok = restoreSessionIfMissing();
+      console.log(ok ? `Restored the LinkedIn session from ${LINKEDIN_SESSION.backupRoot}.` : "Nothing was restored: the live cookies.json exists, the backing copy has no li_at cookie, or the backing copy is a login LinkedIn already rejected. Run: node bin/jev.js session relogin");
+      return;
+    }
+    if (action === "relogin") {
+      console.log(`Sign in to LinkedIn in the window that opens. The session is kept in ${LINKEDIN_SESSION.authRoot}.`);
+      const code = await new Promise<number | null>((resolve, reject) => {
+        const child = spawn("uv", ["run", "--project", LINKEDIN_SESSION.forkDir, "python", "-m", "linkedin_mcp_server", "--login"], { cwd: ROOT, stdio: "inherit", env: childEnv() });
+        child.once("error", reject);
+        child.once("exit", (status) => resolve(status));
+      });
+      if (code !== 0) {
+        process.exitCode = 1;
+        return console.log(`The login did not finish (exit ${code ?? "unknown"}). Nothing was backed up and the flag is unchanged.`);
+      }
+      const backed = backupSession();
+      clearLoginRequired();
+      // The person has signed in themselves, so the next outage gets its one automatic try again.
+      clearReloginAttempt();
+      console.log(backed ? `Logged in. The session is backed up to ${LINKEDIN_SESSION.backupRoot} and the login flag is cleared.` : `Logged in, but cookies.json, source-state.json or profile/ was not found, so nothing was backed up. Run: node bin/jev.js session status`);
+      return;
+    }
+    console.log("The actions are: status, relogin, backup, restore, pause, resume");
   });
 
 program
