@@ -10,7 +10,7 @@ import type { Profile } from "../src/profile/schema.js";
 
 const NOW = new Date("2026-10-22T12:00:00");
 const entry = (_name: string, url: string, over: Partial<QueueEntry> = {}): QueueEntry => ({
-  job: { id: jobId(url), source: "jobspy linkedin", company: "Delta", title: "Android Engineer", url, ats: url.includes("linkedin") ? "linkedin" : "other", locations: ["Jersey City, NJ"], postedAt: "2026-10-22", terms: [], sponsorship: "unknown", degrees: [], category: null } as QueueEntry["job"],
+  job: { id: jobId(url), source: "jobspy linkedin", company: "Delta", title: "Android Engineer", url, ats: url.includes("linkedin") ? "linkedin" : "other", locations: ["Jersey City, NJ"], postedAt: "2026-10-22", terms: [], sponsorship: "unknown", degrees: [], category: null, easyApply: url.includes("greenhouse") ? false : null } as QueueEntry["job"],
   fit: null,
   preFilterReason: null,
   applyable: false,
@@ -74,9 +74,10 @@ describe("the apply step following a listing to the employer", () => {
     expect(moved).toBe(0);
     expect(a.applyable).toBe(true);
     expect(a.job.url).toBe("https://www.linkedin.com/jobs/view/4252026496");
+    expect(a.job.easyApply).toBe(true);
     expect(a.holdUntil).toBeNull();
     const saved = loadQueue(f.queueFile).entries;
-    expect(saved.find((e) => e.job.id === a.job.id)).toMatchObject({ applyable: true, holdUntil: null, status: "in_progress", job: { url: "https://www.linkedin.com/jobs/view/4252026496" } });
+    expect(saved.find((e) => e.job.id === a.job.id)).toMatchObject({ applyable: true, holdUntil: null, status: "in_progress", job: { url: "https://www.linkedin.com/jobs/view/4252026496", easyApply: true } });
   });
 
   it("an external posting is not routed to the mcp", async () => {
@@ -87,6 +88,7 @@ describe("the apply step following a listing to the employer", () => {
     expect(moved).toBe(1);
     expect(a.job.url).toBe("https://boards.greenhouse.io/x/1");
     expect(a.job.ats).toBe("greenhouse");
+    expect(a.job.easyApply).toBe(false);
     expect(a.applyable).toBe(canFill(a.job as unknown as Job));
     expect(a.holdUntil).toBeNull();
     expect(loadQueue(f.queueFile).entries[0]?.job.url).toBe("https://boards.greenhouse.io/x/1");
@@ -100,7 +102,8 @@ describe("the apply step following a listing to the employer", () => {
     expect(moved).toBe(0);
     expect(a.applyable).toBe(false);
     expect(a.job.url).toBe("https://www.linkedin.com/jobs/view/4252026496");
-    expect(loadQueue(f.queueFile).entries[0]).toMatchObject({ applyable: false, job: { url: "https://www.linkedin.com/jobs/view/4252026496" } });
+    expect(a.job.easyApply).toBe(type === "external" ? false : null);
+    expect(loadQueue(f.queueFile).entries[0]).toMatchObject({ applyable: false, job: { url: "https://www.linkedin.com/jobs/view/4252026496", easyApply: type === "external" ? false : null } });
   });
 
   it("an unresolved posting is not marked for the mcp", async () => {
@@ -110,7 +113,8 @@ describe("the apply step following a listing to the employer", () => {
     const moved = await followListings([a], profile, { ...f, now: NOW, quiet: true, listings: caller(() => "no link in this posting") as never });
     expect(moved).toBe(0);
     expect(a.applyable).toBe(false);
-    expect(loadQueue(f.queueFile).entries[0]?.applyable).toBe(false);
+    expect(a.job.easyApply).toBeNull();
+    expect(loadQueue(f.queueFile).entries[0]?.job.easyApply).toBeNull();
   });
 
   it("never marks an applied or unconfirmed easy apply listing", async () => {
@@ -121,8 +125,10 @@ describe("the apply step following a listing to the employer", () => {
     await followListings([a, b], profile, { ...f, now: NOW, quiet: true, listings: caller(() => JSON.stringify({ apply: { type: "easy_apply" } })) as never });
     expect(a.applyable).toBe(false);
     expect(a.holdUntil).not.toBeNull();
+    expect(a.job.easyApply).toBeNull();
     expect(b.applyable).toBe(false);
     expect(b.holdUntil).not.toBeNull();
+    expect(b.job.easyApply).toBeNull();
     expect(loadQueue(f.queueFile).entries.map((e) => e.applyable)).toEqual([false, false]);
   });
 

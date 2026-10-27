@@ -11,6 +11,8 @@ import { z } from "zod";
 import { MCP, PATHS, ROOT } from "../config.js";
 import { atsFromUrl, hostIs, jobId, type Job } from "../jobs/normalize.js";
 import { McpClient } from "../mcp/client.js";
+import { linkedinGate, markLoginRequired, type SessionDirs } from "../run/linkedinSession.js";
+import { loginNoticeIn } from "./loginNotice.js";
 import { safeUrl } from "../util/redact.js";
 import { withStore, writeAtomic } from "../util/store.js";
 
@@ -94,6 +96,10 @@ export function employerLinkIn(text: string): string | null {
         const named = typeof value === "string" ? linksIn(value)[0] : undefined;
         if (named) return named;
       }
+      // The LinkedIn server nests the employer's link under apply: {type, url}.
+      const nested = (data as { apply?: { url?: unknown } }).apply?.url;
+      const named = typeof nested === "string" ? linksIn(nested)[0] : undefined;
+      if (named) return named;
     }
   } catch {
     /* not JSON: read it as text */
@@ -109,7 +115,8 @@ export function employerLinkIn(text: string): string | null {
  * time the queue is read, so the id moves with the link: the record and the sheet row are keyed by it.
  */
 export function withEmployerLink<T extends { id: string; url: string; ats: string }>(job: T, url: string): T {
-  return { ...job, id: jobId(url), url, ats: atsFromUrl(url) } as T;
+  // The employer's own form is never the board's Easy Apply.
+  return { ...job, id: jobId(url), url, ats: atsFromUrl(url), easyApply: false } as T;
 }
 
 const Apply = z.object({ apply: z.object({ type: z.string() }).nullish() });
@@ -122,6 +129,17 @@ export function applyTypeIn(text: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * What a board's apply type means for a job's easyApply field. Only the board's own two methods
+ * answer the question; `applied` and `closed` no longer show one, so they keep what the source
+ * already knew instead of guessing.
+ */
+export function easyApplyFromApplyType(type: string | null, current: boolean | null): boolean | null {
+  if (type === "easy_apply") return true;
+  if (type === "external") return false;
+  return current;
 }
 
 const Cache = z.record(z.object({ url: z.string().nullable(), applyType: z.string().nullable().default(null), at: z.string() }));
@@ -138,8 +156,9 @@ export function loadListingLinks(file = PATHS.listingLinks): CacheFile {
 }
 
 /** The servers, started on first use and stopped together. A server that will not start is not tried again in this run. */
-export function mcpCaller(log: (line: string) => void = () => {}): Caller {
+export function mcpCaller(log: (line: string) => void = () => {}, session: SessionDirs = {}): Caller {
   const clients = new Map<Board, Promise<McpClient | null>>();
+  let said = false;
   const clientFor = (board: Board) => {
     let p = clients.get(board);
     if (!p) {
@@ -153,9 +172,40 @@ export function mcpCaller(log: (line: string) => void = () => {}): Caller {
   };
   return {
     async call(board, tool, args, timeoutMs) {
+      // The LinkedIn fork is only asked while its session can be used. A flag a run left, or a session
+      // the fork has already rejected, means no call: a call would open a login window nobody is
+      // watching and have the fork move the session aside again.
+      if (board === "linkedin") {
+        const gate = linkedinGate(session);
+        if (!gate.ok) {
+          if (!gate.flagged) markLoginRequired(gate.reason, session.dataDir);
+          if (!said) log(`[links] LinkedIn is not asked: ${gate.reason}`);
+          said = true;
+          throw new NotAvailable(board, gate.reason);
+        }
+      }
       const client = await clientFor(board);
       if (!client) throw new NotAvailable(board);
-      return client.callTool(tool, args, timeoutMs ?? MCP.callMs);
+      if (board !== "linkedin") return client.callTool(tool, args, timeoutMs ?? MCP.callMs);
+      // A reply that says the fork needs a sign-in is not an answer about the posting: it sets the
+      // flag so no later call is made, and it is never kept as "no link".
+      let text: string;
+      try {
+        text = await client.callTool(tool, args, timeoutMs ?? MCP.callMs);
+      } catch (err) {
+        const notice = loginNoticeIn(err instanceof Error ? err.message : String(err));
+        if (notice) {
+          markLoginRequired(notice, session.dataDir);
+          throw new NotAvailable(board, notice);
+        }
+        throw err;
+      }
+      const notice = loginNoticeIn(text);
+      if (notice) {
+        markLoginRequired(notice, session.dataDir);
+        throw new NotAvailable(board, notice);
+      }
+      return text;
     },
     close() {
       for (const p of clients.values()) void p.then((c) => c?.close());
@@ -165,8 +215,8 @@ export function mcpCaller(log: (line: string) => void = () => {}): Caller {
 
 /** The board's server never started, so the call sent nothing. */
 export class NotAvailable extends Error {
-  constructor(readonly board: Board) {
-    super(`the ${board} MCP server is not available`);
+  constructor(readonly board: Board, reason?: string) {
+    super(`the ${board} MCP server is not available${reason ? `: ${reason}` : ""}`);
     this.name = "NotAvailable";
   }
 }

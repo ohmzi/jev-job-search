@@ -10,7 +10,7 @@ import { mergeDecided, writeDecided } from "../src/discover.js";
 import type { Job } from "../src/jobs/normalize.js";
 
 const dir = () => mkdtempSync(path.join(tmpdir(), "jev-store-"));
-const job = (n: number): Job => ({ id: `id${n}`, source: "t", company: `Co${n}`, title: "Intern", url: `https://boards.greenhouse.io/co${n}/jobs/${n}`, ats: "greenhouse", locations: [], postedAt: "2026-10-01", terms: [], sponsorship: "unknown", degrees: [], category: null });
+const job = (n: number): Job => ({ id: `id${n}`, source: "t", company: `Co${n}`, title: "Intern", url: `https://boards.greenhouse.io/co${n}/jobs/${n}`, ats: "greenhouse", locations: [], postedAt: "2026-10-01", terms: [], sponsorship: "unknown", degrees: [], category: null, easyApply: false });
 const fit = { score: 0.5, decision: "apply" as const, skipReason: null, reasons: [], components: {}, locationTier: "canada" as const, answers: {} };
 const entry = (n: number, over: Partial<QueueEntry> = {}): QueueEntry => ({ ...entryFor(job(n), fit as never, null), ...over });
 

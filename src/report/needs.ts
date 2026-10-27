@@ -25,6 +25,8 @@ export type Needs = {
   waiting: { id: string; company: string; title: string; todo: string; reason: string; mail: string | null; open: boolean }[];
   questions: { id: string; company: string; title: string; link: string; reason: string; items: Question[] }[];
   unconfirmed: { id: string; company: string; title: string; link: string }[];
+  /** Jobs the tool cannot fill and that have no question to answer: the person applies on the site, then says so. */
+  self: { id: string; company: string; title: string; link: string; reason: string }[];
   mail: { id: string; from: string; subject: string; on: string; kind: string | null; why: string; jobs: { id: string; company: string; title: string }[] }[];
   /** Answers the Easy Apply walk gave that a person has not confirmed yet, one per question. */
   answers: Pending[];
@@ -49,7 +51,7 @@ export function buildNeeds(entries: QueueEntry[], o: { report?: typeof loadRepor
   const report = o.report ?? loadReport;
   const session = loadSession();
   const brief = (e: QueueEntry) => ({ id: e.job.id, company: e.job.company, title: e.job.title });
-  const needs: Needs = { waiting: [], questions: [], unconfirmed: [], mail: [], answers: loadLearned(o.learnedFile).pending, login: readLoginRequired(o.dataDir) };
+  const needs: Needs = { waiting: [], questions: [], unconfirmed: [], self: [], mail: [], answers: loadLearned(o.learnedFile).pending, login: readLoginRequired(o.dataDir) };
   for (const e of entries) {
     if (e.status === "awaiting_user_action" || e.status === "awaiting_email_verification") {
       const w = e.waitingFor ?? (e.status === "awaiting_email_verification" ? "email_link" : "unknown");
@@ -77,16 +79,9 @@ export function buildNeeds(entries: QueueEntry[], o: { report?: typeof loadRepor
         items = [];
       }
       if (items.length) needs.questions.push({ ...brief(e), link: e.job.url, reason: e.statusReason ?? "", items });
-      else {
-        // A job added by hand, or one the tool could not fill: there is no form report, so the
-        // page says where to apply and why the tool cannot do it.
-        needs.questions.push({
-          ...brief(e),
-          link: e.job.url,
-          reason: e.statusReason ?? "",
-          items: [{ question: "Apply on the employer's site", kind: "sign", options: [], canRemember: false, note: e.statusReason ?? "The tool cannot fill this employer's form. Open the link and apply there yourself." }],
-        });
-      }
+      // A job added by hand, or one the tool could not fill: there is no form report, so the
+      // page says where to apply and why the tool cannot do it.
+      else needs.self.push({ ...brief(e), link: e.job.url, reason: e.statusReason || "The tool cannot fill this employer's form. Open the link and apply there yourself." });
     }
   }
   const byId = new Map(entries.map((e) => [e.job.id, e]));

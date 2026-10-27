@@ -23,11 +23,16 @@ import { recordMcpApplication, recordMcpOutcome, recordMcpSubmission, type McpRe
 import { loadRows, parseCsv } from "../log/csv.js";
 import type { Profile } from "../profile/schema.js";
 import { applyOnLinkedIn } from "../sources/linkedinApply.js";
+import { ErrorReply, loginNoticeIn, SectionError } from "../sources/loginNotice.js";
 import { applyTypeIn, mcpCaller, type Caller, type ToolCall } from "../sources/listingLink.js";
 import { countToday, localDay } from "./daily.js";
-import { clearLoginRequired, markLoginRequired, restoreSessionIfMissing, sessionStatus } from "./linkedinSession.js";
+import { notify } from "./assist.js";
+import { tryRelogin } from "./linkedinRelogin.js";
+import { clearLoginRequired, linkedinGate, markLoginRequired, type SessionDirs } from "./linkedinSession.js";
 import type { Policy } from "./policy.js";
 import { recordSharedApplied, sharedAppliedKeys } from "./shared.js";
+
+export { loginNoticeIn };
 
 export type EasyApplyOptions = {
   dry?: boolean;
@@ -40,8 +45,10 @@ export type EasyApplyOptions = {
   /** Injected in tests so pacing is checked without waiting. */
   sleep?: (ms: number) => Promise<void>;
   files?: { queue?: string; rows?: string };
+  /** Signs in to LinkedIn again when the session is gone. Injected in tests so no browser opens. */
+  relogin?: typeof tryRelogin;
   /** Where the fork keeps its session and where the login flag goes. Injected in tests. */
-  session?: { authRoot?: string; backupRoot?: string; dataDir?: string };
+  session?: SessionDirs;
 };
 
 export type EasyApplySummary = {
@@ -59,15 +66,6 @@ export type EasyApplySummary = {
 };
 
 const SearchReply = z.object({ job_ids: z.array(z.string()).default([]) });
-const ErrorReply = z
-  .object({
-    section_errors: z.record(z.unknown()).optional(),
-    error_type: z.string().optional(),
-    error_message: z.string().optional(),
-    message: z.string().optional(),
-  })
-  .passthrough();
-const SectionError = z.object({ error_type: z.string().optional(), error_message: z.string().optional(), message: z.string().optional() }).passthrough();
 const DetailsReply = z.object({ sections: z.record(z.unknown()).optional() });
 
 type PostingDetails = { company: string; title: string; location: string; ageHours: number | null; ageText: string | null };
@@ -89,45 +87,6 @@ export function noticeIn(text: string | undefined | null): string | null {
   if (!text) return null;
   const hit = NOTICE.exec(text);
   return hit ? hit[0] : null;
-}
-
-/**
- * The fork's own words when it needs a person to sign in. Only an error field is read: a posting's
- * description may say "sign in" as ordinary prose and must not stop a run.
- */
-const LOGIN_NOTICE = /login window|login required|authentication started|sign in/i;
-
-export function loginNoticeIn(text: string | undefined | null): string | null {
-  if (!text) return null;
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    const hit = LOGIN_NOTICE.exec(text);
-    return hit ? hit[0] : null;
-  }
-  if (!json || typeof json !== "object") return null;
-  const fields: (string | undefined)[] = [];
-  const parsed = ErrorReply.safeParse(json);
-  if (parsed.success) {
-    fields.push(parsed.data.error_type, parsed.data.error_message, parsed.data.message);
-    for (const value of Object.values(parsed.data.section_errors ?? {})) {
-      const error = SectionError.safeParse(value);
-      if (error.success) fields.push(error.data.error_type, error.data.error_message, error.data.message);
-    }
-  }
-  // Only top-level error words are read, never a posting's own text under `sections`.
-  const object = json as Record<string, unknown>;
-  for (const key of ["error", "error_type", "error_message", "message", "detail", "reason"]) {
-    const value = object[key];
-    if (typeof value === "string") fields.push(value);
-  }
-  for (const field of fields) {
-    if (!field) continue;
-    const hit = LOGIN_NOTICE.exec(field);
-    if (hit) return hit[0];
-  }
-  return null;
 }
 
 /**
@@ -278,10 +237,37 @@ export async function applyEasyApply(profile: Profile, o: EasyApplyOptions): Pro
     return summary;
   };
   // A session the fork cannot use is the person's to renew. Asking the MCP anyway opens a login
-  // window nobody is watching and quarantines the auth state, so the step stops before it calls.
-  restoreSessionIfMissing(session.authRoot, session.backupRoot);
-  const state = sessionStatus(session.authRoot);
-  if (!state.ok) return requireLogin(state.reason ?? "the saved session is not usable");
+  // window nobody is watching and quarantines the auth state, so the step stops before it calls. A
+  // flag an earlier run left stops it too, until the person signs in again; the flag is not
+  // rewritten, so it keeps the time of the first failure.
+  let gate = linkedinGate(session);
+  // A session that is gone gets one automatic sign-in with the fork's own saved credentials, if the rules
+  // for it allow one. A rehearsal changes nothing, so it never tries.
+  // A caller handed in by a test means no real fork, so no real sign-in either unless the test names one.
+  const relogin = o.relogin ?? (o.call ? undefined : tryRelogin);
+  // A pause is the person's choice, not a lost session: no sign-in, no flag, and nothing is asked.
+  if (!gate.ok && gate.paused) {
+    summary.reason = gate.reason;
+    log(`[easy] ${summary.reason}`);
+    return summary;
+  }
+  if (!gate.ok && !o.dry && relogin) {
+    const again = await relogin({ session, ...(o.now ? { now: o.now } : {}), log });
+    if (again.ok) gate = linkedinGate(session);
+    else {
+      log(`[easy] not signed in again: ${again.reason}`);
+      if (again.tried) notify("LinkedIn needs you", "The automatic sign-in did not work. Run: node bin/jev.js session relogin");
+    }
+  }
+  if (!gate.ok) {
+    if (gate.flagged) {
+      loginFlagged = true;
+      summary.reason = gate.reason;
+      log(`[easy] ${summary.reason}`);
+      return summary;
+    }
+    return requireLogin(gate.reason);
+  }
   const search = profile.search;
   const keywords = search?.terms[0];
   const location = search?.locations[0]?.query;

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { jobId } from "../src/jobs/normalize.js";
 import { McpClient } from "../src/mcp/client.js";
-import { applyTypeIn, employerLinkIn, linksIn, listingOf, loadListingLinks, resolveListings, withEmployerLink } from "../src/sources/listingLink.js";
+import { applyTypeIn, easyApplyFromApplyType, employerLinkIn, linksIn, listingOf, loadListingLinks, resolveListings, withEmployerLink } from "../src/sources/listingLink.js";
 
 const fake = (mode: string) => ({ command: process.execPath, args: [fileURLToPath(new URL("./helpers/fakeMcpServer.mjs", import.meta.url)), mode] });
 
@@ -83,7 +83,13 @@ describe("the employer's link in a reply", () => {
   });
   it("changes the link and the board, and the id follows the link as the queue derives it", () => {
     const j = withEmployerLink({ id: "abc", url: "https://www.indeed.com/viewjob?jk=1", ats: "other" }, "https://boards.greenhouse.io/acme/jobs/123");
-    expect(j).toEqual({ id: jobId("https://boards.greenhouse.io/acme/jobs/123"), url: "https://boards.greenhouse.io/acme/jobs/123", ats: "greenhouse" });
+    expect(j).toEqual({ id: jobId("https://boards.greenhouse.io/acme/jobs/123"), url: "https://boards.greenhouse.io/acme/jobs/123", ats: "greenhouse", easyApply: false });
+  });
+  it("reads the LinkedIn server's nested apply url, and ignores its own post url", () => {
+    const external = JSON.stringify({ url: "https://www.linkedin.com/jobs/view/1/", apply: { type: "external", url: "https://ars2.equest.com/?response_id=4fdd" } });
+    expect(employerLinkIn(external)).toBe("https://ars2.equest.com/?response_id=4fdd");
+    const applied = JSON.stringify({ url: "https://www.linkedin.com/jobs/view/1/", apply: { type: "applied" } });
+    expect(employerLinkIn(applied)).toBeNull();
   });
   it("reads the apply type from a JSON reply and nothing else", () => {
     expect(applyTypeIn('{"apply":{"type":"easy_apply"}}')).toBe("easy_apply");
@@ -91,6 +97,15 @@ describe("the employer's link in a reply", () => {
     expect(applyTypeIn("apply: https://boards.greenhouse.io/acme/jobs/123")).toBeNull();
     expect(applyTypeIn('{"apply":{"type":7}}')).toBeNull();
     expect(applyTypeIn('{"url":"https://acme.com/jobs/1"}')).toBeNull();
+  });
+  it("turns the method into the job's flag, and keeps what the source knew", () => {
+    expect(easyApplyFromApplyType("easy_apply", null)).toBe(true);
+    expect(easyApplyFromApplyType("external", null)).toBe(false);
+    expect(easyApplyFromApplyType("applied", null)).toBeNull();
+    expect(easyApplyFromApplyType("applied", true)).toBe(true);
+    expect(easyApplyFromApplyType("closed", null)).toBeNull();
+    expect(easyApplyFromApplyType("unknown", null)).toBeNull();
+    expect(easyApplyFromApplyType(null, true)).toBe(true);
   });
 });
 

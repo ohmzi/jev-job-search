@@ -18,7 +18,7 @@ import { acquireRun, currentRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
 import { checkJob, SECURITY_CODE } from "./browser/submit.js";
-import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, loadEnv, DISCOVER, LINKEDIN_SESSION, PATHS, REPORT, ROOT, RUN } from "./config.js";
+import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, isCombinedBoard, loadEnv, DISCOVER, LINKEDIN_SESSION, PATHS, REPORT, ROOT, RUN } from "./config.js";
 import { accountGate } from "./accounts/capability.js";
 import { clearStop, dailyRun, formatDaily, localDay, requestStop, saveDaily, stopRequested, type Outcome } from "./run/daily.js";
 import { loadPolicy } from "./run/policy.js";
@@ -29,7 +29,8 @@ import { hourlyScheduleStatus, installHourlySchedule, installSchedule, removeHou
 import { runHourly } from "./run/hourly.js";
 import { applyFresh, type HourlyApplySummary } from "./run/hourlyApply.js";
 import { applyEasyApply, type EasyApplySummary } from "./run/easyApply.js";
-import { backupSession, clearLoginRequired, readLoginRequired, restoreSessionIfMissing, sessionStatus } from "./run/linkedinSession.js";
+import { backupSession, clearLoginRequired, pauseLinkedin, readLoginRequired, readPaused, restoreSessionIfMissing, resumeLinkedin, sessionStatus } from "./run/linkedinSession.js";
+import { clearReloginAttempt, readReloginAttempt } from "./run/linkedinRelogin.js";
 import { acquireGlobalRun, recordSharedApplied, sharedAppliedKeys } from "./run/shared.js";
 import { accountsNamed, addEmployer, clearPauses, describeAccounts, describeConsent, forgetAccounts, leaveAlone, setEnabled, setRule, useBrowserPassword } from "./accounts/commands.js";
 import { adapterFor } from "./accounts/capability.js";
@@ -70,6 +71,17 @@ process.stdout.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EPIPE") process.exit(0);
 });
 const program = new Command();
+// The combined board's folder shows the four portals together and passes changes to them. It
+// never searches, applies, signs in or reads mail itself: the portals do that.
+const COMBINED_COMMANDS = ["report", "doctor"];
+program.hook("preAction", (_root, action) => {
+  let top = action;
+  while (top.parent && top.parent !== program) top = top.parent;
+  if (isCombinedBoard() && !COMBINED_COMMANDS.includes(top.name())) {
+    console.error(`This folder is the combined board (JEV_ROLE=combined). It shows the four portals and never searches or applies itself, so "${top.name()}" is not run here. Run it in a portal's folder.`);
+    process.exit(1);
+  }
+});
 program.name("jev-job-search").description("Find and rate software jobs with DeepSeek, fill and check each application form in Chrome, and let DeepSeek write what needs writing.").version("1.6.0");
 
 const int = (v: string) => parseInt(v, 10);
@@ -277,11 +289,12 @@ program
   .command("hourly")
   .description("Find jobs posted recently, queue them, send fresh Easy Apply postings through the LinkedIn fork, and move held jobs to Needs you after twelve hours. It stops when the LinkedIn session needs a new login: run `node bin/jev.js session relogin`. This run never drives the tool's Chrome")
   .option("--dry", "search and show what would be added, without writing or applying")
+  .option("--easy-apply-only", "run only the LinkedIn Easy Apply step: no job search, no apply pass, nothing opened in Chrome")
   .option("--json")
-  .action(async (o: { dry?: boolean; json?: boolean }) => {
+  .action(async (o: { dry?: boolean; json?: boolean; easyApplyOnly?: boolean }) => {
     const say = (line: string) => { if (!o.json) console.error(line); };
     const profile = loadProfile();
-    const summary = await runHourly(profile, { dry: !!o.dry, log: say });
+    const summary = o.easyApplyOnly ? { found: 0, added: 0, updated: 0, held: 0, skipped: 0, aged: 0, calls: 0, failures: [] as string[] } : await runHourly(profile, { dry: !!o.dry, log: say });
     let applied: HourlyApplySummary | null = null;
     let easyApply: EasyApplySummary | null = null;
     if (profile.search?.apply) {
@@ -311,7 +324,9 @@ program
             releaseEasy();
           }
         }
-        if (o.dry) {
+        if (o.easyApplyOnly) {
+          // Only the Easy Apply step was asked for.
+        } else if (o.dry) {
           applied = await applyFresh(profile, policy, { dry: true, log: say });
         } else {
           // Do not open Chrome for a pass that has nothing to take.
@@ -330,6 +345,10 @@ program
       }
     }
     if (o.json) return console.log(JSON.stringify({ ...summary, easyApply, apply: applied }, null, 2));
+    if (o.easyApplyOnly) {
+      console.log(easyApply ? `\nEasy Apply: ${easyApply.applied.length} applied, ${easyApply.found} found, ${easyApply.scanned} read${easyApply.reason ? `. ${easyApply.reason}` : ""}.` : "\nEasy Apply did not run (no policy, or the profile has search.apply off).");
+      return;
+    }
     console.log(`\n${summary.found} matching postings. ${summary.added} new (${summary.held} held for you), ${summary.updated} refreshed, ${summary.skipped} skipped, ${summary.aged} aged out. ${summary.calls} board call(s)${summary.failures.length ? `, ${summary.failures.length} failed` : ""}.`);
     if (applied) {
       if (applied.picked.length) {
@@ -344,13 +363,26 @@ program
 
 program
   .command("session <action>")
-  .description("The LinkedIn session the local fork uses: status | relogin | backup | restore. A run that finds no usable session stops and asks for `relogin`")
+  .description("The LinkedIn session the local fork uses: status | relogin | backup | restore | pause | resume. `pause` stops every use of the LinkedIn MCP in all four portals. A run that finds no usable session stops and asks for `relogin`")
   .action(async (action: string) => {
+    if (action === "pause") {
+      pauseLinkedin();
+      return console.log("The LinkedIn MCP is paused in every portal: no Easy Apply, no link lookups, and no LinkedIn listing is taken by an apply run. Searches and every other way of applying go on. To undo: node bin/jev.js session resume");
+    }
+    if (action === "resume") {
+      resumeLinkedin();
+      return console.log("The LinkedIn MCP is no longer paused.");
+    }
     if (action === "status") {
+      const paused = readPaused();
+      if (paused) console.log(`The LinkedIn MCP is paused since ${paused.at}. To undo: node bin/jev.js session resume`);
       const s = sessionStatus();
       const flag = readLoginRequired();
       console.log(s.ok ? `The LinkedIn session is usable: ${LINKEDIN_SESSION.authRoot}` : `The LinkedIn session is not usable: ${s.reason}.`);
       console.log(flag ? `Login required since ${flag.at}: ${flag.reason}. Run: node bin/jev.js session relogin` : "No run has left a login-required flag.");
+      const attempt = readReloginAttempt();
+      const creds = existsSync(LINKEDIN_SESSION.autoRelogin.credentialsFile);
+      console.log(`Automatic sign-in: ${LINKEDIN_SESSION.autoRelogin.enabled ? (creds ? "on, the fork has a credentials file" : "on, but the fork has no credentials file") : "off"}${attempt ? `; last try ${attempt.at}: ${attempt.outcome.replace("_", " ")}` : "; no try yet"}.`);
       return;
     }
     if (action === "backup") {
@@ -360,7 +392,7 @@ program
     }
     if (action === "restore") {
       const ok = restoreSessionIfMissing();
-      console.log(ok ? `Restored the LinkedIn session from ${LINKEDIN_SESSION.backupRoot}.` : "Nothing was restored: the live cookies.json exists, or the backing copy has no li_at cookie.");
+      console.log(ok ? `Restored the LinkedIn session from ${LINKEDIN_SESSION.backupRoot}.` : "Nothing was restored: the live cookies.json exists, the backing copy has no li_at cookie, or the backing copy is a login LinkedIn already rejected. Run: node bin/jev.js session relogin");
       return;
     }
     if (action === "relogin") {
@@ -376,10 +408,12 @@ program
       }
       const backed = backupSession();
       clearLoginRequired();
+      // The person has signed in themselves, so the next outage gets its one automatic try again.
+      clearReloginAttempt();
       console.log(backed ? `Logged in. The session is backed up to ${LINKEDIN_SESSION.backupRoot} and the login flag is cleared.` : `Logged in, but cookies.json, source-state.json or profile/ was not found, so nothing was backed up. Run: node bin/jev.js session status`);
       return;
     }
-    console.log("The actions are: status, relogin, backup, restore");
+    console.log("The actions are: status, relogin, backup, restore, pause, resume");
   });
 
 program

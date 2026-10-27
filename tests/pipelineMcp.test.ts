@@ -113,6 +113,7 @@ const entry = (over: Partial<QueueEntry> = {}, url = URL_ONE, company = "Delta")
     sponsorship: "unknown",
     degrees: [],
     category: null,
+    easyApply: null,
   } as QueueEntry["job"],
   fit: null,
   preFilterReason: null,

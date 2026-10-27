@@ -51,6 +51,7 @@ function write(input: McpApplicationInput, status: McpRecordStatus, reason: stri
     sponsorship: "unknown",
     degrees: [],
     category: null,
+    easyApply: atsFromUrl(url) === "linkedin" ? null : false,
   };
   return withStore(() => {
     const queueFile = files.queue ?? PATHS.queue;

@@ -7,7 +7,7 @@ import { FieldsDump, isApplicationForm, type DumpedField } from "../src/forms/fi
 import type { Job } from "../src/jobs/normalize.js";
 
 const profile = ProfileSchema.parse(JSON.parse(readFileSync(new URL("../data/profile.example.json", import.meta.url), "utf8")));
-const job = (locations: string[]): Job => ({ id: "j", source: "t", company: "Acme", title: "SWE Intern", url: "https://x", ats: "greenhouse", locations, postedAt: null, terms: [], sponsorship: "unknown", degrees: [], category: null });
+const job = (locations: string[]): Job => ({ id: "j", source: "t", company: "Acme", title: "SWE Intern", url: "https://x", ats: "greenhouse", locations, postedAt: null, terms: [], sponsorship: "unknown", degrees: [], category: null, easyApply: false });
 const field = (over: Partial<DumpedField>): DumpedField => ({ id: "f0", widget: "", selector: "#x", kind: "text", name: "", label: "", hint: "", placeholder: "", required: false, value: "", options: [], accept: "", maxLength: null, autocomplete: "", buttonGroup: false, section: "", ...over });
 
 describe("profile field keys", () => {

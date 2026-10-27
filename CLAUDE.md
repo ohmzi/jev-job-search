@@ -195,6 +195,19 @@ doctor` says what is in place and what to do next.
   follows its link, because the queue derives it on every read. Never type into
   a board for this lookup: its read tools only read, and Chrome fills the
   employer's form.
+  When the saved LinkedIn session is gone, the Easy Apply step starts the fork's
+  own `--login` once (`src/run/linkedinRelogin.ts`): the fork signs in with the
+  credentials file the person made for it (`~/.linkedin-mcp/credentials.env`)
+  and falls back to a window on a challenge. This tool never opens that file,
+  never sees the email or the password, and starts the login through
+  `childEnv()`. A login that fails, times out or meets a challenge is not
+  repeated: the person runs `session relogin`. When the fork says LinkedIn asked
+  for a check only a person can pass, its window stays open for
+  `LINKEDIN_SESSION.autoRelogin.personWaitMs` and the person is notified. What the
+  fork prints goes, scrubbed, to `data/runs/linkedin-relogin.log`. A login that worked is followed
+  by a wait (`LINKEDIN_SESSION.autoRelogin.minHoursBetween`). You, working in
+  this repo, never start that login or run `session relogin`: show the command
+  in a `bash` block and let the person click Run.
 - **Pace every site.** Job boards drop or refuse bursts. Concurrency and
   gaps per host are in `RUN`; do not remove them to go faster.
 - **The tool learns by keeping notes, and reads them before it acts.** Site

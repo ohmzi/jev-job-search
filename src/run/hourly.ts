@@ -21,7 +21,7 @@ import { appliedKey, hourlyKey } from "../jobs/keys.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import { usStatus, type Profile, type Search } from "../profile/schema.js";
 import { searchJobspy, type JobspyRunner } from "../sources/jobspy.js";
-import { listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
+import { easyApplyFromApplyType, listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
 import { withStore, writeAtomic } from "../util/store.js";
 
 export { appliedKey, hourlyKey };
@@ -87,6 +87,8 @@ export function mergeHourly(
             : {
                 ...existing.job,
                 ...job,
+                // A null from a source that does not know must not erase a board's answer.
+                easyApply: job.easyApply ?? existing.job.easyApply,
                 // A posting read again without a description keeps the one the writer may still need.
                 ...(!job.description && existing.job.description ? { description: existing.job.description, descriptionSource: existing.job.descriptionSource } : {}),
               },
@@ -237,12 +239,16 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
     try {
       const links = await resolveListings(unresolved, { call: caller.call, country: search.countryIndeed, now, log, ...(o.dry ? { dry: true } : {}), ...(o.linksFile ? { cacheFile: o.linksFile } : {}) });
       const withLink = [...links.values()].filter((r) => r.url !== null).length;
-      if (withLink) {
+      const easy = [...links.values()].filter((r) => r.applyType === "easy_apply").length;
+      if (links.size) {
         result.jobs = result.jobs.map((j) => {
-          const url = links.get(j.id)?.url;
-          return url ? withEmployerLink(j, url) : j;
+          const resolved = links.get(j.id);
+          if (!resolved) return j;
+          // The employer's own form is not Easy Apply; an Easy Apply posting has no link to take.
+          if (resolved.url) return withEmployerLink(j, resolved.url);
+          return { ...j, easyApply: easyApplyFromApplyType(resolved.applyType, j.easyApply) };
         });
-        log(`[hourly] ${withLink} of ${unresolved.length} board listing(s) led to the employer's own form`);
+        log(`[hourly] ${links.size} of ${unresolved.length} board listing(s) read: ${withLink} led to the employer's own form${easy ? `, ${easy} Easy Apply` : ""}`);
       }
     } finally {
       caller.close();

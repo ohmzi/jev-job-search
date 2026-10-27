@@ -27,7 +27,7 @@ export const SHEET_COLUMNS = [
 ] as const;
 
 export const EXTRA_COLUMNS = [
-  "Applied On", "Fit Score", "JEV Confidence", "ATS", "Source", "Term", "Level", "Posted On", "Skip Reason", "Job ID", "Take-home", "Response", "Response On",
+  "Applied On", "Fit Score", "JEV Confidence", "ATS", "Source", "Term", "Level", "Posted On", "Skip Reason", "Job ID", "Take-home", "Response", "Response On", "Easy Apply",
 ] as const;
 
 export const COLUMNS = [...SHEET_COLUMNS, ...EXTRA_COLUMNS] as const;
@@ -141,7 +141,7 @@ export const APPLIED_COLUMNS = ["applied_on", "company", "role", "location", "jo
 export type AppliedRecord = Record<(typeof APPLIED_COLUMNS)[number], string>;
 
 /** One plain record per row of the full file. */
-export function toRecord(r: Row): AppliedRecord & { status: string; skip_reason: string; response: string; response_on: string } {
+export function toRecord(r: Row): AppliedRecord & { status: string; skip_reason: string; response: string; response_on: string; easy_apply: string } {
   return {
     applied_on: r["Applied On"],
     company: r.Company,
@@ -162,6 +162,7 @@ export function toRecord(r: Row): AppliedRecord & { status: string; skip_reason:
     skip_reason: r["Skip Reason"],
     response: r.Response ?? "",
     response_on: r["Response On"] ?? "",
+    easy_apply: r["Easy Apply"] ?? "",
   };
 }
 
@@ -232,6 +233,7 @@ export function upsertEntry(rows: Row[], e: QueueEntry, extra: Partial<Row> = {}
     "Job ID": e.job.id,
     Response: e.response?.kind ?? existing.Response ?? "",
     "Response On": e.response?.on ?? existing["Response On"] ?? "",
+    "Easy Apply": e.job.easyApply === null ? "" : e.job.easyApply ? "Yes" : "No",
     ...extra,
   };
   if (idx >= 0) rows[idx] = next;
@@ -248,7 +250,7 @@ export function localDate(iso: string): string {
 }
 
 /** What the status column says for each status. Only "Applied" may start with that word: the sent list is found by it. */
-const STATUS_WORDS: Record<QueueStatus, string> = {
+export const STATUS_WORDS: Record<QueueStatus, string> = {
   applied: "Applied",
   queued: "Queued",
   in_progress: "In progress",

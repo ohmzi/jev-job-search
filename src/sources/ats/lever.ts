@@ -1,7 +1,7 @@
 /** Lever public postings API. No auth. */
 import { z } from "zod";
 import { getJson } from "../../util/http.js";
-import { canonicalUrl, jobId, type Job } from "../../jobs/normalize.js";
+import { canonicalUrl, easyApplyFromUrl, jobId, type Job } from "../../jobs/normalize.js";
 
 const LeverPosting = z.object({
   id: z.string(),
@@ -56,6 +56,7 @@ export async function fetchLeverBoard(slug: string, companyFallback: string): Pr
       sponsorship: "unknown",
       degrees: [],
       category: j.categories?.team ?? null,
+      easyApply: easyApplyFromUrl(url),
       description: desc,
       descriptionSource: desc ? "api" : "none",
     });

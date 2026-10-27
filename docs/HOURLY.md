@@ -174,7 +174,19 @@ shape:
 - `titleInclude` is a list of regexes that must **all** match the title.
 - `titleExclude` is a list where **any** match drops the job.
 - `terms` and `locations` are multiplied into the calls, up to `maxQueries`.
-  `HOURLY.maxQueries` is a hard ceiling of 12 per run.
+  `HOURLY.maxQueries` is a hard ceiling of 40 per run. A portal that covers half
+  the country lists one place per state (`"Ohio, USA"`) and one plain term, so
+  each state is one call. An `OR` between terms is not used: on LinkedIn it finds
+  fewer postings than the terms asked one by one.
+- The four portals split the country between them. The two Texas portals take the
+  29 states nearer Dallas than Newark (AK, AL, AR, AZ, CA, CO, FL, HI, IA, ID, IL,
+  KS, LA, MN, MO, MS, MT, ND, NE, NM, NV, OK, OR, SD, TN, TX, UT, WA, WY). The two
+  New Jersey portals take the other 22 (CT, DC, DE, GA, IN, KY, MA, MD, ME, MI, NC,
+  NH, NJ, NY, OH, PA, RI, SC, VA, VT, WI, WV). Each portal keeps its home cities
+  first, then asks once per state. A state's `accept` list is its name and
+  `,\s*XX\b`, with the comma, so an abbreviation such as OR or IN does not match
+  an ordinary word. A statewide search returns the board's top results for that
+  state, which lean to its biggest city.
 - `locations[].accept` is tested against the location the board returns.
 - `excludeRemoteOnly` drops a posting whose only place is Remote or the whole
   United States, so one job cannot reach two portals.

@@ -83,7 +83,7 @@ describe("parseLooseDate", () => {
 });
 
 describe("ageDays and dedupe", () => {
-  const base: Job = { id: "x", source: "a", company: "C", title: "T", url: "https://x", ats: "other", locations: [], postedAt: "2026-09-30", terms: [], sponsorship: "unknown", degrees: [], category: null };
+  const base: Job = { id: "x", source: "a", company: "C", title: "T", url: "https://x", ats: "other", locations: [], postedAt: "2026-09-30", terms: [], sponsorship: "unknown", degrees: [], category: null, easyApply: false };
   it("computes whole days", () => {
     expect(ageDays(base, new Date("2026-10-02T23:00:00Z"))).toBe(2);
     expect(ageDays({ postedAt: null })).toBeNull();

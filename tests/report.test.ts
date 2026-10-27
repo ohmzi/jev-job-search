@@ -28,6 +28,20 @@ describe("the dashboard's numbers", () => {
     expect(html).not.toContain("<script>\"");
     expect(html).toContain("\\u003cscript>");
   });
+  it("marks a row the queue does not hold, so the page shows it without a way to change it", () => {
+    const r = buildReport(rows, new Date(2026, 9, 2), [], new Set(["a1", "a2"]));
+    expect(r.rows.filter((x) => x.in_queue).map((x) => x.job_id)).toEqual(["a1", "a2"]);
+    expect(buildReport(rows).rows.every((x) => x.in_queue)).toBe(true);
+  });
+  it("names the board from JEV_REPORT_TITLE, else from its port", () => {
+    const was = process.env.JEV_REPORT_TITLE;
+    delete process.env.JEV_REPORT_TITLE;
+    expect(reportPage(null, "", 7422)).toContain("<h1>Android · TX</h1>");
+    process.env.JEV_REPORT_TITLE = "Made-up <board>";
+    expect(reportPage(null, "", 7422)).toContain("<h1>Made-up &lt;board&gt;</h1>");
+    if (was === undefined) delete process.env.JEV_REPORT_TITLE;
+    else process.env.JEV_REPORT_TITLE = was;
+  });
   it("takes only a status the page offers", () => {
     expect(StatusChange.safeParse({ id: "a1", status: "applied" }).success).toBe(true);
     expect(StatusChange.safeParse({ id: "a1", status: "in_progress" }).success).toBe(false);

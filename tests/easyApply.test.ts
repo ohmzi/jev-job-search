@@ -1,15 +1,16 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HOURLY } from "../src/config.js";
 import { jobId, type Job } from "../src/jobs/normalize.js";
 import { entryFor, loadQueue, saveQueue } from "../src/jobs/queue.js";
 import { loadRows } from "../src/log/csv.js";
 import type { Profile } from "../src/profile/schema.js";
 import { countToday, localDay } from "../src/run/daily.js";
+import { notify } from "../src/run/assist.js";
 import { applyEasyApply } from "../src/run/easyApply.js";
-import { markLoginRequired, readLoginRequired } from "../src/run/linkedinSession.js";
+import { backupSession, clearLoginRequired, markLoginRequired, pauseLinkedin, readLoginRequired } from "../src/run/linkedinSession.js";
 import { Policy } from "../src/run/policy.js";
 import { loadSharedApplied, recordSharedApplied } from "../src/run/shared.js";
 import type { ToolCall } from "../src/sources/listingLink.js";
@@ -51,6 +52,8 @@ describe("the last forward step of the dialog", () => {
   });
 });
 
+vi.mock("../src/run/assist.js", async (importOriginal) => ({ ...(await importOriginal<typeof import("../src/run/assist.js")>()), notify: vi.fn() }));
+
 const NOW = new Date("2026-10-24T12:00:00");
 const profile = {
   search: { portal: "android-tx", terms: ["android developer"], locations: [{ query: "Toronto, ON, Canada", distance: 40, accept: ["Toronto"] }] },
@@ -71,7 +74,7 @@ const applyReply = (status = "applied") => JSON.stringify({ status, message: sta
 const queuedEntry = (url: string, over: Partial<ReturnType<typeof entryFor>> = {}) => {
   const job: Job = {
     id: jobId(url), source: "jobspy linkedin", company: "Acme Corp", title: "Android Engineer", url, ats: "linkedin",
-    locations: ["Toronto, ON"], postedAt: null, terms: [], sponsorship: "unknown", degrees: [], category: null,
+    locations: ["Toronto, ON"], postedAt: null, terms: [], sponsorship: "unknown", degrees: [], category: null, easyApply: true,
   };
   return { ...entryFor(job, null, null), ...over };
 };
@@ -502,8 +505,10 @@ describe("the hourly Easy Apply step", () => {
     expect(readLoginRequired(sessionOptions.dataDir)).toMatchObject({ reason: "login window" });
   });
 
-  it("clears a stale login flag when a run reaches the board", async () => {
+  it("clears a stale login flag when the saved session is a newer login", async () => {
     markLoginRequired("cookies.json is missing", sessionOptions.dataDir);
+    // The person signed in again after the flag was left: the fork wrote a newer login beside the cookies.
+    writeFileSync(path.join(sessionOptions.authRoot, "source-state.json"), JSON.stringify({ version: 1, created_at: new Date(Date.now() + 60_000).toISOString(), login_generation: "newer-login" }));
     const h = harness({
       search_jobs: () => searchReply(["111111"]),
       get_job_apply_url: () => readReply("111111", "easy_apply"),
@@ -515,4 +520,122 @@ describe("the hourly Easy Apply step", () => {
     expect(summary.applied).toHaveLength(1);
     expect(readLoginRequired(sessionOptions.dataDir)).toBeNull();
   });
+
+  it("makes no call while a login flag stands and the saved session is not a newer login", async () => {
+    // The session was made before the flag was left, so it is the one that failed.
+    writeFileSync(path.join(sessionOptions.authRoot, "source-state.json"), JSON.stringify({ version: 1, created_at: new Date(Date.now() - 3_600_000).toISOString(), login_generation: "old-login" }));
+    markLoginRequired("Sign in", sessionOptions.dataDir);
+    const flag = readLoginRequired(sessionOptions.dataDir);
+    const h = harness({ search_jobs: () => searchReply(["111111"]) });
+    const summary = await applyEasyApply(profile, { session: sessionOptions, policy, call: h.call, close: h.close, now: NOW, sleep: h.sleep, files: files() });
+
+    expect(h.calls).toEqual([]);
+    expect(summary.reason).toMatch(/^LinkedIn login required since .*Sign in.*session relogin/);
+    // The flag keeps the time of the first failure and is not cleared.
+    expect(readLoginRequired(sessionOptions.dataDir)).toEqual(flag);
+  });
+
+  it("does not put back a backup of a login the fork already moved aside, and does not ask the fork", async () => {
+    // The backup is the login the fork rejected: the same identity sits in an invalid-state folder.
+    const generation = "rejected-login";
+    const sourceState = JSON.stringify({ version: 1, created_at: "2026-10-24T01:00:00Z", login_generation: generation });
+    writeFileSync(path.join(sessionOptions.authRoot, "source-state.json"), sourceState);
+    expect(backupSession(sessionOptions.authRoot, sessionOptions.backupRoot)).toBe(true);
+    const aside = path.join(sessionOptions.authRoot, "invalid-state-2026-10-24T02-00-00Z-abcd1234");
+    mkdirSync(aside, { recursive: true });
+    writeFileSync(path.join(aside, "source-state.json"), sourceState);
+    rmSync(path.join(sessionOptions.authRoot, "cookies.json"));
+    const h = harness({ search_jobs: () => searchReply(["111111"]) });
+    const summary = await applyEasyApply(profile, { session: sessionOptions, policy, call: h.call, close: h.close, now: NOW, sleep: h.sleep, files: files() });
+
+    expect(h.calls).toEqual([]);
+    expect(existsSync(path.join(sessionOptions.authRoot, "cookies.json"))).toBe(false);
+    expect(summary.reason).toBe("LinkedIn login required: cookies.json is missing");
+    expect(readLoginRequired(sessionOptions.dataDir)).toMatchObject({ reason: "cookies.json is missing" });
+  });
+
+
+  it("does nothing while the LinkedIn MCP is paused: no call, no sign-in, no flag", async () => {
+    const pausedFile = path.join(sessionOptions.dataDir, "paused.json");
+    pauseLinkedin(pausedFile);
+    let tried = 0;
+    const relogin = async () => (tried++, { ok: true, tried: true, reason: "signed in again" });
+    const h = harness({ search_jobs: () => searchReply(["111111"]) });
+    const summary = await applyEasyApply(profile, { session: { ...sessionOptions, pausedFile }, policy, call: h.call, close: h.close, now: NOW, sleep: h.sleep, files: files(), relogin });
+
+    expect(h.calls).toEqual([]);
+    expect(tried).toBe(0);
+    expect(summary.reason).toMatch(/paused since .*session resume/);
+    expect(readLoginRequired(sessionOptions.dataDir)).toBeNull();
+  });
+
+  describe("when the saved session is gone", () => {
+    const flagged = () => {
+      writeFileSync(path.join(sessionOptions.authRoot, "source-state.json"), JSON.stringify({ version: 1, created_at: new Date(Date.now() - 3_600_000).toISOString(), login_generation: "old-login" }));
+      markLoginRequired("Sign in", sessionOptions.dataDir);
+    };
+    const routes = () => ({
+      search_jobs: () => searchReply(["111111"]),
+      get_job_apply_url: () => readReply("111111", "easy_apply"),
+      get_job_details: () => detailsReply("5 hours ago"),
+      apply_to_job: () => applyReply(),
+    });
+
+    it("signs in again once and carries on when that works", async () => {
+      flagged();
+      let tried = 0;
+      const relogin = async () => {
+        tried++;
+        // What the fork's login leaves, and what the sign-in step does with it.
+        writeFileSync(path.join(sessionOptions.authRoot, "source-state.json"), JSON.stringify({ version: 1, created_at: new Date(Date.now() + 60_000).toISOString(), login_generation: "new-login" }));
+        clearLoginRequired(sessionOptions.dataDir);
+        return { ok: true, tried: true, reason: "signed in again" };
+      };
+      const h = harness(routes());
+      const summary = await applyEasyApply(profile, { session: sessionOptions, policy, call: h.call, close: h.close, now: NOW, sleep: h.sleep, files: files(), relogin });
+
+      expect(tried).toBe(1);
+      expect(summary.applied).toHaveLength(1);
+      expect(readLoginRequired(sessionOptions.dataDir)).toBeNull();
+      expect(vi.mocked(notify)).not.toHaveBeenCalled();
+    });
+
+    it("stops and tells the person when the automatic sign-in did not work", async () => {
+      flagged();
+      vi.mocked(notify).mockClear();
+      const flag = readLoginRequired(sessionOptions.dataDir);
+      const logs: string[] = [];
+      const relogin = async () => ({ ok: false, tried: true, reason: "the fork's sign-in ended with exit 1" });
+      const h = harness(routes());
+      const summary = await applyEasyApply(profile, { session: sessionOptions, policy, call: h.call, close: h.close, now: NOW, sleep: h.sleep, files: files(), relogin, log: (l) => logs.push(l) });
+
+      expect(h.calls).toEqual([]);
+      expect(summary.reason).toMatch(/^LinkedIn login required since/);
+      expect(readLoginRequired(sessionOptions.dataDir)).toEqual(flag);
+      expect(logs.join("\n")).toContain("not signed in again: the fork's sign-in ended with exit 1");
+      expect(vi.mocked(notify)).toHaveBeenCalledTimes(1);
+    });
+
+    it("says nothing to the person when a rule kept the sign-in from being tried", async () => {
+      flagged();
+      vi.mocked(notify).mockClear();
+      const relogin = async () => ({ ok: false, tried: false, reason: "the automatic sign-in at x did not work, so it is not repeated" });
+      const h = harness(routes());
+      await applyEasyApply(profile, { session: sessionOptions, policy, call: h.call, close: h.close, now: NOW, sleep: h.sleep, files: files(), relogin });
+      expect(vi.mocked(notify)).not.toHaveBeenCalled();
+    });
+
+    it("does not sign in during a rehearsal, and not at all when the session is fine", async () => {
+      let tried = 0;
+      const relogin = async () => (tried++, { ok: true, tried: true, reason: "signed in again" });
+      flagged();
+      await applyEasyApply(profile, { session: sessionOptions, dry: true, policy, call: harness(routes()).call, now: NOW, sleep: async () => {}, files: files(), relogin });
+      expect(tried).toBe(0);
+      clearLoginRequired(sessionOptions.dataDir);
+      writeFileSync(path.join(sessionOptions.authRoot, "source-state.json"), JSON.stringify({ version: 1 }));
+      await applyEasyApply(profile, { session: sessionOptions, policy, call: harness(routes()).call, now: NOW, sleep: async () => {}, files: files(), relogin });
+      expect(tried).toBe(0);
+    });
+  });
+
 });

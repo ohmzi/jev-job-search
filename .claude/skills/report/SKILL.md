@@ -15,7 +15,9 @@ node bin/jev.js report --open
 
 It starts a page on the user's own machine (`http://127.0.0.1:4545`) and
 opens it. Nothing leaves the machine. The command keeps running until they
-press Ctrl-C. The page has five screens:
+press Ctrl-C. The top of the page names the board (`JEV_REPORT_TITLE` in
+the portal's `.env`, else the portal listed for its port in `REPORT.portals`)
+and links to the other four. The page has five screens:
 
 - **Today.** One line (sent today, waiting, in the queue), the
   totals, and three small charts.
@@ -41,8 +43,13 @@ press Ctrl-C. The page has five screens:
     not sent".
   - an email the tool could not place: they pick the application and what
     it says.
-- **Applications.** Every job, with tabs, a filter, a status select, a
-  notes box, and the reply that came back.
+  - a job the tool cannot fill at all (a board-only listing): "Open
+    posting", then "I applied" or "Not applying".
+- **Applications.** Every job, with tabs, a filter, and the columns each
+  tab needs. Every row has an "Applied" button and a "Change status"
+  menu; tick rows, or the header box, for "Mark selected applied" or
+  "Skip selected". A row the record holds and the queue does not is shown
+  as "record only" and cannot be changed.
 - **Automation.** The daily run: an "Apply automatically" switch with a
   time, the next run, "Pause future runs" (removes the schedule),
   "Stop it after this application" while a run is working, their daily

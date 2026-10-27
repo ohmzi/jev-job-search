@@ -13,7 +13,7 @@ import type { Job } from "../jobs/normalize.js";
 import { mutateQueue, type QueueEntry } from "../jobs/queue.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import type { Profile } from "../profile/schema.js";
-import { listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller, type ResolvedListing } from "../sources/listingLink.js";
+import { easyApplyFromApplyType, listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller, type ResolvedListing } from "../sources/listingLink.js";
 import { withStore } from "../util/store.js";
 
 export type FollowOptions = {
@@ -61,6 +61,9 @@ export async function followListings(entries: QueueEntry[], profile: Profile, o:
   // the apply run. Only the walk's own apply type may mark it: an external, unknown, closed or
   // unresolved posting stays out of the fork and goes to Chrome, which follows its Apply button.
   const markResolved = (e: QueueEntry, resolved: ResolvedListing | undefined) => {
+    // The answer is kept on the job whether or not it changes where the apply run takes it.
+    const easyApply = easyApplyFromApplyType(resolved?.applyType ?? null, e.job.easyApply);
+    if (easyApply !== e.job.easyApply) e.job = { ...e.job, easyApply };
     e.applyable = resolved?.applyType === "easy_apply";
     if (e.applyable) e.holdUntil = null;
   };

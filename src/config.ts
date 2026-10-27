@@ -172,6 +172,21 @@ export const LINKEDIN_SESSION = {
   backupRoot: path.join(os.homedir(), ".linkedin-mcp-backup"),
   /** The fork's checkout, read from MCP.linkedin.args' --project value. */
   forkDir: linkedinForkDir,
+  /**
+   * Signing in again without the person. The fork's own `--login` signs in with the email and password
+   * in the credentials file the person made for it, and falls back to a window on a challenge. This
+   * tool never opens that file: it only starts the fork's login, at most once per outage.
+   */
+  autoRelogin: {
+    enabled: true,
+    credentialsFile: path.join(os.homedir(), ".linkedin-mcp", "credentials.env"),
+    /** Longest the fork's login may run before it is stopped. */
+    timeoutMs: 240_000,
+    /** When the fork says LinkedIn asked for a check only a person can pass, its window stays open this long for them. */
+    personWaitMs: 10 * 60_000,
+    /** After a login that worked, the next automatic one waits this long: a session LinkedIn revokes again at once is the person's. */
+    minHoursBetween: 6,
+  },
 } as const;
 
 export const DISCOVER = {
@@ -473,8 +488,8 @@ export const HOURLY = {
   timeoutMs: 90_000,
   /** Pause between two JobSpy calls, so a portal does not burst a board. */
   gapMs: 4_000,
-  /** A run stops asking after this many calls, whatever the profile allows. */
-  maxQueries: 12,
+  /** A run stops asking after this many calls, whatever the profile allows. A portal that covers half the country asks once per state. */
+  maxQueries: 40,
   /** The reason a job held for the person gets when its 12 hours are over. */
   staleReason: "posted more than 12 hours ago; apply on the employer's site yourself",
   /** How many fresh fillable jobs one portal may apply to in one hourly pass. */
@@ -601,7 +616,55 @@ export const REPORT = {
   statuses: ["applied", "needs_review", "queued", "skipped", "blocked", "failed"],
   /** The name a dashboard gets when it runs as a systemd user service. The folder name makes it unique. */
   servicePrefix: "jev-report",
+  /** Rows a table draws before "Show more", so the Everything tab stays quick with thousands of jobs. */
+  pageSize: 100,
+  /**
+   * The five dashboards, for the switcher at the top of each page. A page served on this machine
+   * links to the local ports; one served from its public address links to the public addresses.
+   * The accent tells the boards apart at a glance.
+   */
+  portals: [
+    { title: "Main", port: 7411, url: "https://job.ohmzhomelab.ca", accent: "#475569" },
+    { title: "Android · NJ", port: 7421, url: "https://jobnja.ohmzhomelab.ca", accent: "#0d9488" },
+    { title: "Android · TX", port: 7422, url: "https://jobtxa.ohmzhomelab.ca", accent: "#7c3aed" },
+    { title: "Full Stack · NJ", port: 7423, url: "https://jobnjf.ohmzhomelab.ca", accent: "#db2777" },
+    { title: "Full Stack · TX", port: 7424, url: "https://jobtxf.ohmzhomelab.ca", accent: "#2563eb" },
+  ],
+  /** The accent of a dashboard that is not one of the five. */
+  accent: "#2563eb",
+  /** The page paths the combined board may pass to a portal. A portal's daily rules and schedule are its own page's alone. */
+  linkedPaths: ["/api/status", "/api/answer", "/api/show", "/api/mail", "/api/confirm-answer"],
+  /** How long the combined board waits for one portal's dashboard before showing it as not answering. */
+  combineTimeoutMs: 8_000,
 } as const;
+
+/**
+ * The secret the combined board sends with a change it passes to a portal, shared by the five
+ * dashboards on this machine and outside the repositories. Made at random the first time a
+ * dashboard needs it, readable by this user only, never printed. Read at call time, like the
+ * shared folder it lives in.
+ */
+export function reportLinkKeyFile(): string {
+  return path.join(process.env.JEV_SHARED_DIR?.trim() || path.join(os.homedir(), ".local", "state", "jev"), "report-link.key");
+}
+
+/**
+ * True in the folder of the combined board (JEV_ROLE=combined in its .env): it shows the four
+ * portals together and passes changes to them, and never searches, applies or signs in itself.
+ * Read at call time, because .env is loaded after this module is evaluated.
+ */
+export function isCombinedBoard(): boolean {
+  return process.env.JEV_ROLE?.trim() === "combined";
+}
+
+/**
+ * The name at the top of a dashboard and in its browser tab: JEV_REPORT_TITLE from the portal's
+ * .env, else the portal listed for this port, else the folder name. Read at call time, because
+ * .env is loaded after this module is evaluated.
+ */
+export function reportTitle(port?: number): string {
+  return process.env.JEV_REPORT_TITLE?.trim() || REPORT.portals.find((p) => p.port === port)?.title || path.basename(ROOT);
+}
 
 /**
  * Extra origins the dashboard may be served from, such as a Cloudflare tunnel. Full origins,
