@@ -721,33 +721,43 @@ const mcpReport = (entry: QueueEntry, state: "filled" | "blocked", reason: strin
  * again by a later run. Called only by a run that was asked to send.
  */
 async function applyViaMcp(entry: QueueEntry, call: ToolCall, o: RunOptions): Promise<{ sent: boolean; report: FillReport }> {
-  const id = entry.job.id;
+  const recordId = entry.job.id;
+  // The LinkedIn server takes its own numeric posting id, not this queue's hash.
+  const listing = listingOf(entry.job.url);
+  const linkedinId = listing?.board === "linkedin" ? listing.id : recordId;
   // The answers the person gave for this job's own questions, as the apply tool takes them.
   const answers = Object.fromEntries((entry.answers ?? []).map((a) => [a.question, a.answer]));
-  record(id, "submission_unknown", "sent to the LinkedIn MCP; waiting for its answer");
+  record(recordId, "submission_unknown", "sent to the LinkedIn MCP; waiting for its answer");
   let result: McpApplyResult;
   try {
-    result = await applyOnLinkedIn(id, { call, callMs: MCP.applyCallMs, ...(Object.keys(answers).length ? { answers } : {}) });
+    result = await applyOnLinkedIn(linkedinId, { call, callMs: MCP.applyCallMs, ...(Object.keys(answers).length ? { answers } : {}) });
   } catch (err) {
     // The fork never started, so nothing was sent: the job goes back in the queue instead of
     // being left unconfirmed as though an application might be with the employer.
     if (err instanceof NotAvailable) {
       const message = `the LinkedIn MCP fork did not start (${err.message}), so nothing was sent`;
-      record(id, "queued", "the LinkedIn MCP fork is not available; nothing was sent");
-      console.log(`${id}  ${message}. The job is back in the queue`);
+      record(recordId, "queued", "the LinkedIn MCP fork is not available; nothing was sent");
+      console.log(`${recordId}  ${message}. The job is back in the queue`);
       return { sent: false, report: mcpReport(entry, "blocked", message) };
     }
     const message = err instanceof Error ? err.message : String(err);
-    console.log(`${id}  not confirmed: ${message}. Check the posting on LinkedIn before applying again`);
+    // The fork rejects a posting whose id is not its own before it opens anything: nothing was
+    // sent, so the job goes back in the queue instead of staying unconfirmed.
+    if (/job_id is not a LinkedIn id/i.test(message)) {
+      record(recordId, "queued", "the LinkedIn MCP rejected the job id before sending; nothing was sent");
+      console.log(`${recordId}  ${message}. The job is back in the queue`);
+      return { sent: false, report: mcpReport(entry, "blocked", message) };
+    }
+    console.log(`${recordId}  not confirmed: ${message}. Check the posting on LinkedIn before applying again`);
     return { sent: false, report: mcpReport(entry, "blocked", message) };
   }
-  if (!o.quiet) console.log(`${id}  ${result.status}: ${result.message}`);
+  if (!o.quiet) console.log(`${recordId}  ${result.status}: ${result.message}`);
   let sent = false;
   let report = mcpReport(entry, "blocked", result.message);
   switch (result.status) {
     case "applied":
     case "already_applied":
-      record(id, "applied", result.message);
+      record(recordId, "applied", result.message);
       sent = true;
       report = mcpReport(entry, "filled", null);
       break;
@@ -758,7 +768,7 @@ async function applyViaMcp(entry: QueueEntry, call: ToolCall, o: RunOptions): Pr
     case "wizard_not_opened": {
       // The walk did not send it. The job is set aside with the walk's own words, and the questions
       // it could not answer become the ones the dashboard asks, through the report file.
-      record(id, "needs_review", result.message);
+      record(recordId, "needs_review", result.message);
       report = blockedReport(entry.job, result.message);
       report.reviews = result.unanswered.map((q, i) => ({
         id: `mcp${i}`,
@@ -772,13 +782,13 @@ async function applyViaMcp(entry: QueueEntry, call: ToolCall, o: RunOptions): Pr
       break;
     }
     case "closed":
-      record(id, "skipped", "the posting is closed");
+      record(recordId, "skipped", "the posting is closed");
       report = mcpReport(entry, "blocked", "the posting is closed");
       break;
     case "wizard_open":
       // The open-only probe found the dialog but did not fill it. This path does not pass
       // open_only, so it is here only so the reply is never left as an unconfirmed send.
-      record(id, "needs_review", "the wizard opened but was not filled");
+      record(recordId, "needs_review", "the wizard opened but was not filled");
       report = mcpReport(entry, "blocked", "the wizard opened but was not filled");
       break;
     case "outcome_unknown":
@@ -786,7 +796,7 @@ async function applyViaMcp(entry: QueueEntry, call: ToolCall, o: RunOptions): Pr
       break;
   }
   if (result.learned.length) {
-    addLearned(result.learned.map((l) => ({ jobId: id, company: entry.job.company, title: entry.job.title, question: l.question, answer: l.answer, options: l.options })));
+    addLearned(result.learned.map((l) => ({ jobId: recordId, company: entry.job.company, title: entry.job.title, question: l.question, answer: l.answer, options: l.options })));
   }
   return { sent, report };
 }

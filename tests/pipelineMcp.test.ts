@@ -219,7 +219,8 @@ describe("Easy Apply jobs through the LinkedIn MCP", () => {
 
     await pipeline(takeJobs([jobId(URL_ONE)], { count: 1, dry: false }), base());
 
-    expect(fake.applyArgs[0]).toEqual({ job_id: jobId(URL_ONE), answers: { "Years of Android experience": "5" } });
+    // The LinkedIn server takes the posting id from its URL, not the queue's hash.
+    expect(fake.applyArgs[0]).toEqual({ job_id: "4252026496", answers: { "Years of Android experience": "5" } });
   });
 
   it.each(["external", "unknown"])("a LinkedIn posting with apply type %s stays off the mcp", async (type) => {
