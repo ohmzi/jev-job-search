@@ -249,7 +249,7 @@ export function localDate(iso: string): string {
 }
 
 /** What the status column says for each status. Only "Applied" may start with that word: the sent list is found by it. */
-const STATUS_WORDS: Record<QueueStatus, string> = {
+export const STATUS_WORDS: Record<QueueStatus, string> = {
   applied: "Applied",
   queued: "Queued",
   in_progress: "In progress",

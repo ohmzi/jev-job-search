@@ -8,8 +8,8 @@ import { QueueStatus } from "../jobs/queue.js";
 import { statusKeyOf, takehomeRecords, toRecord, type Row } from "../log/csv.js";
 import type { RecentRow } from "./recent.js";
 
-/** One job as the page shows it. status_key is the status itself; status is the words in the record. */
-export type ReportRow = ReturnType<typeof toRecord> & { takehome_link: string; status_key: string };
+/** One job as the page shows it. status_key is the status itself; status is the words in the record. in_queue is false for a row the record holds and the queue does not, which the page cannot change. */
+export type ReportRow = ReturnType<typeof toRecord> & { takehome_link: string; status_key: string; in_queue: boolean };
 
 export type Report = {
   rows: ReportRow[];
@@ -22,9 +22,9 @@ export type Report = {
   generatedAt: string;
 };
 
-export function buildReport(rows: Row[], today = new Date(), recent: RecentRow[] = []): Report {
+export function buildReport(rows: Row[], today = new Date(), recent: RecentRow[] = [], queued?: ReadonlySet<string>): Report {
   const takehome = new Map(takehomeRecords(rows).map((t) => [t.job_id, t.takehome_link]));
-  const all = rows.map((r) => ({ ...toRecord(r), takehome_link: takehome.get(r["Job ID"]) ?? "", status_key: statusKeyOf(r["App. Status"]) ?? "" }));
+  const all = rows.map((r) => ({ ...toRecord(r), takehome_link: takehome.get(r["Job ID"]) ?? "", status_key: statusKeyOf(r["App. Status"]) ?? "", in_queue: !queued || queued.has(r["Job ID"]) }));
   const day = (iso: string) => iso.slice(0, 10);
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
   const count = (f: (r: ReportRow) => boolean) => all.filter(f).length;

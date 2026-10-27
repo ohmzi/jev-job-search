@@ -3,47 +3,80 @@
  * beyond the server it came from. With data embedded it is a snapshot a person can keep.
  */
 import type { Report } from "./data.js";
-import { REPORT } from "../config.js";
+import { REPORT, reportTitle } from "../config.js";
+import { STATUS_WORDS } from "../log/csv.js";
 import { LEFT_FOR_YOU } from "./data.js";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 
-/** The page. With a snapshot it is a file to keep, read-only. Without one it is live, and `token` is what lets it send a change back. */
-export function reportPage(snapshot: Report | null, token = ""): string {
+/** A small round mark in the board's accent, so a tab can be told apart from the other four. */
+const favicon = (accent: string) => `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="${accent}"/></svg>`)}`;
+
+/**
+ * The page. With a snapshot it is a file to keep, read-only. Without one it is live, and `token` is
+ * what lets it send a change back. `port` is the port the live page is served on, which says
+ * which of the five boards it is.
+ */
+export function reportPage(snapshot: Report | null, token = "", port?: number): string {
   const embedded = snapshot ? `<script id="data" type="application/json">${JSON.stringify(snapshot).replace(/</g, "\\u003c")}</script>` : "";
+  const title = reportTitle(port);
+  const accent = REPORT.portals.find((p) => p.port === port)?.accent ?? REPORT.accent;
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>jev-job-search</title>
+<title>${esc(title)} · jobs</title>
+<link rel="icon" href="${favicon(accent)}">
 <style>
-  :root { --ink: #16181d; --muted: #6b7280; --line: #e5e7eb; --bg: #fafafa; --card: #fff; --accent: #2563eb; --good: #16a34a; --warn: #d97706; }
-  @media (prefers-color-scheme: dark) { :root { --ink: #e5e7eb; --muted: #9ca3af; --line: #2a2f3a; --bg: #0f1115; --card: #171a21; --accent: #60a5fa; --good: #4ade80; --warn: #fbbf24; } }
+  :root { --ink: #16181d; --muted: #6b7280; --line: #e5e7eb; --bg: #fafafa; --card: #fff; --accent: ${accent}; --good: #16a34a; --warn: #d97706; --bad: #dc2626; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #e5e7eb; --muted: #9ca3af; --line: #2a2f3a; --bg: #0f1115; --card: #171a21; --accent: color-mix(in srgb, ${accent} 70%, white); --good: #4ade80; --warn: #fbbf24; --bad: #f87171; } }
   * { box-sizing: border-box; } body { margin: 0; font: 14px/1.45 -apple-system, "Helvetica Neue", Helvetica, Arial, sans-serif; color: var(--ink); background: var(--bg); }
-  header { padding: 18px 24px 8px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; } h1 { font-size: 18px; margin: 0; } .sub { color: var(--muted); }
+  .top { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); border-top: 4px solid var(--accent); }
+  header { padding: 14px 24px 6px; display: flex; align-items: center; gap: 12px 20px; flex-wrap: wrap; justify-content: space-between; }
+  .brand { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; } h1 { font-size: 20px; margin: 0; } .brand .kind { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; }
+  .sub { color: var(--muted); }
+  .portals { display: flex; gap: 6px; flex-wrap: wrap; } .portals a { font-size: 12px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); background: var(--card); display: inline-flex; align-items: center; gap: 6px; } .portals a i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; } .portals a.on { color: var(--ink); border-color: var(--accent); font-weight: 600; } .portals a:hover { text-decoration: none; border-color: var(--accent); }
+  nav#nav { display: flex; gap: 4px; padding: 0 24px; overflow-x: auto; } nav#nav button { border: 0; background: none; color: var(--muted); padding: 10px 14px; cursor: pointer; font: inherit; border-bottom: 2px solid transparent; white-space: nowrap; } nav#nav button.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .count { display: inline-block; min-width: 20px; padding: 0 6px; margin-left: 6px; border-radius: 999px; font-size: 11px; line-height: 18px; text-align: center; background: var(--line); color: var(--ink); font-weight: 600; } nav#nav button.on .count, .tabs button.on .count { background: color-mix(in srgb, var(--accent) 25%, transparent); }
   main { padding: 0 24px 40px; max-width: 1400px; }
   .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 12px 0 18px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; } .card .n { font-size: 26px; font-weight: 600; } .card .l { color: var(--muted); font-size: 12px; }
   .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; margin-bottom: 18px; }
   .chart h3 { margin: 0 0 8px; font-size: 13px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
   .bar { display: grid; grid-template-columns: 150px 1fr 40px; gap: 8px; align-items: center; font-size: 13px; margin: 3px 0; } .bar i { display: block; height: 10px; border-radius: 5px; background: var(--accent); } .bar b { font-weight: 500; text-align: right; color: var(--muted); }
-  .tabs { display: flex; gap: 6px; margin: 6px 0 10px; flex-wrap: wrap; } .tabs button { border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 6px 12px; border-radius: 999px; cursor: pointer; } .tabs button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
-  input[type=search] { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); min-width: 260px; }
-  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; } th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; } th { font-size: 12px; color: var(--muted); font-weight: 600; cursor: pointer; white-space: nowrap; } tr:last-child td { border-bottom: 0; }
-  td.n { white-space: nowrap; } a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
-  select, textarea { font: inherit; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); padding: 4px 6px; } textarea { width: 100%; min-height: 34px; }
-  .status { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--line); white-space: nowrap; } .status.applied { background: color-mix(in srgb, var(--good) 20%, transparent); color: var(--good); } .status.needs { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
-  .saved { color: var(--good); font-size: 12px; margin-left: 6px; } .static { color: var(--muted); font-size: 12px; }
-  nav { display: flex; gap: 6px; padding: 0 24px; border-bottom: 1px solid var(--line); } nav button { border: 0; background: none; color: var(--muted); padding: 10px 14px; cursor: pointer; font: inherit; border-bottom: 2px solid transparent; } nav button.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .tabs { display: flex; gap: 6px; margin: 4px 0 10px; flex-wrap: wrap; } .tabs button { border: 1px solid var(--line); background: var(--card); color: var(--ink); padding: 6px 12px; border-radius: 999px; cursor: pointer; font: inherit; } .tabs button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .tabnote { color: var(--muted); font-size: 13px; margin: 0 0 10px; }
+  .toolbar { display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; margin: 0 0 10px; min-height: 34px; }
+  input[type=search] { padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); min-width: 260px; font: inherit; }
+  .wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; } th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; } tbody tr:last-child td { border-bottom: 0; } tbody tr:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); } tr.picked { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+  th { font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; } th[data-sort] { cursor: pointer; } th[data-sort]:hover { color: var(--ink); }
+  .c-pick { width: 40px; padding-right: 4px; text-overflow: clip; } .c-applied { width: 100px; } .c-fit { width: 60px; } .c-status { width: 130px; } .c-reply { width: 140px; } .c-notes { width: 190px; } .c-act { width: 200px; } .c-posted { width: 150px; } .c-found { width: 100px; } .c-reason { width: 32%; }
+  td.n { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .role { font-weight: 600; } .meta { color: var(--muted); font-size: 12px; margin-top: 2px; } .meta .ez { color: var(--good); font-weight: 600; }
+  .clip { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; cursor: pointer; color: var(--ink); } .clip.open { display: block; } .clip:empty { display: none; }
+  a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+  select, textarea { font: inherit; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); padding: 4px 6px; }
+  textarea.notes { width: 100%; height: 32px; resize: vertical; font-size: 13px; } textarea.notes:focus { height: 84px; outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+  .status { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--line); white-space: nowrap; display: inline-block; } .status.applied { background: color-mix(in srgb, var(--good) 20%, transparent); color: var(--good); } .status.needs { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); } .status.queued { background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); }
+  .saved { color: var(--good); font-size: 12px; margin-left: 6px; } .saved.err { color: var(--bad); } .static { color: var(--muted); font-size: 12px; }
   .screen { display: none; padding-top: 16px; } .screen.on { display: block; }
   .item { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; margin-bottom: 12px; } .item h4 { margin: 0 0 4px; font-size: 15px; } .item p { margin: 4px 0; } .item .q { margin: 10px 0 4px; font-weight: 600; }
   .item input[type=text], .item input[type=number], .item input[type=time], .item textarea, .item select { width: 100%; max-width: 640px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); font: inherit; }
-  .btn { border: 1px solid var(--accent); background: var(--accent); color: #fff; padding: 7px 14px; border-radius: 8px; cursor: pointer; font: inherit; margin: 8px 8px 0 0; } .btn.quiet { background: none; color: var(--accent); } .btn:disabled { opacity: .5; cursor: default; }
-  .line { font-size: 20px; font-weight: 600; margin: 4px 0 12px; } h2 { font-size: 15px; margin: 22px 0 10px; } .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 20px; } .grid2 label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .self { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: center; padding: 10px 14px; margin-bottom: 8px; } .self .btn { margin: 0 0 0 6px; }
+  .btn { border: 1px solid var(--accent); background: var(--accent); color: #fff; padding: 7px 14px; border-radius: 8px; cursor: pointer; font: inherit; margin: 8px 8px 0 0; display: inline-block; } .btn.quiet { background: none; color: var(--accent); } .btn:disabled { opacity: .45; cursor: default; } a.btn:hover { text-decoration: none; }
+  .btn.sm { padding: 4px 10px; font-size: 13px; margin: 0 6px 4px 0; } select.sm { font-size: 13px; padding: 3px 4px; max-width: 100%; }
+  .more { margin: 10px 0 0; }
+  .line { font-size: 20px; font-weight: 600; margin: 4px 0 12px; } h2 { font-size: 15px; margin: 22px 0 10px; } h2 .count { font-size: 12px; } .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 20px; } .grid2 label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
   .note { color: var(--muted); font-size: 13px; } .warn { color: var(--warn); }
-  @media (max-width: 700px) { header, main { padding-left: 16px; padding-right: 16px; } .bar { grid-template-columns: 100px 1fr 32px; } }
+  @media (max-width: 800px) { header, main, nav#nav { padding-left: 16px; padding-right: 16px; } .bar { grid-template-columns: 100px 1fr 32px; } .wrap table { width: 1200px; } .c-reason { width: 260px; } .self { grid-template-columns: 1fr; } .self .btn { margin: 0 6px 0 0; } input[type=search] { min-width: 0; width: 100%; } }
 </style></head>
 <body>
-<header><h1>jev-job-search</h1><span class="sub" id="when"></span><span class="static" id="mode"></span></header>
-<nav id="nav"></nav>
+<div class="top">
+  <header>
+    <div class="brand"><h1>${esc(title)}</h1><span class="kind">job search</span><span class="sub" id="when"></span><span class="static" id="mode"></span></div>
+    <nav class="portals" id="portals" aria-label="Other boards"></nav>
+  </header>
+  <nav id="nav"></nav>
+</div>
 <main>
   <section class="screen" id="s-today">
     <div class="line" id="todayLine"></div>
@@ -58,8 +91,9 @@ export function reportPage(snapshot: Report | null, token = ""): string {
   <section class="screen" id="s-needs"><div id="needs"></div></section>
   <section class="screen" id="s-apps">
     <div class="tabs" id="tabs"></div>
-    <p><input type="search" id="q" placeholder="Filter by company, role, board, reason"> <span class="sub" id="count"></span></p>
-    <table id="table"><thead></thead><tbody></tbody></table>
+    <p class="tabnote" id="tabnote"></p>
+    <div class="toolbar"><input type="search" id="q" placeholder="Filter by company, role, board, reason"><span class="sub" id="count"></span></div>
+    <div id="apps"></div>
   </section>
   <section class="screen" id="s-auto"><div id="auto"></div></section>
 </main>
@@ -67,38 +101,110 @@ ${embedded}
 <script>
 (() => {
   const STATUSES = ${JSON.stringify(REPORT.statuses)};
+  const WORDS = ${JSON.stringify(STATUS_WORDS)};
+  const PORTALS = ${JSON.stringify(REPORT.portals)};
+  const HERE = ${JSON.stringify(port ?? null)};
+  const PAGE = ${REPORT.pageSize};
   const $ = (s) => document.querySelector(s);
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
   const embedded = document.getElementById("data");
   const live = !embedded;
   const LEFT = ${JSON.stringify(LEFT_FOR_YOU)};
+  const WAITING = ["awaiting_user_action", "awaiting_email_verification", "submission_unknown"];
+  // Each tab shows the columns that matter for what is in it.
   const TABS = [
-    { key: "applied", label: "Applied", keep: (r) => r.status_key === "applied" },
-    { key: "waiting", label: "Waiting for you", keep: (r) => r.status_key === "awaiting_user_action" || r.status_key === "awaiting_email_verification" || r.status_key === "submission_unknown" },
-    { key: "manual", label: "Left for you", keep: (r) => LEFT.includes(r.status_key) },
-    { key: "takehome", label: "Take-home", keep: (r) => !!r.takehome_link },
-    { key: "queued", label: "Queued", keep: (r) => r.status_key === "queued" },
-    { key: "all", label: "Everything", keep: () => true },
+    { key: "applied", label: "Applied", keep: (r) => r.status_key === "applied", cols: ["applied", "job", "reply", "notes", "act"], sort: ["applied_on", -1], note: "Sent and confirmed. A reply the inbox placed shows under Reply." },
+    { key: "waiting", label: "Waiting for you", keep: (r) => WAITING.includes(r.status_key), cols: ["pick", "job", "status", "reason", "notes", "act"], sort: ["company", 1], note: "A form open for you, or one that was clicked and never confirmed. If you sent it, mark it applied." },
+    { key: "manual", label: "Left for you", keep: (r) => LEFT.includes(r.status_key), cols: ["pick", "job", "fit", "status", "reason", "notes", "act"], sort: ["fit", -1], note: "The tool could not finish these. Apply on the site yourself, then mark them applied, or skip them." },
+    { key: "takehome", label: "Take-home", keep: (r) => !!r.takehome, cols: ["applied", "job", "status", "reply", "notes", "act"], sort: ["applied_on", -1], note: "Applications that came with a take-home task." },
+    { key: "queued", label: "Queued", keep: (r) => r.status_key === "queued", cols: ["pick", "job", "fit", "notes", "act"], sort: ["fit", -1], note: "Next in line for /apply, best fit first." },
+    { key: "all", label: "Everything", keep: () => true, cols: ["pick", "applied", "job", "fit", "status", "reason", "notes", "act"], sort: ["applied_on", -1], note: "Every job the tool has considered." },
   ];
   const TOKEN = ${JSON.stringify(token)};
   const SCREENS = live ? [["today", "Today"], ["recent", "Last 12 hours"], ["needs", "Needs you"], ["apps", "Applications"], ["auto", "Automation"]] : [["today", "Today"], ["recent", "Last 12 hours"], ["apps", "Applications"]];
   // A link can open one screen directly: /#recent opens Last 12 hours.
   const startScreen = location.hash.replace(/^#/, "");
-  let data = null, needs = null, auto = null, screen = SCREENS.some(([k]) => k === startScreen) ? startScreen : "today", tab = "applied", sortKey = "applied_on", sortDir = -1, q = "";
+  let data = null, needs = null, auto = null, screen = SCREENS.some(([k]) => k === startScreen) ? startScreen : "today", tab = "applied", q = "";
+  let appRows = [], recentRows = [];
   const post = (path, body) => fetch(path, { method: "POST", headers: { "content-type": "application/json", "x-jev-token": TOKEN }, body: JSON.stringify(body) });
-  const needCount = () => needs ? needs.waiting.length + needs.questions.length + needs.unconfirmed.length + needs.mail.length : 0;
+  const needCount = () => needs ? needs.waiting.length + needs.questions.length + needs.unconfirmed.length + (needs.self || []).length + needs.mail.length : 0;
   const recentCount = () => data && data.recent ? data.recent.length : 0;
+  const badge = (n) => n ? '<span class="count">' + n + "</span>" : "";
+
+  // The switcher to the other boards: local ports from this machine, public addresses from outside.
+  function renderPortals() {
+    if (!live || !PORTALS.some((p) => p.port === HERE)) return;
+    const local = /^(127\\.0\\.0\\.1|localhost)$/.test(location.hostname);
+    $("#portals").innerHTML = PORTALS.map((p) => '<a class="' + (p.port === HERE ? "on" : "") + '" href="' + esc((local ? "http://127.0.0.1:" + p.port : p.url) + "/" + location.hash) + '"><i style="background:' + esc(p.accent) + '"></i>' + esc(p.title) + "</a>").join("");
+  }
   function renderNav() {
-    const count = (k) => (k === "needs" && needCount() ? " (" + needCount() + ")" : "") + (k === "recent" && recentCount() ? " (" + recentCount() + ")" : "");
+    const count = (k) => badge(k === "needs" ? needCount() : k === "recent" ? recentCount() : 0);
     $("#nav").innerHTML = SCREENS.map(([k, l]) => '<button class="' + (k === screen ? "on" : "") + '" data-screen="' + k + '">' + l + count(k) + "</button>").join("");
     for (const [k] of SCREENS) $("#s-" + k).classList.toggle("on", k === screen);
   }
+
+  // One row shape for every table, from the record or from the queue.
+  const after = (s) => s.includes(":") ? s.slice(s.indexOf(":") + 1).trim() : "";
+  const fromApp = (r) => ({ id: r.job_id, company: r.company, role: r.role, link: r.job_link, location: r.location, board: r.ats, easy: r.easy_apply, fit: r.fit_score === "" || r.fit_score == null ? null : Number(r.fit_score), status_key: r.status_key, status: r.status.replace(/:.*$/s, ""), reason: r.skip_reason || after(r.status), applied_on: (r.applied_on || "").slice(0, 10), reply: r.response, reply_on: r.response_on, notes: r.notes, takehome: r.takehome_link, in_queue: r.in_queue !== false });
+  const fromRecent = (r) => ({ id: r.id, company: r.company, role: r.title, link: r.link, location: r.location, board: r.board, easy: r.easy_apply === true ? "Yes" : r.easy_apply === false ? "No" : "", fit: r.fit_score, status_key: r.status_key, status: r.status, reason: r.why, posted: r.posted_at || r.posted_on, found_at: r.found_at, age: r.age_hours, notes: "", in_queue: true });
+
+  const statusClass = (k) => k === "applied" ? "applied" : k === "queued" ? "queued" : LEFT.includes(k) ? "needs" : "";
+  const canChange = (r) => live && r.in_queue;
+  const canPick = (r) => canChange(r) && r.status_key !== "applied";
+  const COLS = {
+    pick: { label: "", cls: "c-pick" },
+    applied: { label: "Applied on", cls: "c-applied", sort: "applied_on", cell: (r) => '<td class="n">' + esc(r.applied_on) + "</td>" },
+    job: { label: "Job", cls: "c-job", sort: "company", cell: (r) => '<td><a class="role" href="' + esc(r.link) + '" target="_blank" rel="noopener">' + esc(r.role) + '</a><div class="meta">' + [esc(r.company), esc(r.location), esc(r.board)].filter(Boolean).join(" · ") + (r.easy === "Yes" ? ' · <span class="ez">Easy Apply</span>' : "") + (r.takehome ? ' · <a href="' + esc(r.takehome) + '" target="_blank" rel="noopener">take-home</a>' : "") + "</div></td>" },
+    fit: { label: "Fit", cls: "c-fit", sort: "fit", cell: (r) => '<td class="n" title="' + esc(r.fit ?? "") + '">' + (r.fit == null || isNaN(r.fit) ? "" : Math.round(r.fit * 100) + "%") + "</td>" },
+    status: { label: "Status", cls: "c-status", sort: "status", cell: (r) => '<td><span class="status ' + statusClass(r.status_key) + '">' + esc(r.status) + "</span></td>" },
+    reason: { label: "Reason", cls: "c-reason", sort: "reason", cell: (r) => '<td><div class="clip" title="Click to read it all">' + esc(r.reason) + "</div></td>" },
+    reply: { label: "Reply", cls: "c-reply", sort: "reply", cell: (r) => "<td>" + (r.reply ? esc(r.reply) + '<div class="meta">' + esc(r.reply_on) + "</div>" : "") + "</td>" },
+    notes: { label: "Notes", cls: "c-notes", cell: (r) => "<td>" + (canChange(r) ? '<textarea class="notes" data-notes="' + esc(r.id) + '" placeholder="Add a note">' + esc(r.notes) + "</textarea>" : esc(r.notes)) + "</td>" },
+    posted: { label: "Posted", cls: "c-posted", sort: "posted", cell: (r) => '<td class="n">' + esc(r.posted ? (r.posted.length > 10 ? new Date(r.posted).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : r.posted) : "unknown") + "</td>" },
+    found: { label: "Found", cls: "c-found", sort: "found_at", cell: (r) => '<td class="n">' + (r.age ? r.age + "h ago" : "under 1h") + "</td>" },
+    act: { label: "", cls: "c-act", cell: (r) => {
+      if (!live) return "<td></td>";
+      if (!r.in_queue) return '<td><span class="note" title="This job is in the record only, not in the queue, so it cannot be changed here">record only</span></td>';
+      const menu = '<select class="sm" data-id="' + esc(r.id) + '" data-was="' + esc(r.status_key) + '" aria-label="Change status"><option value="">Change status</option>' + STATUSES.filter((s) => s !== r.status_key).map((s) => '<option value="' + s + '">' + esc(WORDS[s] || s) + "</option>").join("") + "</select>";
+      return "<td>" + (r.status_key !== "applied" ? '<button class="btn sm" data-mark="' + esc(r.id) + '" data-was="' + esc(r.status_key) + '">Applied</button>' : "") + menu + '<span class="saved"></span></td>';
+    } },
+  };
+
+  // Each table keeps its own sort, how many rows it shows, and which rows are ticked, across refreshes.
+  const tables = {};
+  const stateOf = (key, sort) => tables[key] || (tables[key] = { sortKey: sort[0], sortDir: sort[1], shown: PAGE, picked: new Set(), rows: [] });
+  const cmp = (a, b, k) => {
+    const x = a[k], y = b[k];
+    if (typeof x === "number" || typeof y === "number") return (x ?? -Infinity) - (y ?? -Infinity);
+    return String(x ?? "").localeCompare(String(y ?? ""));
+  };
+  function drawTable(key, rows, cols, sort, labels = {}) {
+    const st = stateOf(key, sort);
+    rows = [...rows].sort((a, b) => cmp(a, b, st.sortKey) * st.sortDir || String(a.company).localeCompare(String(b.company)));
+    st.rows = rows;
+    const ids = new Set(rows.map((r) => r.id));
+    for (const id of [...st.picked]) if (!ids.has(id)) st.picked.delete(id);
+    const shown = rows.slice(0, st.shown);
+    const pickable = live && cols.includes("pick");
+    const head = cols.map((c) => {
+      const col = COLS[c];
+      if (c === "pick") return '<th class="c-pick">' + (pickable ? '<input type="checkbox" data-all="' + key + '" aria-label="Select all shown"' + (shown.some(canPick) && shown.filter(canPick).every((r) => st.picked.has(r.id)) ? " checked" : "") + ">" : "") + "</th>";
+      const label = labels[c] ?? col.label;
+      return '<th class="' + col.cls + '"' + (col.sort ? ' data-sort="' + col.sort + '" data-table="' + key + '"' : "") + ">" + label + (col.sort && st.sortKey === col.sort ? (st.sortDir > 0 ? " ▲" : " ▼") : "") + "</th>";
+    }).join("");
+    const body = shown.map((r) => '<tr class="' + (st.picked.has(r.id) ? "picked" : "") + '">' + cols.map((c) => c === "pick" ? "<td>" + (canPick(r) ? '<input type="checkbox" data-pick="' + esc(r.id) + '" data-table="' + key + '"' + (st.picked.has(r.id) ? " checked" : "") + ' aria-label="Select">' : "") + "</td>" : COLS[c].cell(r)).join("") + "</tr>").join("") || '<tr><td colspan="' + cols.length + '" class="sub">Nothing here.</td></tr>';
+    const bulk = pickable ? '<div class="toolbar" data-bulk="' + key + '"><button class="btn sm" data-bulk-to="applied" data-table="' + key + '"' + (st.picked.size ? "" : " disabled") + '>Mark selected applied</button><button class="btn sm quiet" data-bulk-to="skipped" data-table="' + key + '"' + (st.picked.size ? "" : " disabled") + '>Skip selected</button><span class="sub">' + (st.picked.size ? st.picked.size + " selected" : "Tick jobs to change several at once") + '</span><span class="saved" id="saved-bulk-' + key + '"></span></div>' : "";
+    const more = rows.length > shown.length ? '<p class="more"><button class="btn quiet sm" data-more="' + key + '">Show ' + Math.min(PAGE, rows.length - shown.length) + " more</button> <span class=\\"sub\\">" + shown.length + " of " + rows.length + "</span></p>" : "";
+    return bulk + '<div class="wrap"><table><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table></div>" + more;
+  }
+
   const KINDS = { confirmation: "received your application", rejection: "said no", assessment: "sent an assessment", interview: "asked for an interview", offer: "made an offer" };
   function renderNeeds() {
     if (!needs) return;
+    const self = needs.self || [];
     const out = [];
     if (!needCount()) out.push('<p class="note">Nothing needs you right now.</p>');
-    if (needs.questions.length) out.push("<h2>Questions only you can answer</h2>");
+    if (needs.questions.length) out.push("<h2>Questions only you can answer" + badge(needs.questions.length) + "</h2>");
     for (const j of needs.questions) {
       const ask = j.items.filter((x) => x.kind === "ask");
       out.push('<div class="item" data-job="' + esc(j.id) + '"><h4>' + esc(j.company) + " needs " + (j.items.length === 1 ? "one answer" : j.items.length + " answers") + '</h4><p class="note"><a href="' + esc(j.link) + '" target="_blank" rel="noopener">' + esc(j.title) + "</a></p>" +
@@ -107,44 +213,30 @@ ${embedded}
           '<p class="note"><label><input type="checkbox" data-keep="' + n + '"> Remember for future applications</label></p>')).join("") +
         (ask.length ? '<button class="btn" data-answer="' + esc(j.id) + '">Save for next run</button><span class="saved" id="saved-' + esc(j.id) + '"></span><p class="note">Nothing is sent now. The job goes back in the queue, and your next /apply or daily run fills it with this answer.</p>' : "") + "</div>");
     }
-    if (needs.waiting.length) out.push("<h2>Forms open and waiting for you</h2>");
+    if (needs.waiting.length) out.push("<h2>Forms open and waiting for you" + badge(needs.waiting.length) + "</h2>");
     for (const w of needs.waiting) out.push('<div class="item"><h4>' + esc(w.company) + ": " + esc(w.todo) + '</h4><p class="note">' + esc(w.title) + "</p><p>" + esc(w.reason) + "</p>" +
       (w.open ? '<button class="btn" data-show="' + esc(w.id) + '">Show the form</button>' : '<span class="note">Its window was closed. It is on your by-hand list.</span>') +
       (w.mail ? '<a class="btn quiet" href="' + esc(w.mail) + '" target="_blank" rel="noopener">Find the email</a>' : "") +
       '<p class="note">Do it in the tool\u2019s Chrome window, then type /resume in Claude Code.</p></div>');
-    if (needs.unconfirmed.length) out.push("<h2>Clicked, and no confirmation seen</h2>");
-    for (const u of needs.unconfirmed) out.push('<div class="item"><h4>' + esc(u.company) + '</h4><p class="note"><a href="' + esc(u.link) + '" target="_blank" rel="noopener">' + esc(u.title) + '</a></p><p>Look for a confirmation email from them. It is never sent again until you say which it was.</p><span class="saved" id="saved-' + esc(u.id) + '"></span><button class="btn" data-set="' + esc(u.id) + '" data-to="applied">I got a confirmation</button><button class="btn quiet" data-set="' + esc(u.id) + '" data-to="queued">It was not sent. Try again</button></div>');
-    if (needs.mail.length) out.push("<h2>Emails the tool could not place</h2>");
+    if (needs.unconfirmed.length) out.push("<h2>Clicked, and no confirmation seen" + badge(needs.unconfirmed.length) + "</h2>");
+    for (const u of needs.unconfirmed) out.push('<div class="item"><h4>' + esc(u.company) + '</h4><p class="note"><a href="' + esc(u.link) + '" target="_blank" rel="noopener">' + esc(u.title) + '</a></p><p>Look for a confirmation email from them. It is never sent again until you say which it was.</p><span class="saved" id="saved-' + esc(u.id) + '"></span><button class="btn" data-set="' + esc(u.id) + '" data-to="applied" data-was="submission_unknown">I got a confirmation</button><button class="btn quiet" data-set="' + esc(u.id) + '" data-to="queued" data-was="submission_unknown">It was not sent. Try again</button></div>');
+    if (needs.mail.length) out.push("<h2>Emails the tool could not place" + badge(needs.mail.length) + "</h2>");
     for (const m of needs.mail) out.push('<div class="item" data-mail="' + esc(m.id) + '"><h4>' + esc(m.subject) + '</h4><p class="note">From ' + esc(m.from) + ", " + esc(m.on) + ". " + esc(m.why) + "</p>" +
       '<div class="grid2"><div><label>Which application</label><select data-mjob>' + '<option value="">Choose</option>' + m.jobs.map((j) => '<option value="' + esc(j.id) + '">' + esc(j.company) + " | " + esc(j.title) + "</option>").join("") + "</select></div>" +
       "<div><label>What it says</label><select data-mkind>" + Object.entries(KINDS).map(([k, l]) => '<option value="' + k + '"' + (k === m.kind ? " selected" : "") + ">They " + l + "</option>").join("") + "</select></div></div>" +
       '<button class="btn" data-mail-ok="' + esc(m.id) + '">Save</button><button class="btn quiet" data-mail-no="' + esc(m.id) + '">Not about an application</button></div>');
+    if (self.length) out.push("<h2>Apply on the employer\u2019s site" + badge(self.length) + '</h2><p class="note">The tool cannot fill these. Open the posting, apply there, then say so here.</p>');
+    for (const s of self) out.push('<div class="item self"><div><a class="role" href="' + esc(s.link) + '" target="_blank" rel="noopener">' + esc(s.title) + '</a><div class="meta">' + esc(s.company) + " · " + esc(s.reason) + "</div></div>" +
+      '<div><a class="btn quiet sm" href="' + esc(s.link) + '" target="_blank" rel="noopener">Open posting</a><button class="btn sm" data-set="' + esc(s.id) + '" data-to="applied" data-was="needs_review">I applied</button><button class="btn quiet sm" data-set="' + esc(s.id) + '" data-to="skipped" data-was="needs_review" data-reason="you chose not to apply">Not applying</button><span class="saved" id="saved-' + esc(s.id) + '"></span></div></div>');
     $("#needs").innerHTML = out.join("");
   }
   function renderRecent() {
     if (!data) return;
-    const rows = data.recent || [];
-    if (!rows.length) { $("#recent").innerHTML = '<p class="note">Nothing new in the last 12 hours.</p>'; return; }
-    const posted = (r) => r.posted_at ? new Date(r.posted_at).toLocaleString() : (r.posted_on || "unknown");
-    const found = (r) => r.age_hours ? r.age_hours + "h ago" : "under an hour ago";
-    const fit = (r) => r.fit_score === null || r.fit_score === undefined ? "" : Number(r.fit_score).toFixed(2);
+    recentRows = (data.recent || []).map(fromRecent);
+    if (!recentRows.length) { $("#recent").innerHTML = '<p class="note">Nothing new in the last 12 hours.</p>'; return; }
     $("#recent").innerHTML =
-      '<p class="note">Jobs the tool first saw in the last 12 hours. <b>/apply</b> takes them before older queued jobs while they are fresh. A board-only listing waits here for its 12 hours, then moves to Needs you.</p>' +
-      (live ? '<p><button class="btn" id="recentApply">Mark selected applied</button><span class="saved" id="saved-recent"></span></p>' : '') +
-      '<table><thead><tr>' + (live ? '<th><input type="checkbox" id="recentAll" aria-label="Select all"></th>' : '') + '<th>Company</th><th>Role</th><th>Location</th><th>Board</th><th>Posted</th><th>Found</th><th>Fit</th><th>Status</th><th>Why here</th></tr></thead><tbody>' +
-      rows.map((r) => '<tr>' +
-        (live ? '<td><input type="checkbox" data-pick="' + esc(r.id) + '"></td>' : '') +
-        '<td>' + esc(r.company) + '</td>' +
-        '<td><a href="' + esc(r.link) + '" target="_blank" rel="noopener">' + esc(r.title) + '</a></td>' +
-        '<td>' + esc(r.location) + '</td>' +
-        '<td>' + esc(r.board) + '</td>' +
-        '<td class="n">' + esc(posted(r)) + '</td>' +
-        '<td class="n">' + esc(found(r)) + '</td>' +
-        '<td class="n">' + esc(fit(r)) + '</td>' +
-        '<td><span class="status ' + (r.status_key === "applied" ? "applied" : r.status_key === "needs_review" ? "needs" : "") + '">' + esc(String(r.status).replace(/_/g, " ")) + '</span></td>' +
-        '<td>' + esc(r.why) + '</td>' +
-        '</tr>').join("") +
-      '</tbody></table>';
+      '<p class="tabnote">Jobs the tool first saw in the last 12 hours. <b>/apply</b> takes them before older queued jobs while they are fresh. A board-only listing waits here for its 12 hours, then moves to Needs you.</p>' +
+      drawTable("recent", recentRows, ["pick", "job", "posted", "found", "fit", "status", "reason", "act"], ["found_at", -1], { reason: "Why here" });
   }
   const list = (v) => (v || []).join(", ");
   function renderAuto() {
@@ -175,18 +267,17 @@ ${embedded}
       '<div class="item"><h4>Today</h4>' + (last ? '<p class="line">' + esc(last.sent.length + " submitted. " + (last.waiting.length + last.unconfirmed.length) + " need you. " + last.leftForYou.length + " could not be sent.") + '</p><p class="note">Stopped because ' + esc(last.stoppedBecause) + ". DeepSeek today: $" + Number(last.jevUsd).toFixed(4) + "</p>" : '<p class="note">No daily run yet today.</p>') + "</div>";
   }
   const words = (id) => $("#" + id).value.split(",").map((x) => x.trim()).filter(Boolean);
-  async function act(path, body, savedId) {
+  const flash = (el, text, bad) => { if (!el) return; el.textContent = text; el.classList.toggle("err", !!bad); setTimeout(() => (el.textContent = ""), bad ? 6000 : 2500); };
+  const errorOf = async (res) => { try { return (await res.json()).error || "not saved"; } catch (e) { return "not saved"; } };
+  async function act(path, body, saved) {
     const res = await post(path, body);
-    const el = savedId && document.getElementById(savedId);
-    let said = res.ok ? "saved" : "not saved";
-    if (!res.ok) { try { said = (await res.json()).error || said; } catch (e) {} }
-    if (el) { el.textContent = said; setTimeout(() => (el.textContent = ""), 2500); }
+    const el = typeof saved === "string" ? document.getElementById(saved) : saved;
+    flash(el, res.ok ? "saved" : await errorOf(res), !res.ok);
     if (res.ok) await load();
     return res.ok;
   }
-  const statusClass = (k) => k === "applied" ? "applied" : LEFT.includes(k) ? "needs" : "";
   const bars = (el, obj, max) => { el.innerHTML = Object.entries(obj).slice(0, 10).map(([k, v]) => '<div class="bar"><span title="' + esc(k) + '">' + esc(k) + '</span><i style="width:' + Math.max(2, 100 * v / max) + '%"></i><b>' + v + '</b></div>').join("") || '<span class="sub">nothing yet</span>'; };
-  function render() {
+  function renderToday() {
     const t = data.totals;
     $("#when").textContent = "as of " + new Date(data.generatedAt).toLocaleString();
     $("#mode").textContent = live ? "" : "snapshot: statuses cannot be changed here";
@@ -195,55 +286,52 @@ ${embedded}
     bars($("#byDay"), Object.fromEntries(data.byDay.map((d) => [d.day, d.applied])), Math.max(1, ...data.byDay.map((d) => d.applied)));
     bars($("#byBoard"), data.byBoard, Math.max(1, ...Object.values(data.byBoard)));
     bars($("#byStatus"), data.byStatus, Math.max(1, ...Object.values(data.byStatus)));
-    $("#tabs").innerHTML = TABS.map((x) => '<button class="' + (x.key === tab ? "on" : "") + '" data-tab="' + x.key + '">' + x.label + " (" + data.rows.filter(x.keep).length + ")</button>").join("");
-    const keep = TABS.find((x) => x.key === tab).keep;
-    const needle = q.toLowerCase();
-    let rows = data.rows.filter(keep).filter((r) => !needle || [r.company, r.role, r.ats, r.skip_reason, r.location, r.status].join(" ").toLowerCase().includes(needle));
-    rows.sort((a, b) => String(a[sortKey] ?? "").localeCompare(String(b[sortKey] ?? "")) * sortDir || String(a.company).localeCompare(String(b.company)));
-    $("#count").textContent = rows.length + " row" + (rows.length === 1 ? "" : "s");
-    const cols = [["applied_on", "Date"], ["company", "Company"], ["role", "Role"], ["location", "Location"], ["ats", "Board"], ["fit_score", "Fit"], ["status", "Status"], ["response", "Reply"], ["skip_reason", "Reason"], ["notes", "Notes"]];
-    $("#table thead").innerHTML = "<tr>" + cols.map(([k, l]) => '<th data-sort="' + k + '">' + l + (sortKey === k ? (sortDir > 0 ? " ▲" : " ▼") : "") + "</th>").join("") + "</tr>";
-    $("#table tbody").innerHTML = rows.map((r) => {
-      // A status the page does not offer (a run's own, or one waiting on you) is shown as it is, never as "queued".
-      const current = r.status_key;
-      const other = STATUSES.includes(current) ? "" : '<option value="" selected disabled>' + esc(r.status.replace(/:.*$/, "")) + "</option>";
-      const pick = live ? '<select data-id="' + esc(r.job_id) + '" data-was="' + esc(current) + '">' + other + STATUSES.map((s) => '<option value="' + s + '"' + (s === current ? " selected" : "") + ">" + s.replace("_", " ") + "</option>").join("") + "</select>" : "";
-      return "<tr>" +
-        '<td class="n">' + esc(r.applied_on) + "</td>" +
-        "<td>" + esc(r.company) + "</td>" +
-        "<td><a href=\\"" + esc(r.job_link) + "\\" target=\\"_blank\\" rel=\\"noopener\\">" + esc(r.role) + "</a>" + (r.takehome_link ? ' <a href="' + esc(r.takehome_link) + '" target="_blank" rel="noopener">take-home</a>' : "") + "</td>" +
-        "<td>" + esc(r.location) + "</td>" +
-        "<td>" + esc(r.ats) + "</td>" +
-        '<td class="n">' + esc(r.fit_score) + "</td>" +
-        '<td><span class="status ' + statusClass(r.status_key) + '">' + esc(r.status.replace(/:.*$/, "")) + "</span><br>" + pick + '<span class="saved" id="saved-' + esc(r.job_id) + '"></span></td>' +
-        '<td class="n">' + (r.response ? esc(r.response) + "<br><span class=\\"sub\\">" + esc(r.response_on) + "</span>" : "") + "</td>" +
-        "<td>" + esc(r.skip_reason || r.status.replace(/^[^:]*:\\s*/, "").replace(r.status.replace(/:.*$/, ""), "")) + "</td>" +
-        "<td>" + (live ? '<textarea data-notes="' + esc(r.job_id) + '" placeholder="your notes">' + esc(r.notes) + "</textarea>" : esc(r.notes)) + "</td>" +
-        "</tr>";
-    }).join("") || '<tr><td colspan="10" class="sub">nothing here</td></tr>';
   }
-  const save = (id, patch) => act("/api/status", { id, ...patch }, "saved-" + id);
+  function renderApps() {
+    if (!data) return;
+    appRows = data.rows.map(fromApp);
+    const t = TABS.find((x) => x.key === tab);
+    $("#tabs").innerHTML = TABS.map((x) => '<button class="' + (x.key === tab ? "on" : "") + '" data-tab="' + x.key + '">' + x.label + badge(appRows.filter(x.keep).length) + "</button>").join("");
+    $("#tabnote").textContent = t.note;
+    const needle = q.toLowerCase();
+    const rows = appRows.filter(t.keep).filter((r) => !needle || [r.company, r.role, r.board, r.reason, r.location, r.status].join(" ").toLowerCase().includes(needle));
+    $("#count").textContent = rows.length + " job" + (rows.length === 1 ? "" : "s");
+    $("#apps").innerHTML = drawTable("apps-" + t.key, rows, t.cols, t.sort);
+  }
+  function redraw(key) { if (key === "recent") renderRecent(); else renderApps(); }
+  const rowsOf = (key) => key === "recent" ? recentRows : appRows;
+
+  // Several jobs at once, one change at a time, each from the status the page was showing.
+  async function bulk(key, to) {
+    const st = tables[key];
+    const rows = rowsOf(key).filter((r) => st.picked.has(r.id));
+    let done = 0, said = "";
+    for (const r of rows) {
+      const res = await post("/api/status", { id: r.id, status: to, was: r.status_key, ...(to === "skipped" ? { reason: "you chose to skip it" } : {}) });
+      if (!res.ok) { said = (done ? done + " saved, then: " : "") + (await errorOf(res)); break; }
+      done++;
+    }
+    st.picked.clear();
+    await load();
+    flash(document.getElementById("saved-bulk-" + key), said || done + " saved", !!said);
+  }
+  const save = (el, id, patch) => act("/api/status", { id, ...patch }, el.closest("td") ? el.closest("td").querySelector(".saved") : null);
   document.addEventListener("click", async (e) => {
     const t = e.target;
-    if (t.id === "recentAll") { for (const cb of document.querySelectorAll("[data-pick]")) cb.checked = t.checked; return; }
-    if (t.id === "recentApply") {
-      const saved = $("#saved-recent");
-      const ids = [...document.querySelectorAll("[data-pick]")].filter((cb) => cb.checked).map((cb) => cb.dataset.pick);
-      if (!ids.length) { saved.textContent = "select at least one"; setTimeout(() => (saved.textContent = ""), 2500); return; }
-      const rows = (data && data.recent ? data.recent : []).filter((r) => ids.includes(r.id));
-      for (const r of rows) {
-        const res = await post("/api/status", { id: r.id, status: "applied", was: r.status_key });
-        if (!res.ok) { let said = "not saved"; try { said = (await res.json()).error || said; } catch (err) {} saved.textContent = said; return; }
-      }
-      saved.textContent = "saved";
-      await load();
-      return;
-    }
-    const nav = t.closest("[data-screen]"); if (nav) { screen = nav.dataset.screen; location.hash = screen; renderNav(); return; }
-    const b = t.closest("[data-tab]"); if (b) { tab = b.dataset.tab; render(); return; }
-    const th = t.closest("[data-sort]"); if (th) { if (sortKey === th.dataset.sort) sortDir = -sortDir; else { sortKey = th.dataset.sort; sortDir = 1; } render(); return; }
+    const all = t.closest("[data-all]");
+    if (all) { const st = tables[all.dataset.all]; for (const r of st.rows.slice(0, st.shown).filter(canPick)) all.checked ? st.picked.add(r.id) : st.picked.delete(r.id); redraw(all.dataset.all); return; }
+    const pick = t.closest("[data-pick]");
+    if (pick) { const st = tables[pick.dataset.table]; pick.checked ? st.picked.add(pick.dataset.pick) : st.picked.delete(pick.dataset.pick); redraw(pick.dataset.table); return; }
+    const bk = t.closest("[data-bulk-to]");
+    if (bk) { bk.disabled = true; await bulk(bk.dataset.table, bk.dataset.bulkTo); return; }
+    const more = t.closest("[data-more]"); if (more) { tables[more.dataset.more].shown += PAGE; redraw(more.dataset.more); return; }
+    const clip = t.closest(".clip"); if (clip) { clip.classList.toggle("open"); return; }
+    const nav = t.closest("[data-screen]"); if (nav) { screen = nav.dataset.screen; location.hash = screen; renderNav(); renderPortals(); return; }
+    const b = t.closest("[data-tab]"); if (b) { tab = b.dataset.tab; renderApps(); return; }
+    const th = t.closest("[data-sort]"); if (th) { const st = tables[th.dataset.table]; if (st.sortKey === th.dataset.sort) st.sortDir = -st.sortDir; else { st.sortKey = th.dataset.sort; st.sortDir = th.dataset.sort === "fit" || th.dataset.sort === "applied_on" ? -1 : 1; } redraw(th.dataset.table); return; }
+    const mark = t.closest("[data-mark]"); if (mark) { mark.disabled = true; if (!(await save(mark, mark.dataset.mark, { status: "applied", was: mark.dataset.was }))) mark.disabled = false; return; }
     const show = t.closest("[data-show]"); if (show) { const r = await post("/api/show", { id: show.dataset.show }); const ok = r.ok && (await r.json()).ok; show.textContent = ok ? "It is in front now" : "Its window is closed"; return; }
-    const set = t.closest("[data-set]"); if (set) { await act("/api/status", { id: set.dataset.set, status: set.dataset.to, was: "submission_unknown" }); return; }
+    const set = t.closest("[data-set]"); if (set) { await act("/api/status", { id: set.dataset.set, status: set.dataset.to, was: set.dataset.was, ...(set.dataset.reason ? { reason: set.dataset.reason } : {}) }, "saved-" + set.dataset.set); return; }
     const ans = t.closest("[data-answer]");
     if (ans) {
       const box = ans.closest("[data-job]");
@@ -260,16 +348,22 @@ ${embedded}
     if (t.id === "autoStop") { await act("/api/stop", {}, "saved-auto"); return; }
   });
   document.addEventListener("change", (e) => { if (e.target.id === "autoOn" || (e.target.id === "autoAt" && $("#autoOn").checked)) act("/api/schedule", { on: $("#autoOn").checked, at: $("#autoAt").value }, "saved-auto"); });
-  document.addEventListener("change", (e) => { const s = e.target.closest("select[data-id]"); if (s) save(s.dataset.id, { status: s.value, was: s.dataset.was }); const n = e.target.closest("textarea[data-notes]"); if (n) save(n.dataset.notes, { notes: n.value }); });
-  $("#q").addEventListener("input", (e) => { q = e.target.value; render(); });
+  document.addEventListener("change", (e) => {
+    const s = e.target.closest("select[data-id]"); if (s && s.value) save(s, s.dataset.id, { status: s.value, was: s.dataset.was });
+    const n = e.target.closest("textarea[data-notes]"); if (n) save(n, n.dataset.notes, { notes: n.value });
+  });
+  $("#q").addEventListener("input", (e) => { q = e.target.value; renderApps(); });
+  // A link to /#needs from inside the page, or the browser's Back button, changes the screen too.
+  window.addEventListener("hashchange", () => { const k = location.hash.replace(/^#/, ""); if (SCREENS.some(([s]) => s === k) && k !== screen) { screen = k; renderNav(); renderPortals(); } });
   async function load() {
     data = live ? await (await fetch("/api/data")).json() : JSON.parse(embedded.textContent);
     if (live) { needs = await (await fetch("/api/needs")).json(); auto = await (await fetch("/api/automation")).json(); }
-    render(); renderRecent(); renderNeeds(); renderAuto(); renderNav();
+    renderToday(); renderApps(); renderRecent(); renderNeeds(); renderAuto(); renderNav(); renderPortals();
   }
   load();
   // The live page keeps itself current, so a job posted after it was opened appears without a reload.
-  if (live) setInterval(load, 60000);
+  // It waits while the person is typing or choosing, so a note in progress is not wiped.
+  if (live) setInterval(() => { const a = document.activeElement; if (!a || !a.matches("textarea, select, input[type=text], input[type=number], input[type=search]")) load(); }, 60000);
 })();
 </script>
 </body></html>`;

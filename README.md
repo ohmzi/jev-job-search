@@ -131,7 +131,9 @@ its own.
 | Full stack, Texas | `jev-fullstack-tx` | 7424 | https://jobtxf.ohmzhomelab.ca |
 
 Start one with `node bin/jev.js report --port <port>` from its folder. The
-Last 12 hours screen is at `/#recent`.
+Last 12 hours screen is at `/#recent`. Each page is titled from
+`JEV_REPORT_TITLE` in its `.env` and links to the other four; the list of
+boards, their ports and addresses is `REPORT.portals` in `src/config.ts`.
 
 To keep one running across a reboot, install it as a systemd user service
 (Linux):

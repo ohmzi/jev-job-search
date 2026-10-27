@@ -128,8 +128,11 @@ export function startReportServer(port: number = REPORT.port): Promise<string> {
       // Only this machine's own page may talk to the server: a web page elsewhere must not be able to read the records or change anything.
       if (!fromThisPage(req, port)) return send(res, 403, "text/plain", "forbidden");
       if (req.method === "GET") {
-        if (url.pathname === "/") return send(res, 200, "text/html; charset=utf-8", reportPage(null, token));
-        if (url.pathname === "/api/data") return json(res, { ...buildReport(loadRows(), new Date(), buildRecent(loadQueue().entries)), run: currentRun() });
+        if (url.pathname === "/") return send(res, 200, "text/html; charset=utf-8", reportPage(null, token, port));
+        if (url.pathname === "/api/data") {
+          const entries = loadQueue().entries;
+          return json(res, { ...buildReport(loadRows(), new Date(), buildRecent(entries), new Set(entries.map((e) => e.job.id))), run: currentRun() });
+        }
         if (url.pathname === "/api/needs") return json(res, buildNeeds(loadQueue().entries));
         if (url.pathname === "/api/automation") return json(res, automation());
         return send(res, 404, "text/plain", "not found");

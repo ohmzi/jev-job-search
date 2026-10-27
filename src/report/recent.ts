@@ -4,6 +4,7 @@
  */
 import { isRecent } from "../jobs/recency.js";
 import type { QueueEntry } from "../jobs/queue.js";
+import { STATUS_WORDS } from "../log/csv.js";
 
 export type RecentRow = {
   id: string;
@@ -61,7 +62,7 @@ export function buildRecent(entries: QueueEntry[], now = new Date()): RecentRow[
       found_at: e.discoveredAt,
       age_hours: Number.isFinite(seen) ? Math.max(0, Math.floor((now.getTime() - seen) / 3_600_000)) : 0,
       fit_score: e.fit?.score ?? null,
-      status: e.status,
+      status: STATUS_WORDS[e.status],
       status_key: e.status,
       applyable: e.applyable !== false,
       why: whyShown(e),
