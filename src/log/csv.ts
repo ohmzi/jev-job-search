@@ -141,7 +141,7 @@ export const APPLIED_COLUMNS = ["applied_on", "company", "role", "location", "jo
 export type AppliedRecord = Record<(typeof APPLIED_COLUMNS)[number], string>;
 
 /** One plain record per row of the full file. */
-export function toRecord(r: Row): AppliedRecord & { status: string; skip_reason: string; response: string; response_on: string } {
+export function toRecord(r: Row): AppliedRecord & { status: string; skip_reason: string; response: string; response_on: string; easy_apply: string } {
   return {
     applied_on: r["Applied On"],
     company: r.Company,
@@ -162,6 +162,7 @@ export function toRecord(r: Row): AppliedRecord & { status: string; skip_reason:
     skip_reason: r["Skip Reason"],
     response: r.Response ?? "",
     response_on: r["Response On"] ?? "",
+    easy_apply: r["Easy Apply"] ?? "",
   };
 }
 

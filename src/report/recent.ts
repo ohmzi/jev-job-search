@@ -17,6 +17,8 @@ export type RecentRow = {
   posted_on: string;
   /** The exact posted time when the board gave one, empty otherwise. */
   posted_at: string;
+  /** The board's Easy Apply answer: true, false, or null when it has not said. */
+  easy_apply: boolean | null;
   /** When the tool first saw the job. */
   found_at: string;
   age_hours: number;
@@ -59,6 +61,7 @@ export function buildRecent(entries: QueueEntry[], now = new Date()): RecentRow[
       board: e.job.ats === "other" ? e.job.source : e.job.ats,
       posted_on: e.job.postedAt ?? "",
       posted_at: e.job.postedAtExact ?? "",
+      easy_apply: e.job.easyApply,
       found_at: e.discoveredAt,
       age_hours: Number.isFinite(seen) ? Math.max(0, Math.floor((now.getTime() - seen) / 3_600_000)) : 0,
       fit_score: e.fit?.score ?? null,
