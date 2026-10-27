@@ -568,7 +568,30 @@ export const REPORT = {
   ],
   /** The accent of a dashboard that is not one of the five. */
   accent: "#2563eb",
+  /** The page paths the combined board may pass to a portal. A portal's daily rules and schedule are its own page's alone. */
+  linkedPaths: ["/api/status", "/api/answer", "/api/show", "/api/mail", "/api/confirm-answer"],
+  /** How long the combined board waits for one portal's dashboard before showing it as not answering. */
+  combineTimeoutMs: 8_000,
 } as const;
+
+/**
+ * The secret the combined board sends with a change it passes to a portal, shared by the five
+ * dashboards on this machine and outside the repositories. Made at random the first time a
+ * dashboard needs it, readable by this user only, never printed. Read at call time, like the
+ * shared folder it lives in.
+ */
+export function reportLinkKeyFile(): string {
+  return path.join(process.env.JEV_SHARED_DIR?.trim() || path.join(os.homedir(), ".local", "state", "jev"), "report-link.key");
+}
+
+/**
+ * True in the folder of the combined board (JEV_ROLE=combined in its .env): it shows the four
+ * portals together and passes changes to them, and never searches, applies or signs in itself.
+ * Read at call time, because .env is loaded after this module is evaluated.
+ */
+export function isCombinedBoard(): boolean {
+  return process.env.JEV_ROLE?.trim() === "combined";
+}
 
 /**
  * The name at the top of a dashboard and in its browser tab: JEV_REPORT_TITLE from the portal's

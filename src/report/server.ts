@@ -6,8 +6,9 @@
  */
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { gzipSync } from "node:zlib";
 import { z } from "zod";
-import { DAILY, PATHS, REPORT, reportPublicOrigins } from "../config.js";
+import { DAILY, isCombinedBoard, PATHS, REPORT, reportPublicOrigins } from "../config.js";
 import { loadQueue, mutateQueue, Response as ReplyKind, RUN_OWNED, updateEntry } from "../jobs/queue.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import { loadDaily, localDay, requestStop, stopRequested } from "../run/daily.js";
@@ -17,6 +18,7 @@ import { installSchedule, nextRun, removeSchedule, scheduleStatus } from "../run
 import { currentRun, withStore, writeAtomic } from "../util/store.js";
 import { buildReport, StatusChange } from "./data.js";
 import { buildRecent } from "./recent.js";
+import { combineData, combineNeeds, forward, hasLinkKey, isLinkedPath, portalsBut, readPortal, Routed, type Portal } from "./link.js";
 import { buildNeeds, saveAnswers, showForm, Stale } from "./needs.js";
 import { reportPage } from "./page.js";
 
@@ -78,9 +80,11 @@ const readBody = (req: IncomingMessage) =>
     req.on("error", reject);
   });
 
+/** Sends a body, gzipped when the browser takes it: the combined board's records run to megabytes and the page reads them every minute. */
 const send = (res: ServerResponse, status: number, type: string, body: string) => {
-  res.writeHead(status, { "content-type": type, "cache-control": "no-store" });
-  res.end(body);
+  const zip = body.length > 1024 && /\bgzip\b/.test(String(res.req?.headers["accept-encoding"] ?? ""));
+  res.writeHead(status, { "content-type": type, "cache-control": "no-store", vary: "accept-encoding", ...(zip ? { "content-encoding": "gzip" } : {}) });
+  res.end(zip ? gzipSync(body) : body);
 };
 
 /**
@@ -118,10 +122,13 @@ const Show = z.object({ id: z.string().min(1).max(64) });
 const Schedule = z.object({ on: z.boolean(), at: z.string().max(5).optional() });
 const MailAnswer = z.object({ id: z.string().min(1).max(128), jobId: z.string().max(64).optional(), kind: ReplyKind.optional() });
 
-/** Starts the server and returns the address it listens on. */
-export function startReportServer(port: number = REPORT.port): Promise<string> {
+/** Starts the server and returns the address it listens on. A test may name the portals a combined board reads. */
+export function startReportServer(port: number = REPORT.port, o: { portals?: Portal[] } = {}): Promise<string> {
   const token = randomBytes(24).toString("hex");
   const json = (res: ServerResponse, body: unknown, status = 200) => send(res, status, "application/json", JSON.stringify(body));
+  const combined = isCombinedBoard();
+  const portals = o.portals ?? portalsBut(port);
+  const readAll = () => Promise.all(portals.map((p) => readPortal(p)));
   const server = createServer(async (req, res) => {
     try {
       const url = new URL(req.url ?? "/", "http://localhost");
@@ -129,6 +136,10 @@ export function startReportServer(port: number = REPORT.port): Promise<string> {
       if (!fromThisPage(req, port)) return send(res, 403, "text/plain", "forbidden");
       if (req.method === "GET") {
         if (url.pathname === "/") return send(res, 200, "text/html; charset=utf-8", reportPage(null, token, port));
+        // The combined board has no records of its own: it reads the four portals' dashboards.
+        if (combined && url.pathname === "/api/data") return json(res, combineData(await readAll()));
+        if (combined && url.pathname === "/api/needs") return json(res, combineNeeds(await readAll()));
+        if (combined && url.pathname === "/api/automation") return send(res, 404, "text/plain", "the combined board runs nothing");
         if (url.pathname === "/api/data") {
           const entries = loadQueue().entries;
           return json(res, { ...buildReport(loadRows(), new Date(), buildRecent(entries), new Set(entries.map((e) => e.job.id))), run: currentRun() });
@@ -139,9 +150,22 @@ export function startReportServer(port: number = REPORT.port): Promise<string> {
       }
       if (req.method !== "POST") return send(res, 405, "text/plain", "not allowed");
       // A change needs the token the page was given, as JSON: a form on another site can send neither.
-      if (!hasToken(req, token)) return send(res, 403, "text/plain", "forbidden");
+      // The combined board's change for a job here carries the dashboards' shared secret instead,
+      // and only for the paths a portal's own page could have sent it on (never its daily rules).
+      const fromPage = hasToken(req, token);
+      if (!fromPage && !(!combined && isLinkedPath(url.pathname) && hasLinkKey(req))) return send(res, 403, "text/plain", "forbidden");
       if (!/^application\/json/.test(String(req.headers["content-type"] ?? ""))) return send(res, 415, "text/plain", "send JSON");
       const body: unknown = JSON.parse(await readBody(req));
+      // The combined board changes nothing itself: a change goes to the portal that owns the job.
+      if (combined) {
+        if (!isLinkedPath(url.pathname)) return json(res, { error: "the combined board runs nothing; change this on the portal's own page" }, 400);
+        const r = Routed.safeParse(body);
+        if (!r.success || !portals.some((p) => p.port === r.data.port)) return json(res, { error: "say which portal the job is in" }, 400);
+        const { port: to, ...change } = r.data;
+        const answer = await forward(to, url.pathname, change);
+        console.log(`passed to the portal on port ${to}: ${url.pathname} → ${answer.status}`);
+        return json(res, answer.body, answer.status);
+      }
       const bad = (e: z.ZodError) => json(res, { error: e.issues.map((i) => i.message).join("; ") }, 400);
       if (url.pathname === "/api/status") {
         const p = StatusChange.safeParse(body);

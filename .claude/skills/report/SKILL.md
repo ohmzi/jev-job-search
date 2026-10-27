@@ -78,3 +78,8 @@ use a LaunchAgent instead.
 
 The five dashboards and their ports are listed in the README under
 **Where the five dashboards live**.
+
+The main folder's dashboard (port 7411, `JEV_ROLE=combined`) is the combined
+board: the four portals together, a Portal column on every table, and every
+change sent to the portal that owns the job. It has no Automation screen and
+runs no search or apply; if the person asks it to, point them at a portal.

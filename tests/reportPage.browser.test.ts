@@ -54,6 +54,7 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
   let port = 0;
   let profile = "";
   const posts: { path: string; token: string; body: unknown }[] = [];
+  let combined = false;
 
   beforeAll(async () => {
     server = createServer((req, res) => {
@@ -68,7 +69,12 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
         return;
       }
       if (req.url === "/") return send(reportPage(null, TOKEN, 7423), "text/html; charset=utf-8");
-      if (req.url === "/api/data") return send(JSON.stringify({ ...buildReport(rows, new Date(), [], new Set(["a1", "l1", "l2"])), run: null }));
+      if (req.url === "/api/data") {
+        const r = buildReport(rows, new Date(), [], new Set(["a1", "l1", "l2"]));
+        // The combined board's answer: the same records, each row naming the portal it came from.
+        if (combined) return send(JSON.stringify({ ...r, combined: true, portals: [{ title: "Android · NJ", port: 7421, accent: "#0d9488", ok: true, error: "" }, { title: "Android · TX", port: 7422, accent: "#7c3aed", ok: false, error: "answered 500" }], rows: r.rows.map((x) => ({ ...x, portal: "Android · NJ", port: 7421 })), run: null }));
+        return send(JSON.stringify({ ...r, run: null }));
+      }
       if (req.url === "/api/needs") return send(JSON.stringify(needs));
       if (req.url === "/api/automation") return send(JSON.stringify(automation));
       res.writeHead(404).end();
@@ -189,6 +195,28 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
       { id: "l2", status: "applied", was: "blocked" },
     ]);
     expect(errors).toEqual([]);
+    page.close();
+  }, 60_000);
+
+  it("on the combined board, names each row's portal and sends a change with it", async () => {
+    combined = true;
+    const tab = (await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: "PUT" })).json()) as Target;
+    const page = await Page.attach(tab);
+    const errors: string[] = [];
+    page.on("Runtime.exceptionThrown", (p) => void errors.push(JSON.stringify(p).slice(0, 300)));
+    await page.navigate(origin + "/#apps");
+    for (let i = 0; i < 40 && !(await page.evaluate<boolean>("!!document.querySelector('#apps tbody tr')").catch(() => false)); i++) await sleep(150);
+    // It runs nothing, so it has no Automation screen; a portal that does not answer is said so.
+    expect(await page.evaluate<string[]>("[...document.querySelectorAll('#nav button')].map((b) => b.textContent)")).not.toContain("Automation");
+    expect(await page.evaluate<string>("document.querySelector('#portalState').textContent")).toMatch(/Android · TX is not answering/);
+    await page.evaluate("document.querySelector('[data-tab=manual]').click()");
+    expect(await page.evaluate<string[]>("[...document.querySelectorAll('#apps th')].map((t) => t.textContent.replace(/[▲▼]/g, '').trim())")).toEqual(["", "Job", "Portal", "Board", "Easy Apply", "Fit", "Status", "Reason", "Notes", ""]);
+    const before = posts.length;
+    await page.evaluate("document.querySelector('#apps [data-mark=\"7421:l1\"]').click()");
+    for (let i = 0; i < 30 && posts.length === before; i++) await sleep(100);
+    expect(posts[before]).toEqual({ path: "/api/status", token: TOKEN, body: { id: "l1", status: "applied", was: "needs_review", port: 7421 } });
+    expect(errors).toEqual([]);
+    combined = false;
     page.close();
   }, 60_000);
 });

@@ -120,7 +120,14 @@ A Greenhouse, Lever or Ashby link is read from the board, rated, and filled like
 
 Each portal runs its own dashboard on its own local port, with its own queue,
 CSV and resume. The main repository is the code reference and has no queue of
-its own.
+its own. Its dashboard is the combined board: with `JEV_ROLE=combined` in its
+`.env` it shows the four portals together, every row naming its portal, and a
+change made there (Applied, a status, a note, an answer) is passed to the
+portal that owns the job, which makes it under its own lock. The passed change
+carries a secret the five dashboards share, kept in `report-link.key` in the
+shared state folder (`~/.local/state/jev`), readable by you only. A portal's
+daily rules and schedule stay on its own page. The combined folder refuses
+every command but `report` and `doctor`: it never searches or applies.
 
 | Dashboard | Repository | Local port | Public address |
 |---|---|---|---|

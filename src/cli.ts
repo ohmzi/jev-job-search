@@ -18,7 +18,7 @@ import { acquireRun, currentRun } from "./util/store.js";
 import { waitingWords } from "./run/assist.js";
 import { withStore } from "./util/store.js";
 import { checkJob, SECURITY_CODE } from "./browser/submit.js";
-import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
+import { ACCOUNTS, childEnv, DAILY, GMAIL, INBOX, isCombinedBoard, loadEnv, DISCOVER, PATHS, REPORT, RUN } from "./config.js";
 import { accountGate } from "./accounts/capability.js";
 import { clearStop, dailyRun, formatDaily, localDay, requestStop, saveDaily, stopRequested, type Outcome } from "./run/daily.js";
 import { loadPolicy } from "./run/policy.js";
@@ -68,6 +68,17 @@ process.stdout.on("error", (err: NodeJS.ErrnoException) => {
   if (err.code === "EPIPE") process.exit(0);
 });
 const program = new Command();
+// The combined board's folder shows the four portals together and passes changes to them. It
+// never searches, applies, signs in or reads mail itself: the portals do that.
+const COMBINED_COMMANDS = ["report", "doctor"];
+program.hook("preAction", (_root, action) => {
+  let top = action;
+  while (top.parent && top.parent !== program) top = top.parent;
+  if (isCombinedBoard() && !COMBINED_COMMANDS.includes(top.name())) {
+    console.error(`This folder is the combined board (JEV_ROLE=combined). It shows the four portals and never searches or applies itself, so "${top.name()}" is not run here. Run it in a portal's folder.`);
+    process.exit(1);
+  }
+});
 program.name("jev-job-search").description("Find and rate software jobs with DeepSeek, fill and check each application form in Chrome, and let DeepSeek write what needs writing.").version("1.6.0");
 
 const int = (v: string) => parseInt(v, 10);
