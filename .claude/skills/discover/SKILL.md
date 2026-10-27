@@ -23,7 +23,10 @@ a reason they might want to override, grouped by reason, using
 `node bin/jev.js status`.
 
 Options:
-- `--no-boards` skips polling company boards (faster, fewer fresh postings).
+- `--no-boards` skips the employers' boards and freehire (faster, fewer
+  postings). Without it the boards are Greenhouse, Lever, Ashby and Workable
+  read whole and Workday sites searched, for every board in the queue, the
+  seed list and what freehire names. Intern and new-grad titles are never kept.
 - `--limit N` rates only N new jobs, for a quick check.
 
 To include the user's own tracking sheet, they export it as CSV into

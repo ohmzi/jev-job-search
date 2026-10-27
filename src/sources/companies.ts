@@ -1,16 +1,17 @@
 /**
- * Company boards worth polling directly. Seeded from every Greenhouse,
- * Lever and Ashby URL the list sources mention (those companies are hiring
- * early-career now), plus a hand-kept list of boards that post Canadian and
- * remote early-career software roles. Polling the board catches postings the
- * lists have not picked up yet, which is where the freshest ones are.
+ * Company boards worth polling directly: a hand-kept list, plus every board a
+ * job the tool has seen points at (the queue, the person's imports, freehire's
+ * finds). Polling the employer's own board catches postings no job board has
+ * picked up yet, and what it returns is the employer's live list.
  */
 import { greenhouseSlug } from "./ats/greenhouse.js";
 import { leverSlug } from "./ats/lever.js";
 import { ashbySlug } from "./ats/ashby.js";
-import type { Job } from "../jobs/normalize.js";
+import { workableSlug } from "./ats/workable.js";
+import { workdaySite } from "./ats/workday.js";
 
-export type Board = { ats: "greenhouse" | "lever" | "ashby"; slug: string; company: string };
+/** For Workday the slug is the careers site itself, https://acme.wd5.myworkdayjobs.com/Careers, which is searched rather than read whole. */
+export type Board = { ats: "greenhouse" | "lever" | "ashby" | "workable" | "workday"; slug: string; company: string };
 
 /** Boards polled on every discover run regardless of what the lists mention. */
 export const SEED_BOARDS: Board[] = [
@@ -92,25 +93,39 @@ export const SEED_BOARDS: Board[] = [
   { ats: "ashby", slug: "neofinancial", company: "Neo Financial" },
   { ats: "ashby", slug: "jobber", company: "Jobber" },
   { ats: "ashby", slug: "lightspeedhq", company: "Lightspeed" },
+  { ats: "workable", slug: "huggingface", company: "Hugging Face" },
+  // Workday sites are searched by the portal's terms, since each holds thousands of postings.
+  { ats: "workday", slug: "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite", company: "NVIDIA" },
+  { ats: "workday", slug: "https://salesforce.wd12.myworkdayjobs.com/External_Career_Site", company: "Salesforce" },
+  { ats: "workday", slug: "https://adobe.wd5.myworkdayjobs.com/external_experienced", company: "Adobe" },
+  { ats: "workday", slug: "https://intel.wd1.myworkdayjobs.com/External", company: "Intel" },
+  { ats: "workday", slug: "https://capitalone.wd12.myworkdayjobs.com/Capital_One", company: "Capital One" },
+  { ats: "workday", slug: "https://paypal.wd1.myworkdayjobs.com/jobs", company: "PayPal" },
+  { ats: "workday", slug: "https://mastercard.wd1.myworkdayjobs.com/CorporateCareers", company: "Mastercard" },
+  { ats: "workday", slug: "https://workday.wd5.myworkdayjobs.com/Workday", company: "Workday" },
 ];
 
-/** Every board the given jobs point at, merged with the seed list, deduped by ats+slug. */
-export function boardsFromJobs(jobs: Job[], seeds: Board[] = SEED_BOARDS): Board[] {
+/** The board one job's link points at, if it is one the tool reads. */
+export function boardOf(j: { ats: string; url: string; company: string }): Board | null {
+  const slug =
+    j.ats === "greenhouse" ? greenhouseSlug(j.url)
+    : j.ats === "lever" ? leverSlug(j.url)
+    : j.ats === "ashby" ? ashbySlug(j.url)
+    : j.ats === "workable" ? workableSlug(j.url)
+    : j.ats === "workday" ? workdaySite(j.url)
+    : null;
+  return slug ? { ats: j.ats as Board["ats"], slug, company: j.company } : null;
+}
+
+/** Every board the given jobs point at, merged with the seed list and any boards named outright, deduped by ats+slug. */
+export function boardsFromJobs(jobs: { ats: string; url: string; company: string }[], seeds: Board[] = SEED_BOARDS, extra: Board[] = []): Board[] {
   const map = new Map<string, Board>();
-  for (const b of seeds) map.set(`${b.ats}:${b.slug.toLowerCase()}`, b);
-  for (const j of jobs) {
-    let b: Board | null = null;
-    if (j.ats === "greenhouse") {
-      const s = greenhouseSlug(j.url);
-      if (s) b = { ats: "greenhouse", slug: s, company: j.company };
-    } else if (j.ats === "lever") {
-      const s = leverSlug(j.url);
-      if (s) b = { ats: "lever", slug: s, company: j.company };
-    } else if (j.ats === "ashby") {
-      const s = ashbySlug(j.url);
-      if (s) b = { ats: "ashby", slug: s, company: j.company };
-    }
-    if (b && !map.has(`${b.ats}:${b.slug.toLowerCase()}`)) map.set(`${b.ats}:${b.slug.toLowerCase()}`, b);
-  }
+  const add = (b: Board | null) => {
+    const key = b ? `${b.ats}:${b.slug.toLowerCase()}` : "";
+    if (b && !map.has(key)) map.set(key, b);
+  };
+  for (const b of seeds) add(b);
+  for (const j of jobs) add(boardOf(j));
+  for (const b of extra) add(b);
   return [...map.values()];
 }

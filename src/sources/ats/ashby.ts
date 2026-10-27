@@ -1,7 +1,7 @@
 /** Ashby public job board API. No auth. */
 import { z } from "zod";
 import { getJson } from "../../util/http.js";
-import { canonicalUrl, easyApplyFromUrl, jobId, type Job } from "../../jobs/normalize.js";
+import { canonicalUrl, easyApplyFromUrl, exactTime, jobId, type Job } from "../../jobs/normalize.js";
 
 const AshbyJob = z.object({
   id: z.string(),
@@ -52,6 +52,7 @@ export async function fetchAshbyBoard(slug: string, companyFallback: string): Pr
       ats: "ashby",
       locations,
       postedAt: j.publishedAt ? j.publishedAt.slice(0, 10) : null,
+      postedAtExact: exactTime(j.publishedAt),
       terms: [],
       sponsorship: "unknown",
       degrees: [],

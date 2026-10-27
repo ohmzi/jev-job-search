@@ -140,6 +140,13 @@ export function ageDays(job: Pick<Job, "postedAt">, now = new Date()): number | 
   return Math.max(0, Math.floor((now.getTime() - t) / 86_400_000));
 }
 
+/** A board's own timestamp as an ISO instant, or null when it gives only a day or nothing usable. */
+export function exactTime(v: string | undefined | null): string | null {
+  if (!v || !/T\d{2}:\d{2}/.test(v)) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }

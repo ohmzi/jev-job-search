@@ -15,12 +15,13 @@ import { canFill } from "../jobs/fillable.js";
 import { preFilter } from "../jobs/hardFilters.js";
 import { isWalled } from "../jobs/walled.js";
 import { ageHeldEntries, isRecent } from "../jobs/recency.js";
-import type { Job } from "../jobs/normalize.js";
+import { ageDays, type Job } from "../jobs/normalize.js";
 import { loadQueue, mutateQueue, type QueueEntry } from "../jobs/queue.js";
 import { appliedKey, hourlyKey } from "../jobs/keys.js";
 import { loadRows, saveRows, upsertEntry } from "../log/csv.js";
 import { usStatus, type Profile, type Search } from "../profile/schema.js";
-import { searchJobspy, type JobspyRunner } from "../sources/jobspy.js";
+import { dedupeJobspy, searchJobspy, type JobspyRunner } from "../sources/jobspy.js";
+import { collectBoardJobs } from "../discover.js";
 import { easyApplyFromApplyType, listingOf, mcpCaller, resolveListings, withEmployerLink, type Caller } from "../sources/listingLink.js";
 import { withStore, writeAtomic } from "../util/store.js";
 
@@ -161,12 +162,58 @@ export type HourlyOptions = {
    * test injected a runner: then no process is started.
    */
   listings?: Caller | false;
+  /**
+   * Read the employers' own boards and freehire too. Left out, they are read, unless a test injected
+   * a runner: then nothing is fetched. A function stands in for them in tests.
+   */
+  boards?: false | ((search: Search, known: QueueEntry[]) => Promise<Job[]>);
+  /** Where the board postings this portal has seen are kept. */
+  boardsSeenFile?: string;
   /** Where the answers of the boards' servers are kept. */
   linksFile?: string;
   queueFile?: string;
   rowsFile?: string;
   stateFile?: string;
 };
+
+/** The board postings this portal's hourly search has seen, by id, with when a scan last showed each. */
+const BoardsSeen = z.object({ seen: z.record(z.string(), z.string()).default({}) });
+export type BoardsSeen = z.infer<typeof BoardsSeen>;
+
+export function loadBoardsSeen(file = PATHS.hourlyBoardsSeen): BoardsSeen | null {
+  if (!existsSync(file)) return null;
+  try {
+    return BoardsSeen.parse(JSON.parse(readFileSync(file, "utf8")));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which board postings went up in this run's window. A posting with the board's exact time counts
+ * when that time is inside the window. One with only a date counts when it is from today or
+ * yesterday and the last scan did not show it; on the first scan (`before` is null) nothing with
+ * only a date counts, since everything open would look new. Returns what to remember as well.
+ */
+export function newBoardPostings(jobs: Job[], before: BoardsSeen | null, now: Date, hoursOld: number): { fresh: Job[]; seen: BoardsSeen } {
+  const cutoff = now.getTime() - hoursOld * 3_600_000;
+  const forget = now.getTime() - HOURLY.boardSeenDays * 86_400_000;
+  const seen: BoardsSeen = { seen: {} };
+  for (const [id, at] of Object.entries(before?.seen ?? {})) if (Date.parse(at) >= forget) seen.seen[id] = at;
+  const fresh: Job[] = [];
+  for (const j of jobs) {
+    const exact = j.postedAtExact ? Date.parse(j.postedAtExact) : NaN;
+    const known = !!before?.seen[j.id];
+    seen.seen[j.id] = now.toISOString();
+    if (Number.isFinite(exact)) {
+      if (exact >= cutoff && exact <= now.getTime() + 3_600_000) fresh.push(j);
+      continue;
+    }
+    const age = ageDays(j, now);
+    if (before && !known && age !== null && age <= HOURLY.boardMaxAgeDays) fresh.push(j);
+  }
+  return { fresh, seen };
+}
 
 /** When the hourly search last completed, so an hour the machine missed is still looked for. */
 const HourlyState = z.object({ lastRunAt: z.string().nullable().default(null) });
@@ -228,6 +275,25 @@ export async function runHourly(profile: Profile, o: HourlyOptions = {}): Promis
   const result = await searchJobspy(search, { ...(o.runner ? { runner: o.runner } : {}), log, hoursOld });
   for (const f of result.failures) log(`[hourly] a board call failed: ${f}`);
   log(`[hourly] ${result.jobs.length} matching postings from ${result.calls} call(s)`);
+
+  // 2b. The employers' own boards, Workday sites and freehire, under this portal's rules.
+  const boards = o.boards === undefined && o.runner ? false : o.boards;
+  if (boards !== false) {
+    const queued = loadQueue(files.queue).entries;
+    try {
+      const scanned = boards
+        ? await boards(search, queued)
+        : await collectBoardJobs({ search, known: queued.map((e) => e.job), maxAgeDays: HOURLY.boardMaxAgeDays, now, log });
+      const before = loadBoardsSeen(o.boardsSeenFile);
+      const { fresh, seen } = newBoardPostings(scanned, before, now, hoursOld);
+      if (!o.dry) writeAtomic(o.boardsSeenFile ?? PATHS.hourlyBoardsSeen, JSON.stringify(seen) + "\n");
+      // Not counted as a board call: the window below moves on only when JobSpy answered.
+      if (fresh.length) result.jobs = dedupeJobspy([...fresh, ...result.jobs]);
+      log(`[hourly] employers' own boards: ${scanned.length} open postings that fit, ${fresh.length} went up in the last ${hoursOld} hour(s)${before ? "" : " (first scan: the rest are only noted)"}`);
+    } catch (err) {
+      log(`[hourly] the employer boards failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
 
   // 3. A new Indeed or LinkedIn listing may have the employer's own form behind it. The boards' MCP
   // servers say where, so the listing can be filled instead of held. A listing already in the queue keeps its link.

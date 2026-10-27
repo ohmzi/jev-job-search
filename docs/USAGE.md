@@ -110,16 +110,12 @@ or `--status queued` to try again.
 
 | Source | What it is |
 |---|---|
-| [SimplifyJobs/Summer2027-Internships](https://github.com/SimplifyJobs/Summer2027-Internships) | The largest public list of software internships. The tool reads the data file behind the list, so it also sees each job's sponsorship and degree flags. |
-| [SimplifyJobs/New-Grad-Positions](https://github.com/SimplifyJobs/New-Grad-Positions) | The same, for new-grad jobs. |
-| [negarprh/Canadian-Tech-Internships-2027](https://github.com/negarprh/Canadian-Tech-Internships-2027) | Internships in Canada. |
-| [vanshb03/Summer2027-Internships](https://github.com/vanshb03/Summer2027-Internships) | Internships in the United States and Canada. |
-| [michelleokolie/canada-tech-internships-summer-2027](https://github.com/michelleokolie/canada-tech-internships-summer-2027) | Internships in Canada. |
-| Company job boards | The tool asks Greenhouse, Lever and Ashby directly for the jobs of every company the lists name, and of 65 more companies. This finds jobs a day or two before the lists do. |
+| Company job boards | The tool asks Greenhouse, Lever, Ashby and Workable directly for the jobs of every company in your queue and a seed list, and searches each Workday careers site with your terms. These are the employer's own live postings, often before a job site shows them. |
+| freehire.me | A crawl of many employers' boards, read through the openings-mcp server. It finds employers the tool did not know; their boards are then read directly. Only fresh postings that were not re-listed are kept. |
 | Your own list | Put a CSV file with a company column and a link column in `data/imports/`. |
 
-On one search, these sources gave 4,748 different jobs. The tool counts a
-job once, however many lists link to it.
+Intern, co-op and new-grad titles are never kept. The tool counts a job
+once, however many sources link to it.
 
 To add a list or a company, see [docs/SOURCES.md](docs/SOURCES.md).
 

@@ -6,11 +6,11 @@
 [![release](https://img.shields.io/github/v/release/qbeka/jev-job-search?label=release)](https://github.com/qbeka/jev-job-search/releases)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-An open-source job application tool built on [Claude Code](https://claude.com/claude-code). It finds software internships and new-grad roles, fills the application forms in a Chrome window you can watch, reads every answer back from the page, and sends the ones you approve.
+An open-source job application tool built on [Claude Code](https://claude.com/claude-code). It finds software roles on employers' own job boards and the big job sites, fills the application forms in a Chrome window you can watch, reads every answer back from the page, and sends the ones you approve.
 
 | | |
 |---|---|
-| **Who it is for** | Students and new graduates applying to software roles in Canada, the United States or remotely, who are comfortable opening a terminal once. It writes in English. |
+| **Who it is for** | Software developers applying to roles in Canada, the United States or remotely, who are comfortable opening a terminal once. It writes in English. |
 | **What you need** | A Mac with Google Chrome, [Node.js](https://nodejs.org) 22, and [Claude Code](https://claude.com/claude-code) with a Claude Pro or Max subscription. |
 | **What it costs** | Your Claude subscription for the slash commands, plus a few dollars of [DeepSeek](https://platform.deepseek.com/api_keys) credit. DeepSeek rates the jobs, picks the options and writes the sentences: roughly 30 to 60 cents per search, and a few cents per application. Nothing else. |
 | **How to start** | Clone it, run `npm install`, open `claude` in the folder and type `/setup`. About 20 minutes, most of it your answers. It ends with one application filled and waiting for your yes. |
@@ -305,7 +305,7 @@ Everything about you is in data files, not in the code. `/profile` changes any o
 
 ### Where the jobs come from, and adding a board
 
-Jobs come from public lists on GitHub (the SimplifyJobs internship and new-grad lists among them) and from the company boards those lists point at, read through the boards' own APIs for Greenhouse, Lever and Ashby. Workday postings are read from Workday's own posting data and are kept once you allow accounts with `/accounts`; until then they are filtered out. iCIMS, Taleo, Oracle and the other boards that want an account are filtered out, and a site found behind a sign-in during a run is remembered and skipped. [docs/SOURCES.md](docs/SOURCES.md) describes each source and how to add one, and `data/imports/` takes a CSV of your own.
+Jobs come from the employers' own boards, read through each board's public API: Greenhouse, Lever, Ashby and Workable whole, and each Workday careers site searched with your portal's terms. Which boards: a seed list, every board a job in your queue points at, and the employers freehire.me (through the openings-mcp server) has seen on those boards, kept only when freehire judges the posting fresh and not re-listed. Intern, co-op and new-grad titles are never kept. The hourly search reads the same boards and takes only what went up in its last hour. Workday postings and are kept once you allow accounts with `/accounts`; until then they are filtered out. iCIMS, Taleo, Oracle and the other boards that want an account are filtered out, and a site found behind a sign-in during a run is remembered and skipped. [docs/SOURCES.md](docs/SOURCES.md) describes each source and how to add one, and `data/imports/` takes a CSV of your own.
 
 ### Jobs that want an account
 
@@ -325,7 +325,7 @@ A robot check the tool cannot pass, a phone code, a passkey and single sign-on s
 
 ### Which jobs it keeps
 
-The filters and the scoring are in `src/config.ts`: early-career titles only, the countries you may work in, how much a Vancouver, Canadian, remote or US posting is worth to you, and how old a posting may be (`/discover --max-age 30`). A posting that prefers another graduation date is ranked lower, not dropped: whether to apply is your decision.
+The filters and the scoring are in `src/config.ts`: the countries you may work in, how much a Vancouver, Canadian, remote or US posting is worth to you, and how old a posting may be (`/discover --max-age 30`). A posting that prefers another graduation date is ranked lower, not dropped: whether to apply is your decision.
 
 ### Custom resume and cover letter templates
 
@@ -510,7 +510,7 @@ Bug reports, fixes for a form that filled wrongly, new job sources and site note
 ## Acknowledgements
 
 - [MadsLorentzen/ai-job-search](https://github.com/MadsLorentzen/ai-job-search) (MIT) for the drafter and reviewer method behind the tailored resume and cover letter, and for showing what a clear job-search repo looks like.
-- [SimplifyJobs](https://github.com/SimplifyJobs) for the public internship and new-grad lists the tool reads.
+- [freehire.me](https://freehire.me) and [openings-mcp](https://github.com/amikai/openings-mcp) for the crawl that finds employers' boards.
 - [DeepSeek](https://www.deepseek.com) for the model that answers every typed question.
 
 ## License

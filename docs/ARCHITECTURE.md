@@ -17,15 +17,19 @@ If it needs a sentence, it is the writer's (also DeepSeek, a different call). If
 ## Discover pipeline (`src/discover.ts`)
 
 ```
-fetchSimplify ──┐
-fetchReadmeSources ─┤
-importSheet(data/imports/*.csv) ─┼→ dedupe → preFilter → describe → rateJob → entryFor → queue.json
-boards (greenhouse / lever / ashby for every company seen) ─┘                                   └→ applications.csv
+importSheet(data/imports/*.csv) ─────────────┐
+searchFreehire (openings-mcp) → boards named ─┼→ dedupe → preFilter → describe → rateJob → entryFor → queue.json
+boards: greenhouse / lever / ashby / workable  │                                                └→ applications.csv
+        read whole, workday sites searched ────┘
 ```
 
-1. **Collect.** Sources run concurrently. Board polling keeps only
-   early-career titles (`EARLY_CAREER_TITLE`) because boards list every
-   role.
+1. **Collect** (`collectBoardJobs`). The boards are the seed list, every
+   board a queued or imported job points at, and the boards freehire names.
+   Each posting is put to the portal's rules (`titleWanted`,
+   `locationWanted`, `companyExcluded`), and a student or new-grad title
+   (`ATS_SEARCH.earlyCareerTitle`) is never kept. The hourly search reads
+   the same boards (`src/run/hourly.ts`) and takes only the postings that
+   went up in its window (`newBoardPostings`).
 2. **Dedupe** by posting (`postingKey` in `src/jobs/normalize.ts`). The
    lists and the boards link one job in several ways: a careers page with
    `gh_jid`, the board page, the embedded form, Ashby's `/application`. The

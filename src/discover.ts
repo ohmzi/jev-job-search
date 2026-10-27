@@ -5,13 +5,13 @@
  */
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { DISCOVER, PATHS, CACHE } from "./config.js";
+import { ATS_SEARCH, DISCOVER, PATHS, CACHE } from "./config.js";
 import { JevClient } from "./jev/client.js";
 import { describe } from "./jobs/describe.js";
 import { capabilityFor } from "./accounts/capability.js";
 import { preFilter } from "./jobs/hardFilters.js";
 import { isWalled, learnedWalledHosts } from "./jobs/walled.js";
-import { dedupe, type Job } from "./jobs/normalize.js";
+import { ageDays, dedupe, type Job } from "./jobs/normalize.js";
 import { entryFor, KEPT_ON_REDISCOVERY, loadQueue, mutateQueue, sortEntries, type QueueEntry, type QueueFile, type QueueStatus } from "./jobs/queue.js";
 import { withStore } from "./util/store.js";
 
@@ -21,23 +21,39 @@ const NOT_RERATED: readonly QueueStatus[] = KEPT_ON_REDISCOVERY.filter((s) => s 
 const CARRIED_OVER: readonly QueueStatus[] = KEPT_ON_REDISCOVERY.filter((s) => s !== "skipped" && s !== "failed");
 import { rateJob, type FitResult } from "./jobs/rate.js";
 import { loadRows, saveRows, upsertEntry } from "./log/csv.js";
-import { usStatus, type Profile } from "./profile/schema.js";
+import { usStatus, type Profile, type Search } from "./profile/schema.js";
 import type { Answer } from "./jev/types.js";
 import { KeyedCache } from "./util/cache.js";
 import { fetchAshbyBoard } from "./sources/ats/ashby.js";
 import { fetchGreenhouseBoard } from "./sources/ats/greenhouse.js";
 import { fetchLeverBoard } from "./sources/ats/lever.js";
+import { fetchWorkableBoard } from "./sources/ats/workable.js";
+import { searchWorkdaySite } from "./sources/ats/workday.js";
 import { boardsFromJobs, type Board } from "./sources/companies.js";
-import { fetchReadmeSources } from "./sources/githubReadme.js";
-import { fetchSimplify } from "./sources/simplify.js";
+import { searchFreehire, type FreehireCall } from "./sources/freehire.js";
+import { companyExcluded, locationWanted, titleWanted } from "./sources/jobspy.js";
 import { importSheet } from "./sources/sheetImport.js";
 import { mapLimit } from "./util/http.js";
 
-export const EARLY_CAREER_TITLE = /\b(intern|internship|co-?op|new grad|new graduate|early career|early-career|entry[- ]level|junior|graduate|university|student|campus|associate software|software engineer i\b|engineer i\b|swe i\b)\b/i;
+const EARLY_CAREER = new RegExp(ATS_SEARCH.earlyCareerTitle, "i");
+const DEFAULT_TITLE = new RegExp(ATS_SEARCH.defaultTitle, "i");
 
-/** A board posting counts as early-career by its title, or by naming the candidate's graduation year. */
-export function isEarlyCareerTitle(title: string, gradYear?: number): boolean {
-  return EARLY_CAREER_TITLE.test(title) || (gradYear !== undefined && new RegExp(`\\b${gradYear}\\b`).test(title));
+/** A title for students or new graduates. Never kept from a board. */
+export function isEarlyCareerTitle(title: string): boolean {
+  return EARLY_CAREER.test(title);
+}
+
+/** The title test a board's postings are put to: the portal's own roles, or any software title without a portal. */
+export function boardTitleWanted(title: string, search?: Search): boolean {
+  if (isEarlyCareerTitle(title)) return false;
+  return search ? titleWanted(title, search) : DEFAULT_TITLE.test(title);
+}
+
+/** True when a board posting is one the portal wants: its roles, its area, not an employer it leaves out. */
+export function boardJobWanted(job: Pick<Job, "title" | "locations" | "company">, search?: Search): boolean {
+  if (!boardTitleWanted(job.title, search)) return false;
+  if (!search) return true;
+  return locationWanted(job.locations, search) && !companyExcluded(job.company, search.excludeCompanies);
 }
 
 export type DiscoverOptions = {
@@ -45,8 +61,14 @@ export type DiscoverOptions = {
   limit?: number;
   log?: (line: string) => void;
   now?: Date;
-  /** The candidate's graduation year: a board title that names it is early-career. */
-  gradYear?: number;
+  /** The portal's search: which roles, which places, which terms. Without one, any software title anywhere is kept. */
+  search?: Search;
+  /** Jobs the tool has seen before (the queue). Only the boards they point at are used. */
+  known?: { ats: string; url: string; company: string }[];
+  /** Ask freehire for employers the tool does not know yet. Needs a portal search. */
+  freehire?: boolean;
+  /** Stands in for the openings MCP server in tests. */
+  freehireCall?: FreehireCall;
   /** Consider postings up to this many days old, for one search. The default is DISCOVER.maxAgeDays. */
   maxAgeDays?: number;
 };
@@ -65,50 +87,60 @@ export type DiscoverSummary = {
   jevCalls: number;
 };
 
+/**
+ * The employers' own boards: the seed list, every board a known or imported job points at, and the
+ * boards freehire names, read whole (Greenhouse, Lever, Ashby, Workable) or searched (Workday), then
+ * put to the portal's rules. The hourly search and `discover` both read them through here.
+ */
+export async function collectBoardJobs(opts: DiscoverOptions & { extra?: Job[] } = {}): Promise<Job[]> {
+  const log = opts.log ?? (() => {});
+  const maxAgeDays = opts.maxAgeDays ?? DISCOVER.maxAgeDays;
+  const found = opts.search && opts.freehire !== false
+    ? await searchFreehire(opts.search, maxAgeDays, { log, ...(opts.freehireCall ? { call: opts.freehireCall } : {}) })
+    : { jobs: [] as Job[], boards: [] as Board[] };
+
+  const boards = boardsFromJobs([...(opts.extra ?? []), ...found.jobs, ...(opts.known ?? [])], undefined, found.boards);
+  log(`[sources] polling ${boards.length} company boards`);
+  const terms = opts.search?.terms ?? ATS_SEARCH.defaultTerms;
+  const titleOk = (title: string) => boardTitleWanted(title, opts.search);
+  const results = await mapLimit(boards, DISCOVER.fetchConcurrency, (b: Board) =>
+    b.ats === "greenhouse" ? fetchGreenhouseBoard(b.slug, b.company)
+    : b.ats === "lever" ? fetchLeverBoard(b.slug, b.company)
+    : b.ats === "ashby" ? fetchAshbyBoard(b.slug, b.company)
+    : b.ats === "workable" ? fetchWorkableBoard(b.slug, b.company)
+    : searchWorkdaySite(b.slug, terms, titleOk, maxAgeDays),
+  );
+  const now = opts.now ?? new Date();
+  const fresh = (j: Job) => {
+    const age = ageDays(j, now);
+    return age === null || age <= maxAgeDays;
+  };
+  // The employer's own board comes first, so its record is the one a duplicate merges into.
+  const fromBoards: Job[] = [];
+  results.forEach((r) => {
+    if (r.ok) fromBoards.push(...r.value.filter((j) => boardJobWanted(j, opts.search) && fresh(j)));
+  });
+  const fromFreehire = found.jobs.filter((j) => boardJobWanted(j, opts.search) && fresh(j));
+  log(`[sources] boards contributed ${fromBoards.length} postings, freehire ${fromFreehire.length}`);
+  return dedupe([...fromBoards, ...fromFreehire]);
+}
+
 export async function collectJobs(opts: DiscoverOptions = {}): Promise<Job[]> {
   const log = opts.log ?? (() => {});
-  const jobs: Job[] = [];
-
-  const [simplify, readmes] = await Promise.all([
-    fetchSimplify().catch((e) => {
-      log(`[sources] simplify failed: ${String(e)}`);
-      return [] as Job[];
-    }),
-    fetchReadmeSources(),
-  ]);
-  log(`[sources] simplify ${simplify.length}, github lists ${readmes.length}`);
-  jobs.push(...simplify, ...readmes);
-
+  const imports: Job[] = [];
   if (existsSync(PATHS.imports)) {
     for (const f of readdirSync(PATHS.imports).filter((f) => f.endsWith(".csv"))) {
       try {
         const imported = importSheet(path.join(PATHS.imports, f));
         log(`[sources] ${f}: ${imported.length} rows`);
-        jobs.push(...imported);
+        imports.push(...imported);
       } catch (e) {
         log(`[sources] ${f} failed: ${String(e)}`);
       }
     }
   }
-
-  if (opts.boards !== false) {
-    const boards = boardsFromJobs(jobs);
-    log(`[sources] polling ${boards.length} company boards`);
-    const results = await mapLimit(boards, DISCOVER.fetchConcurrency, (b: Board) =>
-      b.ats === "greenhouse" ? fetchGreenhouseBoard(b.slug, b.company)
-      : b.ats === "lever" ? fetchLeverBoard(b.slug, b.company)
-      : fetchAshbyBoard(b.slug, b.company),
-    );
-    let fromBoards = 0;
-    results.forEach((r) => {
-      if (!r.ok) return;
-      const early = r.value.filter((j) => isEarlyCareerTitle(j.title, opts.gradYear));
-      fromBoards += early.length;
-      jobs.push(...early);
-    });
-    log(`[sources] boards contributed ${fromBoards} early-career postings`);
-  }
-  return dedupe(jobs);
+  if (opts.boards === false) return dedupe(imports);
+  return dedupe([...(await collectBoardJobs({ ...opts, extra: imports })), ...imports]);
 }
 
 /** What a search decided about one posting. */
@@ -172,8 +204,7 @@ export async function discover(profile: Profile, jev: JevClient, opts: DiscoverO
   const previous = loadQueue();
   const prevById = new Map(previous.entries.map((e) => [e.job.id, e]));
 
-  const gradYear = profile.education[0]?.gradYear;
-  const all = await collectJobs({ ...opts, ...(gradYear !== undefined ? { gradYear } : {}) });
+  const all = await collectJobs({ ...opts, ...(profile.search ? { search: profile.search } : {}), known: previous.entries.map((e) => e.job) });
   const learned = learnedWalledHosts();
   const us = usStatus(profile);
   const collected = all.length;

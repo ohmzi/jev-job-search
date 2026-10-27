@@ -1,7 +1,7 @@
 /** Lever public postings API. No auth. */
 import { z } from "zod";
 import { getJson } from "../../util/http.js";
-import { canonicalUrl, easyApplyFromUrl, jobId, type Job } from "../../jobs/normalize.js";
+import { canonicalUrl, easyApplyFromUrl, exactTime, jobId, type Job } from "../../jobs/normalize.js";
 
 const LeverPosting = z.object({
   id: z.string(),
@@ -52,6 +52,7 @@ export async function fetchLeverBoard(slug: string, companyFallback: string): Pr
       ats: "lever",
       locations,
       postedAt: j.createdAt ? new Date(j.createdAt).toISOString().slice(0, 10) : null,
+      postedAtExact: j.createdAt ? exactTime(new Date(j.createdAt).toISOString()) : null,
       terms: [],
       sponsorship: "unknown",
       degrees: [],

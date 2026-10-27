@@ -11,6 +11,23 @@ changed for a person using the tool and what changed for a contributor.
 
 ## [Unreleased]
 
+### Added
+- Employers' own boards for experienced roles. Workable boards are read
+  whole and Workday careers sites are searched with the portal's terms, next
+  to Greenhouse, Lever and Ashby. freehire.me, read through the openings-mcp
+  server, names employers the tool did not know; only postings it judges
+  fresh, not freshened and rarely re-listed are kept, and their boards are
+  then read directly. Boards also come from every job in the queue.
+- The hourly search reads the same boards for each portal and takes only what
+  went up in its last hour: by the board's own time, or a posting its last
+  scan did not show.
+
+### Removed
+- The SimplifyJobs internship and new-grad lists and the three GitHub
+  internship lists. Intern, co-op and new-grad titles are never kept from a
+  board; every board posting is put to the portal's title, place and
+  employer rules instead.
+
 ### Changed
 - A bot check on a filled form is found before Submit, not only after it. The
   tool tells the person, brings the tab to the front, waits up to

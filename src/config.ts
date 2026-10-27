@@ -61,6 +61,8 @@ export const PATHS = {
   hourlyLog: path.join(ROOT, "data", "runs", "hourly.log"),
   /** When the hourly search last completed successfully, so a missed hour is not lost. */
   hourlyState: path.join(ROOT, "data", "runs", "hourly.json"),
+  /** The employer-board postings this portal's hourly search has seen, so a posting with only a date counts as new once. */
+  hourlyBoardsSeen: path.join(ROOT, "data", "runs", "hourly-boards.json"),
   /** What a dashboard running as a service prints. */
   reportLog: path.join(ROOT, "data", "runs", "report.log"),
   /** The job-board accounts the person allowed, and the rule for making new ones. No secret is in it. */
@@ -214,19 +216,41 @@ export const DISCOVER = {
   accountWalledHosts: ["eightfold.ai", "careers.microsoft.com", "jobs.intuit.com", "jobs.ea.com"],
   /** Job boards whose forms the page scripts cannot read yet. Their jobs are skipped with that reason. */
   unreadableAts: ["smartrecruiters"],
-  /** Sources that are read from GitHub. Each entry names the raw file and its parser. */
-  sources: {
-    simplifyInternships:
-      "https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/.github/scripts/listings.json",
-    simplifyNewGrad:
-      "https://raw.githubusercontent.com/SimplifyJobs/New-Grad-Positions/dev/.github/scripts/listings.json",
-    canadianInternships2027:
-      "https://raw.githubusercontent.com/negarprh/Canadian-Tech-Internships-2027/main/README.md",
-    vanshSummer2027:
-      "https://raw.githubusercontent.com/vanshb03/Summer2027-Internships/dev/README.md",
-    canadaSummer2027:
-      "https://raw.githubusercontent.com/michelleokolie/canada-tech-internships-summer-2027/main/README.md",
-  },
+} as const;
+
+/** Reading employers' own boards: Greenhouse, Lever, Ashby and Workable in full, Workday by search. */
+export const ATS_SEARCH = {
+  /** Workday answers at most this many postings a page. */
+  workdayPageSize: 20,
+  /** Pages read for one term on one Workday site. Workday does not sort by date, so this bounds the read. */
+  workdayMaxPages: 3,
+  /** What a board's search is asked when the profile has no portal search. */
+  defaultTerms: ["software engineer"],
+  /** A board title is kept without a portal search when it says one of these. */
+  defaultTitle: "software|developer|engineer|programm|full[- ]stack|backend|frontend|android|ios|mobile",
+  /** Roles for students and new graduates. A board posting whose title says one is never kept. */
+  earlyCareerTitle: "\\b(intern|interns|internship|co-?op|new grad|new graduate|graduate program|early career|early-career|university|student|campus|apprentice|apprenticeship)\\b",
+} as const;
+
+/**
+ * freehire.me, read through the openings-mcp server the Indeed lookup already starts. It crawls
+ * many employers' boards, so it is used to find employers jev does not know yet. Only postings it
+ * crawled from a board jev can fill are kept, and only those it judges fresh and not recycled.
+ */
+export const FREEHIRE = {
+  tool: "freehire_search_jobs",
+  /** The boards a posting may come from. Aggregators and staffing systems are left out. */
+  sources: ["greenhouse", "lever", "ashby", "workable", "workday", "bamboohr", "rippling", "jobvite", "jazzhr"],
+  employmentTypes: ["full_time"],
+  pageSize: 100,
+  /** Pages read for one term. */
+  maxPages: 2,
+  /** A posting re-listed more often than this reads as a pipeline ad, not an opening. */
+  maxReposts: 3,
+  /** Pause between two calls. */
+  gapMs: 2_000,
+  /** freehire wants a lowercase country code. The profile keeps JobSpy's spelling. */
+  countries: { USA: "us", US: "us", UK: "gb", Canada: "ca", Australia: "au", Ireland: "ie", India: "in", Germany: "de", France: "fr", Netherlands: "nl", Singapore: "sg" } as Record<string, string>,
 } as const;
 
 /**
@@ -478,6 +502,15 @@ export const DAILY = {
 export const HOURLY = {
   /** A job is recent while the tool first saw it less than this long ago and its posted date is not older. */
   windowHours: 12,
+  /**
+   * Employers' own boards list everything they have open. The hourly search reads only what they
+   * posted this many days back, and of that keeps only what went up in its window: a board's exact
+   * time when it gives one, otherwise a posting its last scan did not show. `discover` reads further
+   * back (DISCOVER.maxAgeDays).
+   */
+  boardMaxAgeDays: 1,
+  /** A board posting is forgotten by the hourly search once no scan has shown it for this long. */
+  boardSeenDays: 14,
   /** JobSpy asks each board for jobs at most this many hours old. One, because the run is hourly. */
   hoursOld: 1,
   /** How many results to ask for per board in one call. Two sites and more than this often time out. */

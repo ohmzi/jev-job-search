@@ -64,6 +64,41 @@ export async function getJson<T = unknown>(url: string, opts: GetOptions = {}): 
   return JSON.parse(text) as T;
 }
 
+/** POSTs a JSON body and parses the JSON reply. Cached by the URL and the body together, like a GET. */
+export async function postJson<T = unknown>(url: string, body: unknown, opts: GetOptions = {}): Promise<T> {
+  const payload = JSON.stringify(body);
+  const cacheMs = opts.cacheMs ?? 0;
+  const cacheFile = cacheMs > 0 ? path.join(PATHS.cache, "http", createHash("sha1").update(`POST ${url} ${payload}`).digest("hex")) : null;
+  if (cacheFile && existsSync(cacheFile)) {
+    try {
+      const { at, body: cached } = JSON.parse(readFileSync(cacheFile, "utf8")) as { at: number; body: string };
+      if (Date.now() - at < cacheMs) return JSON.parse(cached) as T;
+    } catch {
+      /* fall through to a live fetch */
+    }
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? DISCOVER.fetchTimeoutMs);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "User-Agent": USER_AGENT, Accept: "application/json", "Content-Type": "application/json", ...opts.headers },
+      body: payload,
+      signal: controller.signal,
+      redirect: "follow",
+    });
+    const text = await res.text();
+    if (!res.ok) throw new HttpError(`POST ${url} returned ${res.status}`, res.status, url);
+    if (cacheFile) {
+      mkdirSync(path.dirname(cacheFile), { recursive: true });
+      writeFileSync(cacheFile, JSON.stringify({ at: Date.now(), body: text }));
+    }
+    return JSON.parse(text) as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Runs `fn` over `items` with at most `limit` in flight. Rejections are returned, not thrown. */
 export async function mapLimit<T, R>(
   items: readonly T[],

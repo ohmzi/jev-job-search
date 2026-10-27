@@ -1,6 +1,6 @@
 # Sources
 
-*What is read, how, and how fresh. Last verified 2026-10-02.*
+*What is read, how, and how fresh. Last verified 2026-10-27.*
 
 Every source produces the same `Job` shape (`src/jobs/normalize.ts`) and
 is deduplicated by canonical URL (tracking parameters stripped), so a
@@ -8,20 +8,19 @@ posting found by three lists is rated once.
 
 | Source | Read how | Freshness | Notes |
 |---|---|---|---|
-| SimplifyJobs Summer2027-Internships | `listings.json` behind the README (`.github/scripts/listings.json`, dev branch). Fields: category, company, title, active, terms, date_posted, url, locations, sponsorship, degrees | Updated continuously; about 17,000 rows, 4,500 active, about 1,000 posted in the last two weeks | Only `Software` and `Software Engineering` categories. `sponsorship` and `degrees` flags feed the pre-filter. |
-| SimplifyJobs New-Grad-Positions | Same format, no `terms` | About 19,600 rows | New-grad roles for a May 2027 start. |
-| negarprh/Canadian-Tech-Internships-2027 | README markdown table, badge links, `MMM DD, YYYY` dates, `↳` for repeated companies, 🔒 closed | 450+ rows, most Workday | Canada only. |
-| vanshb03/Summer2027-Internships | README table, `<a href>` links, `MMM DD` dates, 🛂 and 🇺🇸 flags | About 200 rows | US and Canada. |
-| michelleokolie/canada-tech-internships-summer-2027 | README table, `<a href>` links | Small | Canada only. |
-| Greenhouse boards | `boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true` | Live | Polled for every company the lists mention plus the seed list in `src/sources/companies.ts`. Full description included. |
+| Greenhouse boards | `boards-api.greenhouse.io/v1/boards/{slug}/jobs?content=true` | Live | Polled for the seed list in `src/sources/companies.ts`, every board a queued job points at, and the boards freehire names. Full description included. |
 | Lever boards | `api.lever.co/v0/postings/{slug}?mode=json` | Live | Same. |
 | Ashby boards | `api.ashbyhq.com/posting-api/job-board/{slug}` | Live | Same. Includes `descriptionPlain`. |
+| Workable boards | `apply.workable.com/api/v1/widget/accounts/{slug}?details=true` | Live | Same. Description included. |
+| Workday sites | `POST {site origin}/wday/cxs/{tenant}/{site}/jobs` with the portal's terms, then each posting's own data | Live | Searched, not read whole: a site holds thousands of postings and does not sort by date, so `ATS_SEARCH.workdayMaxPages` bounds the read. Kept only with an account (`/accounts`). |
+| freehire.me | `freehire_search_jobs` on the openings-mcp server, one call per term and page | Crawled, daily | Only postings crawled from a board the tool fills, marked fresh, not freshened and re-listed at most `FREEHIRE.maxReposts` times. Dated by when freehire first saw them. Each names its board, which is then read directly. |
 | Your tracking sheet | CSV files in `data/imports/` with at least Company and Job Link columns | When you export it | Rows already marked applied are ignored. |
 
-Board polling matters because the lists lag by a day or two and the user
-wants the freshest postings. On one run, boards contributed about 2,000
-early-career postings on top of the lists, of which a few hundred were
-new.
+Every posting is put to the portal's own rules, and a student or new-grad
+title is never kept. The hourly search reads the same boards and takes only
+what went up in its window: by the board's exact time where it gives one
+(Greenhouse, Lever, Ashby), otherwise a posting its last scan did not show
+(`data/runs/hourly-boards.json`).
 
 ## Descriptions
 

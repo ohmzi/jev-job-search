@@ -1,6 +1,7 @@
 /** Workday's public posting endpoint, the one its own careers page reads. No auth, one posting at a time. */
 import { z } from "zod";
-import { getJson } from "../../util/http.js";
+import { ATS_SEARCH } from "../../config.js";
+import { getJson, postJson } from "../../util/http.js";
 import { canonicalUrl, easyApplyFromUrl, jobId, type Job } from "../../jobs/normalize.js";
 import { htmlToText } from "../../util/text.js";
 
@@ -32,6 +33,79 @@ export function workdayParts(url: string): { origin: string; tenant: string; sit
   const m = /^\/(?:[a-z]{2}-[A-Z]{2}\/)?([^/]+)\/job\/(.+?)(?:\/apply(?:\/[A-Za-z]+)?)?\/?$/.exec(u.pathname);
   if (!tenant || !m?.[1] || !m[2]) return null;
   return { origin: u.origin, tenant: tenant.toLowerCase(), site: m[1], path: m[2] };
+}
+
+/** An employer's Workday careers site, by any link into it: https://acme.wd5.myworkdayjobs.com/en-US/Careers/job/... reads https://acme.wd5.myworkdayjobs.com/Careers. */
+export function workdaySite(url: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return null;
+  }
+  const tenant = /^([a-z0-9-]+)\.wd\d+\.myworkdayjobs\.com$/i.exec(u.hostname)?.[1];
+  const site = /^\/(?:[a-z]{2}-[A-Z]{2}\/)?([^/]+)/.exec(u.pathname)?.[1];
+  if (!tenant || !site || site === "wday") return null;
+  return `${u.origin}/${site}`;
+}
+
+const SearchReply = z.object({
+  total: z.number().optional(),
+  jobPostings: z.array(z.object({ title: z.string(), externalPath: z.string(), postedOn: z.string().optional() })).default([]),
+});
+
+/** How many days ago Workday says a posting went up: "Posted Today" is 0, "Posted 30+ Days Ago" is more than 30. */
+export function postedDaysAgo(postedOn: string | undefined): number | null {
+  if (!postedOn) return null;
+  if (/today/i.test(postedOn)) return 0;
+  if (/yesterday/i.test(postedOn)) return 1;
+  const m = /(\d+)(\+)?\s*days?/i.exec(postedOn);
+  if (!m) return null;
+  return Number(m[1]) + (m[2] ? 1 : 0);
+}
+
+/** One page of a site's search, as links to postings with their age and title. */
+export function workdaySearchPage(raw: unknown, site: string): { url: string; title: string; daysAgo: number | null }[] {
+  const p = SearchReply.safeParse(raw);
+  if (!p.success) return [];
+  return p.data.jobPostings
+    .filter((j) => j.externalPath.startsWith("/job/"))
+    .map((j) => ({ url: `${site}${j.externalPath}`, title: j.title.trim(), daysAgo: postedDaysAgo(j.postedOn) }));
+}
+
+/**
+ * Searches one employer's Workday site for each term and reads the postings that pass `wanted`
+ * and are fresh enough. Workday does not sort by date, so each term reads a bounded number of pages.
+ */
+export async function searchWorkdaySite(
+  site: string,
+  terms: readonly string[],
+  wanted: (title: string) => boolean,
+  maxAgeDays: number,
+): Promise<Job[]> {
+  const u = new URL(site);
+  const tenant = u.hostname.split(".")[0] as string;
+  const name = u.pathname.slice(1);
+  const endpoint = `${u.origin}/wday/cxs/${tenant}/${name}/jobs`;
+  const links = new Map<string, string>();
+  for (const term of terms) {
+    for (let page = 0; page < ATS_SEARCH.workdayMaxPages; page++) {
+      const raw = await postJson(endpoint, { appliedFacets: {}, limit: ATS_SEARCH.workdayPageSize, offset: page * ATS_SEARCH.workdayPageSize, searchText: term }, { cacheMs: 20 * 60_000 });
+      const hits = workdaySearchPage(raw, site);
+      for (const h of hits) if (wanted(h.title) && (h.daysAgo === null || h.daysAgo <= maxAgeDays)) links.set(h.url, h.title);
+      if (hits.length < ATS_SEARCH.workdayPageSize) break;
+    }
+  }
+  const out: Job[] = [];
+  for (const url of links.keys()) {
+    try {
+      const job = await fetchWorkdayPosting(url);
+      if (job) out.push(job);
+    } catch {
+      /* a posting that closed between the search and the read is not a job */
+    }
+  }
+  return out;
 }
 
 const apiUrl = (p: { origin: string; tenant: string; site: string; path: string }) => `${p.origin}/wday/cxs/${p.tenant}/${p.site}/job/${p.path}`;

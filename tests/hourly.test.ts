@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { ageHeldEntries, isRecent, localDate, recentFirst } from "../src/jobs/recency.js";
 import { dedupeJobspy, locationWanted, mapJobspy, postedOf, titleWanted } from "../src/sources/jobspy.js";
-import { mergeHourly, runHourly } from "../src/run/hourly.js";
+import { mergeHourly, newBoardPostings, runHourly } from "../src/run/hourly.js";
 import { buildRecent } from "../src/report/recent.js";
 import { pickJobs } from "../src/run/pipeline.js";
 import { loadQueue, saveQueue, type QueueEntry } from "../src/jobs/queue.js";
@@ -306,6 +306,82 @@ describe("one hourly run", () => {
     expect(q.entries.find((e) => e.job.company === "Acme")?.status).toBe("needs_review");
     expect(q.entries.find((e) => e.job.ats === "greenhouse")?.status).toBe("queued");
     expect(readFileSync(rowsFile, "utf8")).toContain("Gamma");
+  });
+});
+
+describe("an hourly run that also reads the employers' own boards", () => {
+  const files = () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "jev-hourly-boards-"));
+    return { queueFile: path.join(dir, "queue.json"), rowsFile: path.join(dir, "all.csv"), stateFile: path.join(dir, "hourly.json"), boardsSeenFile: path.join(dir, "hourly-boards.json") };
+  };
+  const rows = JSON.stringify([
+    { site: "indeed", title: "Android Engineer", company: "Gamma", location: "Jersey City, NJ", job_url: "https://www.indeed.com/viewjob?jk=1", job_url_direct: "https://boards.greenhouse.io/gamma/jobs/123", date_posted: "2026-10-22" },
+  ]);
+
+  it("queues the boards' finds next to JobSpy's and hands the boards the queue", async () => {
+    const f = files();
+    let asked: string | null = null;
+    const summary = await runHourly(profile(), {
+      now: NOW,
+      ...f,
+      runner: () => ({ ok: true, stdout: rows, error: "" }),
+      boards: async (s) => {
+        asked = s.portal;
+        return [
+          job({ id: "board-1", source: "ashby:delta", company: "Delta", title: "Senior Android Engineer", url: "https://jobs.ashbyhq.com/delta/8c035d3d-081d-4c8a-914a-72f4efaad254", ats: "ashby", postedAtExact: new Date(NOW.getTime() - 20 * 60_000).toISOString() }),
+          // Up yesterday afternoon: open, but not new this hour.
+          job({ id: "board-2", source: "ashby:delta", company: "Delta", title: "Staff Android Engineer", url: "https://jobs.ashbyhq.com/delta/9c035d3d-081d-4c8a-914a-72f4efaad254", ats: "ashby", postedAtExact: new Date(NOW.getTime() - 20 * 3_600_000).toISOString() }),
+        ];
+      },
+    });
+    expect(asked).toBe("android-nj");
+    expect(summary.added).toBe(2);
+    const q = loadQueue(f.queueFile);
+    expect(q.entries.find((e) => e.job.company === "Delta")?.status).toBe("queued");
+    expect(q.entries.filter((e) => e.job.company === "Delta")).toHaveLength(1);
+    expect(Object.keys(JSON.parse(readFileSync(f.boardsSeenFile, "utf8")).seen)).toEqual(["board-1", "board-2"]);
+    expect(q.entries.find((e) => e.job.company === "Gamma")).toBeDefined();
+  });
+
+  it("carries on with JobSpy's finds when the boards fail, and still moves the window", async () => {
+    const f = files();
+    const summary = await runHourly(profile(), {
+      now: NOW,
+      ...f,
+      runner: () => ({ ok: true, stdout: rows, error: "" }),
+      boards: async () => {
+        throw new Error("offline");
+      },
+    });
+    expect(summary.added).toBe(1);
+    expect(summary.failures).toEqual([]);
+    expect(JSON.parse(readFileSync(f.stateFile, "utf8")).lastRunAt).toBe(NOW.toISOString());
+  });
+});
+
+describe("which board postings are new this hour", () => {
+  const dated = (id: string, postedAt: string) => job({ id, postedAt, postedAtExact: null, ats: "workable", url: `https://apply.workable.com/delta/j/${id}/` });
+
+  it("takes a posting by the board's exact time when it gives one", () => {
+    const inside = job({ id: "a", postedAtExact: new Date(NOW.getTime() - 30 * 60_000).toISOString() });
+    const outside = job({ id: "b", postedAtExact: new Date(NOW.getTime() - 3 * 3_600_000).toISOString() });
+    expect(newBoardPostings([inside, outside], null, NOW, 1).fresh.map((j) => j.id)).toEqual(["a"]);
+    // A run the machine missed widens the window.
+    expect(newBoardPostings([inside, outside], null, NOW, 4).fresh.map((j) => j.id)).toEqual(["a", "b"]);
+  });
+
+  it("takes a posting with only a date once, when the last scan did not show it", () => {
+    const first = newBoardPostings([dated("x", "2026-10-22")], null, NOW, 1);
+    expect(first.fresh).toEqual([]);
+    const later = new Date(NOW.getTime() + 3_600_000);
+    const second = newBoardPostings([dated("x", "2026-10-22"), dated("y", "2026-10-22"), dated("old", "2026-10-15")], first.seen, later, 1);
+    expect(second.fresh.map((j) => j.id)).toEqual(["y"]);
+    expect(newBoardPostings([dated("y", "2026-10-22")], second.seen, new Date(later.getTime() + 3_600_000), 1).fresh).toEqual([]);
+  });
+
+  it("forgets a posting no scan has shown for two weeks", () => {
+    const old = { seen: { gone: new Date(NOW.getTime() - 20 * 86_400_000).toISOString(), kept: NOW.toISOString() } };
+    expect(Object.keys(newBoardPostings([], old, NOW, 1).seen.seen)).toEqual(["kept"]);
   });
 });
 
