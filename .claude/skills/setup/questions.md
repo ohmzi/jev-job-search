@@ -48,6 +48,7 @@ their status, they should check before applying.
 | The earliest date you can start | `preferences.earliestStart` |
 | How long you can work: term lengths, or "permanent" | `preferences.availability` |
 | The places you want to work, best first | `preferences.preferredLocations` |
+| In the United States, only some states? Which ones (two-letter codes) | `preferences.searchStates` (empty means every state) |
 | Will you relocate? | `preferences.willingToRelocate` |
 | Remote work: preferred, open to it, or no | `preferences.remote` |
 | Can you work in an office or hybrid if the job needs it? | a standing answer |

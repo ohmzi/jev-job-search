@@ -132,6 +132,15 @@ Before it spends anything, the tool removes jobs that:
 - are unpaid
 - are in the United States and refuse visa sponsorship, if your profile
   says you would need it
+- are only in US states outside `preferences.searchStates`, when your
+  profile lists some (see below)
+
+To keep a search to part of the United States, list the states' two-letter
+codes in `preferences.searchStates`, for example `["NJ", "NY", "PA"]`. A
+US job is kept when one of its places is in one of those states, is remote,
+or names no state ("United States"). A job the tool cannot place is kept.
+Jobs outside the United States are not affected. Leave the list empty to
+search every state. Say `/profile` to change it.
 
 JEV then reads each remaining job and answers 15 questions about it. They
 cover the level, the term, how well your skills and experience match, where

@@ -29,7 +29,11 @@ changed for a person using the tool and what changed for a contributor.
 - Seed boards for 163 employers that posted US full-stack roles in the last
   30 days, found through freehire and checked with a live call. Recruiting
   firms and job aggregators are left out.
-
+- `preferences.searchStates` in the profile keeps a search to some US
+  states, by two-letter code. A US job only in other states is skipped with
+  "outside your states"; remote jobs, jobs open anywhere in the United
+  States, and jobs the tool cannot place are kept. Empty, the default,
+  searches every state.
 - The hourly apply pass takes only jobs on the portal's Last 12 hours page,
   after the portal's whole search is done. A portal that finds another one
   applying waits for the browser (`HOURLY.applyWaitMs`) instead of giving up

@@ -19,6 +19,7 @@ If `data/profile.json` does not exist, this is a first run: use the
    | A detail about the person: contact, education, dates, work authorization | the matching field in `data/profile.json` |
    | A claim in a written answer, or a missing one | `facts`, `experience` or `projects` in `data/profile.json` |
    | How a recurring question is answered (relocation, text messages, notice period, pay, history) | `answers` in `data/profile.json` |
+   | Which US states the search covers | `preferences.searchStates` in `data/profile.json`: two-letter codes, empty for every state. Then `/discover` |
    | How written answers sound | `data/voice.local.md` |
    | The starting draft for a common open question | `data/bank.json` |
 

@@ -42,7 +42,10 @@ boards: greenhouse / lever / ashby / workable  │                              
    apply run found behind a login), boards whose forms run over several
    pages, older than `DISCOVER.maxAgeDays`, titles that are plainly not
    software, French titles, advanced-degree-only, US with no-sponsorship or
-   citizenship flags, unpaid. Reasons are kept and written to the CSV.
+   citizenship flags, unpaid. Then `outsideStates` (`src/jobs/states.ts`):
+   a US posting whose every place is in a state the profile's
+   `preferences.searchStates` leaves out. Remote, nationwide and
+   unplaceable postings pass. Reasons are kept and written to the CSV.
 4. **describe** (`src/jobs/describe.ts`): ATS API text or page text, capped
    at `JEV.maxDescriptionChars`.
 5. **rateJob** (`src/jobs/rate.ts`): one JEV call, fifteen questions,
