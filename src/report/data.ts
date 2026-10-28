@@ -62,7 +62,7 @@ export const LEFT_FOR_YOU: readonly string[] = ["needs_review", "blocked", "logi
 /** The reason a job carries when the person said from the page they are not interested in it. */
 export const NOT_INTERESTED = "you were not interested";
 
-/** Skips the person made from the page, the older wordings included. Such a job leaves Last 12 hours. */
+/** Skips the person made from the page, the older wordings included. Skipped lists them apart, under Not interested. */
 export const PERSON_SKIPS: readonly string[] = [NOT_INTERESTED, "you chose to skip it", "you chose not to apply"];
 
 /** A status change sent from the page. */

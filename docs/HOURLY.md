@@ -118,7 +118,8 @@ you to take from there.
 ## The page
 
 `/report` has a **Last 12 hours** screen with every job first seen inside the
-window, newest first:
+window, newest first. A skipped job, whether the person or the tool skipped it,
+is on the **Skipped** screen instead.
 
 | Column | What it shows |
 |---|---|

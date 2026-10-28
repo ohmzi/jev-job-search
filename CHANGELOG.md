@@ -47,6 +47,11 @@ changed for a person using the tool and what changed for a contributor.
   serves all four through `/api/events`, and `/events` (`node bin/jev.js
   events`) reports on them: sources, boards that yield or fail, sends, and
   what held jobs back.
+- A Skipped screen on the dashboard, after Applications. It holds every
+  skipped job, split into the ones the person marked Not interested and the
+  ones the tool set aside, each with its reason, best fit first. Ticked jobs
+  can be put back in the queue. Last 12 hours and the Everything tab no
+  longer list skipped jobs.
 
 ### Removed
 - The SimplifyJobs internship and new-grad lists and the three GitHub

@@ -339,7 +339,9 @@ queue.
   board calls.
 
 `src/report/recent.ts` builds the Last 12 hours rows. The dashboard embeds them
-in its data response and renders them on their own screen.
+in its data response and renders them on their own screen. Skipped jobs are left
+out of them and out of the Everything tab: the Skipped screen draws them from
+the record, the person's own (`PERSON_SKIPS`) apart from the tool's.
 
 `src/run/schedule.ts` also writes the hourly timer: a systemd user service and
 timer on Linux, a LaunchAgent with `StartCalendarInterval` on macOS. The label

@@ -5,7 +5,7 @@
 import type { Report } from "./data.js";
 import { REPORT, reportTitle } from "../config.js";
 import { STATUS_WORDS } from "../log/csv.js";
-import { LEFT_FOR_YOU, NOT_INTERESTED } from "./data.js";
+import { LEFT_FOR_YOU, NOT_INTERESTED, PERSON_SKIPS } from "./data.js";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 
@@ -122,6 +122,12 @@ export function reportPage(snapshot: Report | null, token = "", port?: number): 
     <div class="toolbar"><input type="search" id="q" placeholder="Filter by company, role, board, reason"><span class="sub" id="count"></span></div>
     <div id="apps"></div>
   </section>
+  <section class="screen" id="s-skipped">
+    <div class="tabs" id="skipTabs"></div>
+    <p class="tabnote" id="skipNote"></p>
+    <div class="toolbar"><input type="search" id="qSkipped" placeholder="Filter by company, role, board, reason"><span class="sub" id="countSkipped"></span></div>
+    <div id="skipped"></div>
+  </section>
   <section class="screen" id="s-auto"><div id="auto"></div></section>
 </main>
 ${embedded}
@@ -138,6 +144,7 @@ ${embedded}
   const live = !embedded;
   const LEFT = ${JSON.stringify(LEFT_FOR_YOU)};
   const NOT_INTERESTED = ${JSON.stringify(NOT_INTERESTED)};
+  const MINE = ${JSON.stringify(PERSON_SKIPS)};
   const WAITING = ["awaiting_user_action", "awaiting_email_verification", "submission_unknown"];
   // Each tab shows the columns that matter for what is in it.
   const TABS = [
@@ -146,14 +153,20 @@ ${embedded}
     { key: "manual", label: "Left for you", keep: (r) => LEFT.includes(r.status_key), cols: ["pick", "job", "board", "easy", "fit", "status", "reason", "notes", "act"], sort: ["fit", -1], note: "The tool could not finish these. Apply on the site yourself, then mark them applied, or skip them." },
     { key: "takehome", label: "Take-home", keep: (r) => !!r.takehome, cols: ["applied", "job", "board", "status", "reply", "notes", "act"], sort: ["applied_on", -1], note: "Applications that came with a take-home task." },
     { key: "queued", label: "Queued", keep: (r) => r.status_key === "queued", cols: ["pick", "job", "board", "easy", "fit", "notes", "act"], sort: ["fit", -1], note: "Next in line for /apply, best fit first." },
-    { key: "all", label: "Everything", keep: () => true, cols: ["pick", "applied", "job", "board", "easy", "fit", "status", "reason", "notes", "act"], sort: ["applied_on", -1], note: "Every job the tool has considered." },
+    { key: "all", label: "Everything", keep: (r) => r.status_key !== "skipped", cols: ["pick", "applied", "job", "board", "easy", "fit", "status", "reason", "notes", "act"], sort: ["applied_on", -1], note: "Every job the tool has considered, except the skipped ones, which are on Skipped." },
   ];
+  // Skipped jobs have a screen of their own: the ones the person turned down, and the ones the tool set aside.
+  const SKIPS = [
+    { key: "mine", label: "Not interested", keep: (r) => MINE.includes(r.reason), note: "Jobs you said you are not interested in. To change your mind, use a job's status menu, or tick several and put them back in the queue." },
+    { key: "tool", label: "Skipped by the tool", keep: (r) => !MINE.includes(r.reason), note: "Jobs the search or a run set aside, each with its reason. Best fit first." },
+  ];
+  const SKIP_COLS = ["pick", "job", "board", "easy", "fit", "reason", "notes", "act"];
   const TOKEN = ${JSON.stringify(token)};
-  let SCREENS = live ? [["today", "Today"], ["recent", "Last 12 hours"], ["needs", "Needs you"], ["apps", "Applications"], ["auto", "Automation"]] : [["today", "Today"], ["recent", "Last 12 hours"], ["apps", "Applications"]];
+  let SCREENS = live ? [["today", "Today"], ["recent", "Last 12 hours"], ["needs", "Needs you"], ["apps", "Applications"], ["skipped", "Skipped"], ["auto", "Automation"]] : [["today", "Today"], ["recent", "Last 12 hours"], ["apps", "Applications"], ["skipped", "Skipped"]];
   // A link can open one screen directly: /#recent opens Last 12 hours.
   const startScreen = location.hash.replace(/^#/, "");
-  let data = null, needs = null, auto = null, screen = SCREENS.some(([k]) => k === startScreen) ? startScreen : "today", tab = "applied", q = "", qRecent = "", qNeeds = "";
-  let appRows = [], recentRows = [];
+  let data = null, needs = null, auto = null, screen = SCREENS.some(([k]) => k === startScreen) ? startScreen : "today", tab = "applied", skipTab = "mine", q = "", qRecent = "", qNeeds = "", qSkipped = "";
+  let appRows = [], recentRows = [], skippedRows = [];
   const post = (path, body) => fetch(path, { method: "POST", headers: { "content-type": "application/json", "x-jev-token": TOKEN }, body: JSON.stringify(body) });
   const needCount = () => needs ? needs.waiting.length + needs.questions.length + needs.unconfirmed.length + (needs.self || []).length + (needs.answers || []).length + needs.mail.length + (needs.elsewhere || []).length + (needs.login ? 1 : 0) : 0;
   // On the combined board every job and card belongs to a portal: its key names the portal too,
@@ -215,7 +228,7 @@ ${embedded}
       const menu = '<select class="sm" data-id="' + esc(r.key) + '" data-was="' + esc(r.status_key) + '" aria-label="Change status"><option value="">Change status</option>' + STATUSES.filter((s) => s !== r.status_key).map((s) => '<option value="' + s + '">' + esc(WORDS[s] || s) + "</option>").join("") + "</select>";
       const open = r.status_key !== "applied" && r.status_key !== "skipped";
       return "<td>" + (r.status_key !== "applied" ? '<button class="btn sm" data-mark="' + esc(r.key) + '" data-was="' + esc(r.status_key) + '">Applied</button>' : "") +
-        (open ? '<button class="btn sm quiet" data-dismiss="' + esc(r.key) + '" data-was="' + esc(r.status_key) + '" title="Skip it and take it off Last 12 hours">Not interested</button>' : "") + menu + '<span class="saved"></span></td>';
+        (open ? '<button class="btn sm quiet" data-dismiss="' + esc(r.key) + '" data-was="' + esc(r.status_key) + '" title="Skip it and move it to Skipped">Not interested</button>' : "") + menu + '<span class="saved"></span></td>';
     } },
   };
 
@@ -245,7 +258,9 @@ ${embedded}
     // Each cell names its column and label, which the card layout shows above the value.
     const tag = (c) => { const label = c === "job" ? "" : labels[c] ?? COLS[c].label; return '<td data-col="' + c + '"' + (label ? ' data-label="' + esc(label) + '"' : ""); };
     const body = shown.map((r) => '<tr class="' + (st.picked.has(r.key) ? "picked" : "") + '">' + cols.map((c) => c === "pick" ? tag(c) + ">" + (canPick(r) ? '<input type="checkbox" data-pick="' + esc(r.key) + '" data-table="' + key + '"' + (st.picked.has(r.key) ? " checked" : "") + ' aria-label="Select">' : "") + "</td>" : COLS[c].cell(r).replace(/^<td/, tag(c))).join("") + "</tr>").join("") || '<tr><td colspan="' + cols.length + '" class="sub">Nothing here.</td></tr>';
-    const bulk = pickable ? '<div class="toolbar" data-bulk="' + key + '"><button class="btn sm" data-bulk-to="applied" data-table="' + key + '"' + (st.picked.size ? "" : " disabled") + '>Mark selected applied</button><button class="btn sm quiet" data-bulk-to="skipped" data-table="' + key + '"' + (st.picked.size ? "" : " disabled") + '>Not interested in selected</button><span class="sub">' + (st.picked.size ? st.picked.size + " selected" : "Tick jobs to change several at once") + '</span><span class="saved" id="saved-bulk-' + key + '"></span></div>' : "";
+    // A job on Skipped is skipped already: there the second choice puts it back in the queue.
+    const [to, says] = key.startsWith("skipped-") ? ["queued", "Put selected back in the queue"] : ["skipped", "Not interested in selected"];
+    const bulk = pickable ? '<div class="toolbar" data-bulk="' + key + '"><button class="btn sm" data-bulk-to="applied" data-table="' + key + '"' + (st.picked.size ? "" : " disabled") + '>Mark selected applied</button><button class="btn sm quiet" data-bulk-to="' + to + '" data-table="' + key + '"' + (st.picked.size ? "" : " disabled") + ">" + says + '</button><span class="sub">' + (st.picked.size ? st.picked.size + " selected" : "Tick jobs to change several at once") + '</span><span class="saved" id="saved-bulk-' + key + '"></span></div>' : "";
     const more = rows.length > shown.length ? '<p class="more"><button class="btn quiet sm" data-more="' + key + '">Show ' + Math.min(PAGE, rows.length - shown.length) + " more</button> <span class=\\"sub\\">" + shown.length + " of " + rows.length + "</span></p>" : "";
     const least = cols.reduce((n, c) => n + (COLS[c].w || JOB_MIN), 0);
     return bulk + '<div class="wrap" data-min="' + least + '"><table><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table></div>" + more;
@@ -312,7 +327,7 @@ ${embedded}
     $("#countRecent").textContent = recentRows.length ? (qRecent ? rows.length + " of " + recentRows.length : rows.length) + " job" + (recentRows.length === 1 ? "" : "s") : "";
     if (!recentRows.length) { $("#recent").innerHTML = '<p class="note">Nothing new in the last 12 hours.</p>'; return; }
     $("#recent").innerHTML =
-      '<p class="tabnote">Jobs the tool first saw in the last 12 hours. <b>/apply</b> takes them before older queued jobs while they are fresh. A board-only listing waits here for its 12 hours, then moves to Needs you.</p>' +
+      '<p class="tabnote">Jobs the tool first saw in the last 12 hours. <b>/apply</b> takes them before older queued jobs while they are fresh. A board-only listing waits here for its 12 hours, then moves to Needs you. A skipped job is on Skipped instead.</p>' +
       drawTable("recent", rows, withPortal(["pick", "job", "board", "easy", "posted", "found", "fit", "status", "reason", "act"]), ["found_at", -1], { reason: "Why here" });
     fitTables();
   }
@@ -383,8 +398,19 @@ ${embedded}
     $("#apps").innerHTML = drawTable("apps-" + t.key, rows, withPortal(t.cols), t.sort);
     fitTables();
   }
-  function redraw(key) { if (key === "recent") renderRecent(); else renderApps(); }
-  const rowsOf = (key) => key === "recent" ? recentRows : appRows;
+  function renderSkipped() {
+    if (!data) return;
+    skippedRows = data.rows.filter((r) => r.status_key === "skipped").map(fromApp);
+    const t = SKIPS.find((x) => x.key === skipTab);
+    $("#skipTabs").innerHTML = SKIPS.map((x) => '<button class="' + (x.key === skipTab ? "on" : "") + '" data-skiptab="' + x.key + '">' + x.label + badge(skippedRows.filter(x.keep).length) + "</button>").join("");
+    $("#skipNote").textContent = t.note;
+    const rows = skippedRows.filter(t.keep).filter((r) => matches(qSkipped, ...rowText(r)));
+    $("#countSkipped").textContent = rows.length + " job" + (rows.length === 1 ? "" : "s");
+    $("#skipped").innerHTML = drawTable("skipped-" + t.key, rows, withPortal(SKIP_COLS), ["fit", -1], { reason: "Why skipped" });
+    fitTables();
+  }
+  function redraw(key) { if (key === "recent") renderRecent(); else if (key.startsWith("skipped-")) renderSkipped(); else renderApps(); }
+  const rowsOf = (key) => key === "recent" ? recentRows : key.startsWith("skipped-") ? skippedRows : appRows;
 
   // Several jobs at once, one change at a time, each from the status the page was showing.
   async function bulk(key, to) {
@@ -413,6 +439,7 @@ ${embedded}
     const clip = t.closest(".clip"); if (clip) { clip.classList.toggle("open"); return; }
     const nav = t.closest("[data-screen]"); if (nav) { screen = nav.dataset.screen; location.hash = screen; renderNav(); renderPortals(); return; }
     const b = t.closest("[data-tab]"); if (b) { tab = b.dataset.tab; renderApps(); return; }
+    const sk = t.closest("[data-skiptab]"); if (sk) { skipTab = sk.dataset.skiptab; renderSkipped(); return; }
     const th = t.closest("[data-sort]"); if (th) { const st = tables[th.dataset.table]; if (st.sortKey === th.dataset.sort) st.sortDir = -st.sortDir; else { st.sortKey = th.dataset.sort; st.sortDir = th.dataset.sort === "fit" || th.dataset.sort === "applied_on" ? -1 : 1; } redraw(th.dataset.table); return; }
     const mark = t.closest("[data-mark]"); if (mark) { mark.disabled = true; if (!(await save(mark, mark.dataset.mark, { status: "applied", was: mark.dataset.was }))) mark.disabled = false; return; }
     const dis = t.closest("[data-dismiss]"); if (dis) { dis.disabled = true; if (!(await save(dis, dis.dataset.dismiss, { status: "skipped", was: dis.dataset.was, reason: NOT_INTERESTED }))) dis.disabled = false; return; }
@@ -447,6 +474,7 @@ ${embedded}
   $("#q").addEventListener("input", (e) => { q = e.target.value; renderApps(); });
   $("#qRecent").addEventListener("input", (e) => { qRecent = e.target.value; renderRecent(); });
   $("#qNeeds").addEventListener("input", (e) => { qNeeds = e.target.value; renderNeeds(); });
+  $("#qSkipped").addEventListener("input", (e) => { qSkipped = e.target.value; renderSkipped(); });
   // A link to /#needs from inside the page, or the browser's Back button, changes the screen too.
   window.addEventListener("hashchange", () => { const k = location.hash.replace(/^#/, ""); if (SCREENS.some(([s]) => s === k) && k !== screen) { screen = k; renderNav(); renderPortals(); } });
   async function load() {
@@ -454,7 +482,7 @@ ${embedded}
     if (live) { needs = await (await fetch("/api/needs")).json(); if (!data.combined) auto = await (await fetch("/api/automation")).json(); }
     // The combined board runs nothing, so it has no Automation screen.
     if (data.combined) { SCREENS = SCREENS.filter(([k]) => k !== "auto"); if (screen === "auto") screen = "today"; }
-    renderToday(); renderApps(); renderRecent(); renderNeeds(); renderAuto(); renderNav(); renderPortals();
+    renderToday(); renderApps(); renderSkipped(); renderRecent(); renderNeeds(); renderAuto(); renderNav(); renderPortals();
   }
   window.addEventListener("resize", () => requestAnimationFrame(fitTables));
   load();

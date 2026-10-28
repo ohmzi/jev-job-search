@@ -1,11 +1,11 @@
 /**
  * The Last 12 hours page's rows. Every entry the tool first saw inside the window, newest first,
- * whatever its status, so a find the search refused is still visible with its reason.
+ * except a skipped one, which the Skipped screen shows with its reason. A find that failed or fell
+ * below the fit threshold stays, with its reason.
  */
 import { isRecent } from "../jobs/recency.js";
 import type { QueueEntry } from "../jobs/queue.js";
 import { STATUS_WORDS } from "../log/csv.js";
-import { PERSON_SKIPS } from "./data.js";
 
 export type RecentRow = {
   id: string;
@@ -39,7 +39,7 @@ export function whyShown(e: QueueEntry): string {
     return e.status === "needs_review" ? "yours to apply on the site" : "the tool cannot fill this board; yours at 12 hours";
   }
   const reason = e.statusReason ?? e.preFilterReason;
-  if (reason && (e.status === "skipped" || e.status === "failed" || e.fit?.decision === "below_threshold")) return reason;
+  if (reason && (e.status === "failed" || e.fit?.decision === "below_threshold")) return reason;
   if (!e.job.postedAt) return "posted time unknown";
   if (e.fit?.decision === "below_threshold") return "below the fit threshold";
   return "new find";
@@ -48,11 +48,10 @@ export function whyShown(e: QueueEntry): string {
 /** The rows, newest find first; ties go to the newest posting, then the highest fit. */
 export function buildRecent(entries: QueueEntry[], now = new Date()): RecentRow[] {
   // A job that has been applied to, or may already be with the employer, is not a posting to
-  // consider again: once it leaves this list it never comes back. Nor is one the person said
-  // they are not interested in.
-  const dismissed = (e: QueueEntry) => e.status === "skipped" && PERSON_SKIPS.includes(e.statusReason ?? "");
+  // consider again: once it leaves this list it never comes back. A skipped job, whoever
+  // skipped it, is on the Skipped screen.
   const rows: RecentRow[] = entries
-    .filter((e) => isRecent(e, now) && e.status !== "applied" && e.status !== "submission_unknown" && !dismissed(e))
+    .filter((e) => isRecent(e, now) && e.status !== "applied" && e.status !== "submission_unknown" && e.status !== "skipped")
     .map((e) => {
     const seen = Date.parse(e.discoveredAt);
     return {

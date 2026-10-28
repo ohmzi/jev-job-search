@@ -260,10 +260,11 @@ describe("the Last 12 hours rows", () => {
     const unknown = entry({ job: { ...job(), id: "u" } as QueueEntry["job"], status: "submission_unknown" });
     expect(buildRecent([applied, unknown], NOW)).toHaveLength(0);
   });
-  it("drops a job the person was not interested in, and keeps one the search skipped", () => {
+  it("leaves every skipped job to the Skipped screen, whoever skipped it", () => {
     const dismissed = entry({ status: "skipped", statusReason: NOT_INTERESTED });
     const filtered = entry({ job: { ...job(), id: "f", company: "Filtered" } as QueueEntry["job"], status: "skipped", statusReason: "title is not a role the profile wants" });
-    expect(buildRecent([dismissed, filtered], NOW).map((r) => r.company)).toEqual(["Filtered"]);
+    const failed = entry({ job: { ...job(), id: "x", company: "Failed" } as QueueEntry["job"], status: "failed", statusReason: "the form did not load" });
+    expect(buildRecent([dismissed, filtered, failed], NOW).map((r) => [r.company, r.why])).toEqual([["Failed", "the form did not load"]]);
   });
   it("says when the posted time is unknown or the board cannot be filled", () => {
     const unknown = entry({ job: { ...job(), postedAt: null } as QueueEntry["job"] });

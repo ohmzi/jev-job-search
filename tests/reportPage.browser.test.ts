@@ -1,6 +1,6 @@
 /**
  * The dashboard page in a real Chrome, against a stand-in server with made-up records. It proves
- * the page draws its four screens, sends an answer with the token it was given, and offers
+ * the page draws its screens, sends an answer with the token it was given, and offers
  * "remember" only for a question that may be kept. Skipped where Chrome is not installed.
  */
 import { spawn, type ChildProcess } from "node:child_process";
@@ -25,6 +25,8 @@ const rows = [
   row({ "Job ID": "l1", Company: "Vandelay", "App. Status": "Needs you", "Skip Reason": "asks for a signature", "Fit Score": "0.71" }),
   row({ "Job ID": "l2", Company: "Wonka", "App. Status": "Blocked: a sign-in page", "Fit Score": "0.52" }),
   row({ "Job ID": "l3", Company: "Kramerica", "App. Status": "Needs you", "Skip Reason": "kept in the record only" }),
+  row({ "Job ID": "k1", Company: "Pendant", "App. Status": `Skipped: ${NOT_INTERESTED}`, "Skip Reason": NOT_INTERESTED }),
+  row({ "Job ID": "k2", Company: "Leotard", "App. Status": "Skipped: not a software role", "Skip Reason": "not a software role", "Fit Score": "0.40" }),
 ];
 const needs: Needs = {
   waiting: [{ id: "w1", company: "Globex", title: "Software Intern", todo: "type the code the board emailed you, then click Submit", reason: "the board emailed you a code", mail: "https://mail.google.com/mail/u/0/#search/greenhouse", open: true }],
@@ -72,7 +74,7 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
       }
       if (req.url === "/") return send(reportPage(null, TOKEN, 7423), "text/html; charset=utf-8");
       if (req.url === "/api/data") {
-        const r = buildReport(rows, new Date(), [], new Set(["a1", "l1", "l2"]));
+        const r = buildReport(rows, new Date(), [], new Set(["a1", "l1", "l2", "k1", "k2"]));
         // The combined board's answer: the same records, each row naming the portal it came from.
         if (combined) return send(JSON.stringify({ ...r, combined: true, portals: [{ title: "Android · NJ", port: 7421, accent: "#0d9488", ok: true, error: "" }, { title: "Android · TX", port: 7422, accent: "#7c3aed", ok: false, error: "answered 500" }], rows: r.rows.map((x) => ({ ...x, portal: "Android · NJ", port: 7421 })), run: null }));
         return send(JSON.stringify({ ...r, run: null }));
@@ -115,7 +117,7 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
     for (let i = 0; i < 40 && !(await page.evaluate<boolean>("!!document.querySelector('#nav button')").catch(() => false)); i++) await sleep(150);
     expect(errors).toEqual([]);
     const nav = await page.evaluate<string[]>("[...document.querySelectorAll('#nav button')].map((b) => b.textContent)");
-    expect(nav).toEqual(["Today", "Last 12 hours", "Needs you5", "Applications", "Automation"]);
+    expect(nav).toEqual(["Today", "Last 12 hours", "Needs you5", "Applications", "Skipped", "Automation"]);
     // The board says which one it is, in the page and in the tab, and links to the other four.
     expect(await page.evaluate<string>("document.querySelector('h1').textContent")).toBe("Full Stack · NJ");
     expect(await page.evaluate<string>("document.title")).toMatch(/^Full Stack · NJ/);
@@ -196,6 +198,21 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
       { id: "l1", status: "applied", was: "needs_review" },
       { id: "l2", status: "applied", was: "blocked" },
     ]);
+
+    // Skipped jobs have their own screen, the person's own apart from the tool's, and no other list holds them.
+    await page.evaluate("(() => { document.querySelector('[data-tab=all]').click(); })()");
+    expect(await page.evaluate<string>("document.querySelector('#apps').innerText")).not.toMatch(/Pendant|Leotard/);
+    await page.evaluate("document.querySelector('[data-screen=skipped]').click()");
+    expect(await page.evaluate<string[]>("[...document.querySelectorAll('#skipTabs button')].map((b) => b.textContent)")).toEqual(["Not interested1", "Skipped by the tool1"]);
+    expect(await page.evaluate<string[]>("[...document.querySelectorAll('#skipped .meta')].map((m) => m.textContent)")).toEqual(["Pendant"]);
+    await page.evaluate("document.querySelector('[data-skiptab=tool]').click()");
+    expect(await page.evaluate<string[]>("[...document.querySelectorAll('#skipped th')].map((t) => t.textContent.replace(/[▲▼]/g, '').trim())")).toEqual(["", "Job", "Board", "Easy Apply", "Fit", "Why skipped", "Notes", ""]);
+    expect(await page.evaluate<string>("document.querySelector('#skipped').innerText")).toMatch(/Leotard[\s\S]*not a software role/);
+    // There, ticked jobs go back in the queue rather than being skipped again.
+    await page.evaluate("document.querySelector('#skipped [data-all]').click()");
+    await page.evaluate("document.querySelector('#skipped [data-bulk-to=queued]').click()");
+    for (let i = 0; i < 30 && posts.length < 9; i++) await sleep(100);
+    expect(posts[8]).toEqual({ path: "/api/status", token: TOKEN, body: { id: "k2", status: "queued", was: "skipped" } });
     expect(errors).toEqual([]);
     page.close();
   }, 60_000);
@@ -217,7 +234,7 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
     await page.evaluate("document.querySelector('#apps [data-mark=\"7421:l1\"]').click()");
     for (let i = 0; i < 30 && posts.length === before; i++) await sleep(100);
     expect(posts[before]).toEqual({ path: "/api/status", token: TOKEN, body: { id: "l1", status: "applied", was: "needs_review", port: 7421 } });
-    // "Not interested" skips the job with the reason that takes it off Last 12 hours.
+    // "Not interested" skips the job with the reason that puts it under Not interested on Skipped.
     for (let i = 0; i < 30 && !(await page.evaluate<boolean>("!!document.querySelector('#apps [data-dismiss=\"7421:l2\"]')")); i++) await sleep(100);
     await page.evaluate("document.querySelector('#apps [data-dismiss=\"7421:l2\"]').click()");
     for (let i = 0; i < 30 && posts.length === before + 1; i++) await sleep(100);
