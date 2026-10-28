@@ -27,7 +27,15 @@ export async function listTargets(): Promise<Target[] | null> {
 
 /** Starts the runner's Chrome if it is not already listening. The window stays open after the CLI exits. */
 export async function ensureBrowser(): Promise<void> {
-  if (await listTargets()) return;
+  const open = await listTargets();
+  if (open && open.length) return;
+  if (open) {
+    // The window is up with every tab closed. The browser makes the first one itself: Playwright
+    // cannot open a tab in a window it did not start, and it fails on one with no tabs at all.
+    await fetch(`${base()}/json/new?about:blank`, { method: "PUT" }).catch(() => undefined);
+    if ((await listTargets())?.length) return;
+    throw new Error(`Chrome is running on port ${BROWSER.port} with no tab open. Open one tab in that window and run the command again.`);
+  }
   mkdirSync(BROWSER.profileDir, { recursive: true });
   const child = spawn(
     BROWSER.chromePath,

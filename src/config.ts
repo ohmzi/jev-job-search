@@ -333,9 +333,22 @@ export const CACHE = {
   maxPlans: 400,
 } as const;
 
+/** The Chrome binary this machine has: the environment's own choice first, then the usual place each system keeps it. */
+const chromeOn = (): string => {
+  const wanted = process.env.JEV_CHROME_PATH?.trim();
+  if (wanted) return wanted;
+  const candidates =
+    process.platform === "darwin"
+      ? ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", "/Applications/Chromium.app/Contents/MacOS/Chromium"]
+      : process.platform === "win32"
+        ? ["C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe", "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe"]
+        : ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
+  return candidates.find((p) => existsSync(p)) ?? candidates[0] ?? "/usr/bin/google-chrome";
+};
+
 export const BROWSER = {
   /** The Chrome binary the fill runner drives over the DevTools protocol. */
-  chromePath: "/usr/bin/google-chrome",
+  chromePath: chromeOn(),
   /** Local DevTools port of the runner's own Chrome window. */
   port: 9333,
   /**
@@ -693,11 +706,11 @@ export const REPORT = {
    * The accent tells the boards apart at a glance.
    */
   portals: [
-    { title: "Main", port: 7411, url: "https://job.ohmzhomelab.ca", accent: "#475569" },
-    { title: "Android · NJ", port: 7421, url: "https://jobnja.ohmzhomelab.ca", accent: "#0d9488" },
-    { title: "Android · TX", port: 7422, url: "https://jobtxa.ohmzhomelab.ca", accent: "#7c3aed" },
-    { title: "Full Stack · NJ", port: 7423, url: "https://jobnjf.ohmzhomelab.ca", accent: "#db2777" },
-    { title: "Full Stack · TX", port: 7424, url: "https://jobtxf.ohmzhomelab.ca", accent: "#2563eb" },
+    { key: "main", title: "Main", port: 7411, url: "https://job.ohmzhomelab.ca", accent: "#475569" },
+    { key: "android-nj", title: "Android · NJ", port: 7421, url: "https://jobnja.ohmzhomelab.ca", accent: "#0d9488" },
+    { key: "android-tx", title: "Android · TX", port: 7422, url: "https://jobtxa.ohmzhomelab.ca", accent: "#7c3aed" },
+    { key: "fullstack-nj", title: "Full Stack · NJ", port: 7423, url: "https://jobnjf.ohmzhomelab.ca", accent: "#db2777" },
+    { key: "fullstack-tx", title: "Full Stack · TX", port: 7424, url: "https://jobtxf.ohmzhomelab.ca", accent: "#2563eb" },
   ],
   /** The accent of a dashboard that is not one of the five. */
   accent: "#2563eb",
