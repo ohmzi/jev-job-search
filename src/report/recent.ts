@@ -5,6 +5,7 @@
 import { isRecent } from "../jobs/recency.js";
 import type { QueueEntry } from "../jobs/queue.js";
 import { STATUS_WORDS } from "../log/csv.js";
+import { PERSON_SKIPS } from "./data.js";
 
 export type RecentRow = {
   id: string;
@@ -47,9 +48,11 @@ export function whyShown(e: QueueEntry): string {
 /** The rows, newest find first; ties go to the newest posting, then the highest fit. */
 export function buildRecent(entries: QueueEntry[], now = new Date()): RecentRow[] {
   // A job that has been applied to, or may already be with the employer, is not a posting to
-  // consider again: once it leaves this list it never comes back.
+  // consider again: once it leaves this list it never comes back. Nor is one the person said
+  // they are not interested in.
+  const dismissed = (e: QueueEntry) => e.status === "skipped" && PERSON_SKIPS.includes(e.statusReason ?? "");
   const rows: RecentRow[] = entries
-    .filter((e) => isRecent(e, now) && e.status !== "applied" && e.status !== "submission_unknown")
+    .filter((e) => isRecent(e, now) && e.status !== "applied" && e.status !== "submission_unknown" && !dismissed(e))
     .map((e) => {
     const seen = Date.parse(e.discoveredAt);
     return {

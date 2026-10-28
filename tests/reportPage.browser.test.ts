@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Page, sleep, type Target } from "../src/browser/cdp.js";
 import { BROWSER, childEnv, DAILY } from "../src/config.js";
 import { emptyRow, type Row } from "../src/log/csv.js";
-import { buildReport } from "../src/report/data.js";
+import { buildReport, NOT_INTERESTED } from "../src/report/data.js";
 import type { Needs } from "../src/report/needs.js";
 import { reportPage } from "../src/report/page.js";
 import { Policy } from "../src/run/policy.js";
@@ -169,7 +169,7 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
     await page.evaluate("(() => { const q = document.querySelector('#qNeeds'); q.value = ''; q.dispatchEvent(new Event('input')); })()");
     await page.evaluate("document.querySelector('[data-set=s1][data-to=skipped]').click()");
     for (let i = 0; i < 30 && posts.length < 5; i++) await sleep(100);
-    expect(posts[4]).toEqual({ path: "/api/status", token: TOKEN, body: { id: "s1", status: "skipped", was: "needs_review", reason: "you chose not to apply" } });
+    expect(posts[4]).toEqual({ path: "/api/status", token: TOKEN, body: { id: "s1", status: "skipped", was: "needs_review", reason: NOT_INTERESTED } });
 
     // Left for you: each job can be marked applied from its row, or several at once.
     await page.evaluate("(() => { document.querySelector('[data-screen=apps]').click(); document.querySelector('[data-tab=manual]').click(); })()");
@@ -180,7 +180,7 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
     await page.evaluate("(() => { const q = document.querySelector('#q'); q.value = 'wonka'; q.dispatchEvent(new Event('input')); })()");
     expect(await page.evaluate<number>("document.querySelectorAll('#apps tbody tr').length")).toBe(1);
     await page.evaluate("(() => { const q = document.querySelector('#q'); q.value = ''; q.dispatchEvent(new Event('input')); })()");
-    // The page never scrolls sideways: on a narrow screen the table scrolls in its own frame.
+    // The page never scrolls sideways: on a narrow screen the table becomes cards.
     expect(await page.evaluate<boolean>("document.documentElement.scrollWidth <= document.documentElement.clientWidth")).toBe(true);
     // Best fit first, and a row the queue does not hold can be read but not changed.
     expect(await page.evaluate<string[]>("[...document.querySelectorAll('#apps .meta')].map((m) => m.textContent.split(' · ')[0])")).toEqual(["Vandelay", "Wonka", "Kramerica"]);
@@ -217,6 +217,11 @@ describe.skipIf(!existsSync(BROWSER.chromePath))("the dashboard page in a real b
     await page.evaluate("document.querySelector('#apps [data-mark=\"7421:l1\"]').click()");
     for (let i = 0; i < 30 && posts.length === before; i++) await sleep(100);
     expect(posts[before]).toEqual({ path: "/api/status", token: TOKEN, body: { id: "l1", status: "applied", was: "needs_review", port: 7421 } });
+    // "Not interested" skips the job with the reason that takes it off Last 12 hours.
+    for (let i = 0; i < 30 && !(await page.evaluate<boolean>("!!document.querySelector('#apps [data-dismiss=\"7421:l2\"]')")); i++) await sleep(100);
+    await page.evaluate("document.querySelector('#apps [data-dismiss=\"7421:l2\"]').click()");
+    for (let i = 0; i < 30 && posts.length === before + 1; i++) await sleep(100);
+    expect(posts[before + 1]).toEqual({ path: "/api/status", token: TOKEN, body: { id: "l2", status: "skipped", was: "blocked", reason: NOT_INTERESTED, port: 7421 } });
     expect(errors).toEqual([]);
     combined = false;
     page.close();

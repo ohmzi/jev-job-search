@@ -59,6 +59,12 @@ export function buildReport(rows: Row[], today = new Date(), recent: RecentRow[]
 /** Statuses that put a job in front of the person: on the by-hand list, or open and waiting. */
 export const LEFT_FOR_YOU: readonly string[] = ["needs_review", "blocked", "login_required", "awaiting_user_action", "awaiting_email_verification", "submission_unknown"];
 
+/** The reason a job carries when the person said from the page they are not interested in it. */
+export const NOT_INTERESTED = "you were not interested";
+
+/** Skips the person made from the page, the older wordings included. Such a job leaves Last 12 hours. */
+export const PERSON_SKIPS: readonly string[] = [NOT_INTERESTED, "you chose to skip it", "you chose not to apply"];
+
 /** A status change sent from the page. */
 export const StatusChange = z.object({
   id: z.string().min(1).max(64),

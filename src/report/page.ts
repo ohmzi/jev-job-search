@@ -5,7 +5,7 @@
 import type { Report } from "./data.js";
 import { REPORT, reportTitle } from "../config.js";
 import { STATUS_WORDS } from "../log/csv.js";
-import { LEFT_FOR_YOU } from "./data.js";
+import { LEFT_FOR_YOU, NOT_INTERESTED } from "./data.js";
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c] ?? c);
 
@@ -137,6 +137,7 @@ ${embedded}
   const embedded = document.getElementById("data");
   const live = !embedded;
   const LEFT = ${JSON.stringify(LEFT_FOR_YOU)};
+  const NOT_INTERESTED = ${JSON.stringify(NOT_INTERESTED)};
   const WAITING = ["awaiting_user_action", "awaiting_email_verification", "submission_unknown"];
   // Each tab shows the columns that matter for what is in it.
   const TABS = [
@@ -212,7 +213,9 @@ ${embedded}
       if (!live) return "<td></td>";
       if (!r.in_queue) return '<td><span class="note" title="This job is in the record only, not in the queue, so it cannot be changed here">record only</span></td>';
       const menu = '<select class="sm" data-id="' + esc(r.key) + '" data-was="' + esc(r.status_key) + '" aria-label="Change status"><option value="">Change status</option>' + STATUSES.filter((s) => s !== r.status_key).map((s) => '<option value="' + s + '">' + esc(WORDS[s] || s) + "</option>").join("") + "</select>";
-      return "<td>" + (r.status_key !== "applied" ? '<button class="btn sm" data-mark="' + esc(r.key) + '" data-was="' + esc(r.status_key) + '">Applied</button>' : "") + menu + '<span class="saved"></span></td>';
+      const open = r.status_key !== "applied" && r.status_key !== "skipped";
+      return "<td>" + (r.status_key !== "applied" ? '<button class="btn sm" data-mark="' + esc(r.key) + '" data-was="' + esc(r.status_key) + '">Applied</button>' : "") +
+        (open ? '<button class="btn sm quiet" data-dismiss="' + esc(r.key) + '" data-was="' + esc(r.status_key) + '" title="Skip it and take it off Last 12 hours">Not interested</button>' : "") + menu + '<span class="saved"></span></td>';
     } },
   };
 
@@ -242,7 +245,7 @@ ${embedded}
     // Each cell names its column and label, which the card layout shows above the value.
     const tag = (c) => { const label = c === "job" ? "" : labels[c] ?? COLS[c].label; return '<td data-col="' + c + '"' + (label ? ' data-label="' + esc(label) + '"' : ""); };
     const body = shown.map((r) => '<tr class="' + (st.picked.has(r.key) ? "picked" : "") + '">' + cols.map((c) => c === "pick" ? tag(c) + ">" + (canPick(r) ? '<input type="checkbox" data-pick="' + esc(r.key) + '" data-table="' + key + '"' + (st.picked.has(r.key) ? " checked" : "") + ' aria-label="Select">' : "") + "</td>" : COLS[c].cell(r).replace(/^<td/, tag(c))).join("") + "</tr>").join("") || '<tr><td colspan="' + cols.length + '" class="sub">Nothing here.</td></tr>';
-    const bulk = pickable ? '<div class="toolbar" data-bulk="' + key + '"><button class="btn sm" data-bulk-to="applied" data-table="' + key + '"' + (st.picked.size ? "" : " disabled") + '>Mark selected applied</button><button class="btn sm quiet" data-bulk-to="skipped" data-table="' + key + '"' + (st.picked.size ? "" : " disabled") + '>Skip selected</button><span class="sub">' + (st.picked.size ? st.picked.size + " selected" : "Tick jobs to change several at once") + '</span><span class="saved" id="saved-bulk-' + key + '"></span></div>' : "";
+    const bulk = pickable ? '<div class="toolbar" data-bulk="' + key + '"><button class="btn sm" data-bulk-to="applied" data-table="' + key + '"' + (st.picked.size ? "" : " disabled") + '>Mark selected applied</button><button class="btn sm quiet" data-bulk-to="skipped" data-table="' + key + '"' + (st.picked.size ? "" : " disabled") + '>Not interested in selected</button><span class="sub">' + (st.picked.size ? st.picked.size + " selected" : "Tick jobs to change several at once") + '</span><span class="saved" id="saved-bulk-' + key + '"></span></div>' : "";
     const more = rows.length > shown.length ? '<p class="more"><button class="btn quiet sm" data-more="' + key + '">Show ' + Math.min(PAGE, rows.length - shown.length) + " more</button> <span class=\\"sub\\">" + shown.length + " of " + rows.length + "</span></p>" : "";
     const least = cols.reduce((n, c) => n + (COLS[c].w || JOB_MIN), 0);
     return bulk + '<div class="wrap" data-min="' + least + '"><table><thead><tr>' + head + "</tr></thead><tbody>" + body + "</tbody></table></div>" + more;
@@ -278,7 +281,9 @@ ${embedded}
         j.items.map((x, n) => '<p class="q">' + esc(x.question) + "</p>" + (x.kind !== "ask" ? '<p class="note warn">' + esc(x.note) + "</p>" :
           (x.options.length ? '<select data-q="' + n + '"><option value="">Choose</option>' + x.options.map((o) => "<option>" + esc(o) + "</option>").join("") + "</select>" : '<textarea data-q="' + n + '" placeholder="Your answer, in your own words"></textarea>') +
           '<p class="note"><label><input type="checkbox" data-keep="' + n + '"> Remember for future applications</label></p>')).join("") +
-        (ask.length ? '<button class="btn" data-answer="' + esc(keyOf(j)) + '">Save for next run</button><span class="saved" id="saved-' + esc(keyOf(j)) + '"></span><p class="note">Nothing is sent now. The job goes back in the queue, and your next /apply or daily run fills it with this answer.</p>' : "") + "</div>");
+        (ask.length ? '<button class="btn" data-answer="' + esc(keyOf(j)) + '">Save for next run</button>' : "") +
+        '<button class="btn quiet" data-set="' + esc(keyOf(j)) + '" data-to="skipped" data-was="needs_review" data-reason="' + esc(NOT_INTERESTED) + '">Not interested</button><span class="saved" id="saved-' + esc(keyOf(j)) + '"></span>' +
+        (ask.length ? '<p class="note">Nothing is sent now. The job goes back in the queue, and your next /apply or daily run fills it with this answer.</p>' : "") + "</div>");
     }
     if (needs.waiting.length) out.push("<h2>Forms open and waiting for you" + badge(needs.waiting.length) + "</h2>");
     for (const w of needs.waiting) out.push('<div class="item"><h4>' + from(w) + esc(w.company) + ": " + esc(w.todo) + '</h4><p class="note">' + esc(w.title) + "</p><p>" + esc(w.reason) + "</p>" +
@@ -294,7 +299,7 @@ ${embedded}
       '<button class="btn" data-mail-ok="' + esc(keyOf(m)) + '">Save</button><button class="btn quiet" data-mail-no="' + esc(keyOf(m)) + '">Not about an application</button></div>');
     if (self.length) out.push("<h2>Apply on the employer\u2019s site" + badge(self.length) + '</h2><p class="note">The tool cannot fill these. Open the posting, apply there, then say so here.</p>');
     for (const s of self) out.push('<div class="item self"><div><a class="role" href="' + esc(s.link) + '" target="_blank" rel="noopener">' + esc(s.title) + '</a><div class="meta">' + (s.portal ? from(s) + " · " : "") + esc(s.company) + " · " + esc(s.reason) + "</div></div>" +
-      '<div><a class="btn quiet sm" href="' + esc(s.link) + '" target="_blank" rel="noopener">Open posting</a><button class="btn sm" data-set="' + esc(keyOf(s)) + '" data-to="applied" data-was="needs_review">I applied</button><button class="btn quiet sm" data-set="' + esc(keyOf(s)) + '" data-to="skipped" data-was="needs_review" data-reason="you chose not to apply">Not applying</button><span class="saved" id="saved-' + esc(keyOf(s)) + '"></span></div></div>');
+      '<div><a class="btn quiet sm" href="' + esc(s.link) + '" target="_blank" rel="noopener">Open posting</a><button class="btn sm" data-set="' + esc(keyOf(s)) + '" data-to="applied" data-was="needs_review">I applied</button><button class="btn quiet sm" data-set="' + esc(keyOf(s)) + '" data-to="skipped" data-was="needs_review" data-reason="' + esc(NOT_INTERESTED) + '">Not interested</button><span class="saved" id="saved-' + esc(keyOf(s)) + '"></span></div></div>');
     if ((needs.elsewhere || []).length) out.push("<h2>Waiting on a portal\u2019s own page" + badge(needs.elsewhere.length) + '</h2><p class="note">These are done on the portal itself.</p>');
     for (const e of needs.elsewhere || []) out.push('<div class="item self"><div>' + from(e) + " " + esc(e.text) + '</div><div><a class="btn quiet sm" href="' + esc(portalLink(e.port, "needs")) + '">Open ' + esc(e.portal) + "</a></div></div>");
     $("#needs").innerHTML = out.join("");
@@ -387,7 +392,7 @@ ${embedded}
     const rows = rowsOf(key).filter((r) => st.picked.has(r.key));
     let done = 0, said = "";
     for (const r of rows) {
-      const res = await post("/api/status", routed(r, { id: r.id, status: to, was: r.status_key, ...(to === "skipped" ? { reason: "you chose to skip it" } : {}) }));
+      const res = await post("/api/status", routed(r, { id: r.id, status: to, was: r.status_key, ...(to === "skipped" ? { reason: NOT_INTERESTED } : {}) }));
       if (!res.ok) { said = (done ? done + " saved, then: " : "") + (await errorOf(res)); break; }
       done++;
     }
@@ -410,6 +415,7 @@ ${embedded}
     const b = t.closest("[data-tab]"); if (b) { tab = b.dataset.tab; renderApps(); return; }
     const th = t.closest("[data-sort]"); if (th) { const st = tables[th.dataset.table]; if (st.sortKey === th.dataset.sort) st.sortDir = -st.sortDir; else { st.sortKey = th.dataset.sort; st.sortDir = th.dataset.sort === "fit" || th.dataset.sort === "applied_on" ? -1 : 1; } redraw(th.dataset.table); return; }
     const mark = t.closest("[data-mark]"); if (mark) { mark.disabled = true; if (!(await save(mark, mark.dataset.mark, { status: "applied", was: mark.dataset.was }))) mark.disabled = false; return; }
+    const dis = t.closest("[data-dismiss]"); if (dis) { dis.disabled = true; if (!(await save(dis, dis.dataset.dismiss, { status: "skipped", was: dis.dataset.was, reason: NOT_INTERESTED }))) dis.disabled = false; return; }
     const show = t.closest("[data-show]"); if (show) { const x = items.get(show.dataset.show); const r = await post("/api/show", routed(x, { id: x.id })); const ok = r.ok && (await r.json()).ok; show.textContent = ok ? "It is in front now" : "Its window is closed"; return; }
     const set = t.closest("[data-set]"); if (set) { const x = items.get(set.dataset.set); await act("/api/status", routed(x, { id: x.id, status: set.dataset.to, was: set.dataset.was, ...(set.dataset.reason ? { reason: set.dataset.reason } : {}) }), "saved-" + set.dataset.set); return; }
     const ans = t.closest("[data-answer]");

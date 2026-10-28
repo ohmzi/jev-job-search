@@ -6,6 +6,7 @@ import { ageHeldEntries, isRecent, localDate, recentFirst } from "../src/jobs/re
 import { dedupeJobspy, locationWanted, mapJobspy, postedOf, titleWanted } from "../src/sources/jobspy.js";
 import { boardThisHour, mergeHourly, newBoardPostings, recentlyQueued, runHourly } from "../src/run/hourly.js";
 import { buildRecent } from "../src/report/recent.js";
+import { NOT_INTERESTED } from "../src/report/data.js";
 import { pickJobs } from "../src/run/pipeline.js";
 import { loadQueue, saveQueue, type QueueEntry } from "../src/jobs/queue.js";
 import { hourlyAgentPlist, hourlyServiceUnit, hourlyTimerUnit, hourlyUnitFiles, installHourlySchedule } from "../src/run/schedule.js";
@@ -258,6 +259,11 @@ describe("the Last 12 hours rows", () => {
     const applied = entry({ status: "applied", appliedAt: NOW.toISOString() });
     const unknown = entry({ job: { ...job(), id: "u" } as QueueEntry["job"], status: "submission_unknown" });
     expect(buildRecent([applied, unknown], NOW)).toHaveLength(0);
+  });
+  it("drops a job the person was not interested in, and keeps one the search skipped", () => {
+    const dismissed = entry({ status: "skipped", statusReason: NOT_INTERESTED });
+    const filtered = entry({ job: { ...job(), id: "f", company: "Filtered" } as QueueEntry["job"], status: "skipped", statusReason: "title is not a role the profile wants" });
+    expect(buildRecent([dismissed, filtered], NOW).map((r) => r.company)).toEqual(["Filtered"]);
   });
   it("says when the posted time is unknown or the board cannot be filled", () => {
     const unknown = entry({ job: { ...job(), postedAt: null } as QueueEntry["job"] });
