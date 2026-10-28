@@ -55,6 +55,7 @@ import { setDocumentPolicy, tailorJob } from "./documents/tailor.js";
 import { activeTemplate, addTemplate, listTemplates, useTemplate } from "./documents/templates.js";
 import { addJob, looksLikeUrl } from "./jobs/addJob.js";
 import { buildReport } from "./report/data.js";
+import { clickText, closePage, detectTabBoard, fillPage, formatTabs, nextPage, openFrame, openPage, readPage, readPlan, tabs as pageTabs } from "./page.js";
 import { buildRecent } from "./report/recent.js";
 import { installReportService, removeReportService, reportServiceStatus } from "./report/service.js";
 import { reportPage } from "./report/page.js";
@@ -726,6 +727,96 @@ program
       await clearBrowsingData();
       console.log("Cleared the cookies, cache and site data of the tool's Chrome.");
     });
+  });
+
+// ------------------------------------------------------ the form in front of you
+
+type PageOptions = { tab?: string; url?: string; board?: string; options?: boolean; text?: string | boolean; plan?: string; index?: number; loose?: boolean; json?: boolean };
+
+/** How many characters of page text to read: the default, or the number the person gave. */
+const textSize = (v: string | boolean | undefined): number => (typeof v === "string" && Number.isFinite(parseInt(v, 10)) ? parseInt(v, 10) : 12_000);
+
+function printPageFill(o: Awaited<ReturnType<typeof fillPage>>): void {
+  console.log(`${o.filled.length + o.failed.length} value(s) written on ${o.url}`);
+  if (o.board) console.log(`Board: ${o.board.title} (${o.boardWhy}), answers for ${o.locatedIn}`);
+  else console.log(`Board: not known (${o.boardWhy}). Answers and resume are the default ones, for ${o.locatedIn}.`);
+  if (!o.board && o.boardCandidates.length > 1) console.log(`The job is in ${o.boardCandidates.join(" and ")}. Say which one with --board <key>.`);
+  if (o.resume) console.log(`Resume: ${o.resume.filename}`);
+  if (o.startUrl !== o.url) console.log(`NOTE the page moved from ${o.startUrl} to ${o.url} while filling. Look at it before you send anything.`);
+  console.log("Nothing was submitted.");
+  for (const f of o.filled) console.log(`  ok    ${f.label || f.kind}: ${f.shown}`);
+  for (const f of o.failed) console.log(`  FAIL  ${f.label}: ${f.why}`);
+  for (const u of o.uploaded) console.log(`  ${u.ok ? "ok   " : "FAIL "} upload ${u.path}${u.why ? `: ${u.why}` : ""}`);
+  if (o.stillEmpty.length) {
+    console.log("\nThe form still requires:");
+    for (const f of o.stillEmpty) console.log(`  - ${f.label}${f.options.length ? ` (${f.options.slice(0, 12).join(", ")})` : ""}`);
+  } else console.log("\nEvery required control has a value.");
+}
+
+program
+  .command("page <action> [words...]")
+  .description("Work on the form open in the tool's Chrome, by hand: tabs | dump | fill | click | next | open | frame | text. It fills the values it is given and reads every one back; it never clicks Submit")
+  .option("--tab <id>", "the tab to work on, from `page tabs`; the default is the tab on screen")
+  .option("--url <part>", "pick the tab whose address holds this text")
+  .option("--options", "with dump: open every custom dropdown and read its list")
+  .option("--text [chars]", "with text: how many characters of the page to read")
+  .option("--plan <file>", "with fill: the JSON values to write, or - for standard input")
+  .option("--index <n>", "with frame: which embedded form", (v) => parseInt(v, 10), 0)
+  .option("--board <key>", "the board the job is from: android-nj, android-tx, fullstack-nj, fullstack-tx")
+  .option("--loose", "with click: match the words anywhere in the control, not as the whole label")
+  .option("--json", "print the result as JSON")
+  .action(async (action: string, words: string[], o: PageOptions) => {
+    const where = { ...(o.tab ? { tab: o.tab } : {}), ...(o.url ? { url: o.url } : {}) };
+    if (action === "tabs") {
+      const list = await pageTabs();
+      if (o.json) return console.log(JSON.stringify(list, null, 2));
+      return console.log(formatTabs(list));
+    }
+    if (action === "open") {
+      const link = words[0];
+      if (!link) return console.log("page open <url>");
+      const t = await openPage(link);
+      return console.log(`opened ${t.url} (tab ${t.id})`);
+    }
+    if (action === "dump" || action === "text") {
+      const d = await readPage({ ...where, options: !!o.options, ...(action === "text" || o.text !== undefined ? { text: textSize(o.text) } : {}) });
+      if (action === "dump" || o.json) return console.log(JSON.stringify(d, null, 2));
+      return console.log(d.bodyText ?? "");
+    }
+    if (action === "fill") {
+      if (!o.plan) return console.log("page fill --plan <file>, or --plan - to read it from standard input");
+      const outcome = await fillPage({ ...readPlan(o.plan), ...where, ...(o.board ? { board: o.board } : {}) });
+      if (o.json) return console.log(JSON.stringify(outcome, null, 2));
+      return printPageFill(outcome);
+    }
+    if (action === "click") {
+      const text = words.join(" ");
+      if (!text) return console.log('page click "Next"');
+      const r = await clickText(text, { ...where, exact: !o.loose });
+      if (o.json) return console.log(JSON.stringify(r));
+      return console.log(r.ok ? `pressed "${text}", now on ${r.where}` : `no control says "${text}"`);
+    }
+    if (action === "next") {
+      const r = await nextPage(where);
+      if (o.json) return console.log(JSON.stringify(r));
+      return console.log(r.ok ? `moved on to ${r.where} (${r.fields} control(s) on the page)` : "no Next or Continue control was found");
+    }
+    if (action === "board") {
+      const d = await detectTabBoard({ ...where, ...(o.board ? { named: o.board } : {}) });
+      if (o.json) return console.log(JSON.stringify({ board: d.board?.key ?? null, title: d.board?.title ?? null, why: d.why, candidates: d.candidates.map((b) => b.key), resume: d.resume }, null, 2));
+      console.log(d.board ? `Board: ${d.board.title} (${d.why})` : `Board: not known (${d.why})`);
+      if (!d.board && d.candidates.length) console.log(`It is in ${d.candidates.map((b) => b.title).join(" and ")}. Name one with --board <key>.`);
+      return console.log(`Resume: ${d.resume}`);
+    }
+    if (action === "close") {
+      if (!o.tab && !o.url) return console.log("page close --tab <id>, or page close --url <part>");
+      return console.log(`closed ${await closePage(o.tab ? { tab: o.tab } : { url: o.url as string })}`);
+    }
+    if (action === "frame") {
+      const r = await openFrame({ ...where, index: o.index ?? 0 });
+      return console.log(`went into ${r.url}`);
+    }
+    console.log("page tabs | dump | fill --plan <file> | click <words> | next | open <url> | board | frame | close | text");
   });
 
 // ------------------------------------------------------ forms left for you

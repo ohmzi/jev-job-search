@@ -40,3 +40,4 @@ coverage/
 
 # browser session scratch (console logs from the MCP browser)
 .playwright-mcp/
+data/boards/
